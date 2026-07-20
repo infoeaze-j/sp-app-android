@@ -1,0 +1,45 @@
+package com.mediplus.faceverify.dev.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.mediplus.faceverify.core.session.SessionManager
+import com.mediplus.faceverify.dev.AuthScenario
+import com.mediplus.faceverify.dev.DevSettings
+import com.mediplus.faceverify.dev.DevSettingsStore
+import com.mediplus.faceverify.dev.DocumentScenario
+import com.mediplus.faceverify.dev.EnrollScenario
+import com.mediplus.faceverify.dev.FaceScenario
+import com.mediplus.faceverify.dev.ServicesScenario
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class DevSettingsViewModel @Inject constructor(
+    private val store: DevSettingsStore,
+    private val sessionManager: SessionManager,
+) : ViewModel() {
+
+    val settings: StateFlow<DevSettings> =
+        store.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DevSettings())
+
+    fun setFakeEnabled(enabled: Boolean) = launchEdit { store.setFakeEnabled(enabled) }
+    fun setAuth(scenario: AuthScenario) = launchEdit { store.setAuth(scenario) }
+    fun setDocument(scenario: DocumentScenario) = launchEdit { store.setDocument(scenario) }
+    fun setFace(scenario: FaceScenario) = launchEdit { store.setFace(scenario) }
+    fun setServices(scenario: ServicesScenario) = launchEdit { store.setServices(scenario) }
+    fun setEnroll(scenario: EnrollScenario) = launchEdit { store.setEnroll(scenario) }
+    fun setLatencyMillis(millis: Long) = launchEdit { store.setLatencyMillis(millis) }
+
+    /** Immediately drop the session so the NavGraph guard routes back to sign-in (FR-004/FR-004a). */
+    fun forceSessionExpired() {
+        sessionManager.markSessionExpired()
+    }
+
+    private inline fun launchEdit(crossinline block: suspend () -> Unit) {
+        viewModelScope.launch { block() }
+    }
+}
