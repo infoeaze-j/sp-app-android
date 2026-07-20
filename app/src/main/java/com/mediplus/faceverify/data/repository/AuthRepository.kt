@@ -1,0 +1,92 @@
+package com.mediplus.faceverify.data.repository
+
+import com.mediplus.faceverify.core.di.IoDispatcher
+import com.mediplus.faceverify.core.network.apiCall
+import com.mediplus.faceverify.core.result.AppError
+import com.mediplus.faceverify.core.result.AppResult
+import com.mediplus.faceverify.core.result.BusinessCode
+import com.mediplus.faceverify.core.result.TransientKind
+import com.mediplus.faceverify.core.session.SessionManager
+import com.mediplus.faceverify.data.remote.AuthApi
+import com.mediplus.faceverify.data.remote.LoginRequest
+import com.mediplus.faceverify.data.remote.LoginResponse
+import com.mediplus.faceverify.domain.model.Operator
+import com.mediplus.faceverify.domain.model.Session
+import com.mediplus.faceverify.domain.model.SessionState
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.StateFlow
+import java.net.HttpURLConnection
+import java.time.Instant
+import javax.inject.Inject
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * The stable auth seam (contracts/client-interfaces.md). Maps back-office responses to
+ * [AppResult] and feeds the [SessionManager]; the ViewModel/UI never touch the wire shape.
+ */
+interface AuthRepository {
+    suspend fun signIn(identifier: String, secret: String): AppResult<Session>
+    suspend fun signOut(): AppResult<Unit>
+    fun sessionState(): StateFlow<SessionState>
+}
+
+class AuthRepositoryImpl @Inject constructor(
+    private val api: AuthApi,
+    private val sessionManager: SessionManager,
+    @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
+) : AuthRepository {
+
+    override suspend fun signIn(identifier: String, secret: String): AppResult<Session> =
+        apiCall(dispatcher, { api.login(LoginRequest(identifier, secret)) }) { response ->
+            val body = response.body()
+            when {
+                response.isSuccessful && body != null -> onLoginSuccess(body)
+                // 401 during sign-in means invalid credentials — non-revealing, no session (FR-005).
+                response.code() == HttpURLConnection.HTTP_UNAUTHORIZED ->
+                    AppResult.BusinessRejection(AppError.Business(BusinessCode.INVALID_CREDENTIALS))
+                // 423 locked / 429 throttled — server-owned lockout (FR-006).
+                response.code() == LOCKED || response.code() == TOO_MANY_REQUESTS ->
+                    AppResult.BusinessRejection(AppError.Business(BusinessCode.ACCOUNT_LOCKED))
+                response.code() in SERVER_ERROR_RANGE ->
+                    AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
+                else -> AppResult.BusinessRejection(AppError.Business(BusinessCode.GENERIC))
+            }
+        }
+
+    private fun onLoginSuccess(body: LoginResponse): AppResult<Session> {
+        val session = body.toSession()
+        sessionManager.set(session)
+        // Capture the back-office-owned freshness window; absent → stale (fail-safe) (FR-026).
+        sessionManager.setVerificationWindow(body.config?.verificationWindowSeconds?.seconds)
+        return AppResult.Success(session)
+    }
+
+    override suspend fun signOut(): AppResult<Unit> {
+        // Attempt server-side invalidation, but always clear local session-bound state (FR-004a).
+        runCatching { apiCall(dispatcher, { api.logout() }) { AppResult.Success(Unit) } }
+        sessionManager.clearAll()
+        return AppResult.Success(Unit)
+    }
+
+    override fun sessionState(): StateFlow<SessionState> = sessionManager.sessionState
+
+    private companion object {
+        const val LOCKED = 423
+        const val TOO_MANY_REQUESTS = 429
+        val SERVER_ERROR_RANGE = 500..599
+    }
+}
+
+private fun LoginResponse.toSession(): Session = Session(
+    token = token,
+    operator = Operator(
+        operatorId = operator.operatorId,
+        displayName = operator.displayName,
+        permissions = operator.permissions.toSet(),
+    ),
+    expiresAt = expiresAt?.let { parseEpochMillisOrNull(it) },
+    state = SessionState.Active,
+)
+
+private fun parseEpochMillisOrNull(iso: String): Long? =
+    runCatching { Instant.parse(iso).toEpochMilli() }.getOrNull()

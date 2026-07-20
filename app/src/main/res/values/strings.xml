@@ -1,0 +1,85 @@
+<resources>
+    <string name="app_name">FaceVerify</string>
+
+    <!-- ===== Shared actions ===== -->
+    <string name="action_retry">Retry</string>
+    <string name="action_recheck">Re-check</string>
+    <string name="action_try_again">Try again</string>
+    <string name="action_sign_in_again">Sign in again</string>
+    <string name="action_rescan">Scan again</string>
+    <string name="action_start_over">Start over</string>
+    <string name="action_grant_permission">Allow</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- ===== Shared states ===== -->
+    <string name="state_loading">Working…</string>
+    <string name="state_permission_needed_title">Permission needed</string>
+
+    <!-- ===== Sign in (US1) ===== -->
+    <string name="signin_title">FaceVerify</string>
+    <string name="signin_subtitle">Sign in to start a verification</string>
+    <string name="signin_identifier_label">Operator ID</string>
+    <string name="signin_secret_label">Password</string>
+    <string name="signin_submit">Sign in</string>
+    <string name="signin_session_ended">Your session ended. Please sign in again to continue.</string>
+    <string name="signin_show_password">Show password</string>
+    <string name="signin_hide_password">Hide password</string>
+
+    <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->
+    <string name="err_generic_title">Something went wrong</string>
+    <string name="err_generic_body">We couldn\'t complete that. Please try again.</string>
+
+    <string name="err_no_connectivity_title">No connection</string>
+    <string name="err_no_connectivity_body">Check your internet connection and try again.</string>
+
+    <string name="err_server_title">Service unavailable</string>
+    <string name="err_server_body">The service isn\'t responding right now. Please try again shortly.</string>
+
+    <string name="err_timeout_title">Outcome not confirmed</string>
+    <string name="err_timeout_body">We didn\'t get a confirmation. Nothing was assumed to have succeeded — re-check before retrying.</string>
+
+    <string name="err_session_ended_title">Session ended</string>
+    <string name="err_session_ended_body">Your session is no longer active. Sign in again to continue; earlier steps must be repeated.</string>
+
+    <string name="err_invalid_credentials_title">Sign-in failed</string>
+    <string name="err_invalid_credentials_body">The details entered weren\'t accepted. Check them and try again.</string>
+
+    <string name="err_account_locked_title">Account temporarily locked</string>
+    <string name="err_account_locked_body">Too many attempts. Please wait before trying again.</string>
+
+    <string name="err_document_invalid_title">Document not accepted</string>
+    <string name="err_document_invalid_body">This document could not be verified. Please try a different document or contact your administrator.</string>
+
+    <string name="err_document_expired_title">Document expired</string>
+    <string name="err_document_expired_body">This document has expired and can\'t be used for verification.</string>
+
+    <string name="err_patient_not_found_title">Record not found</string>
+    <string name="err_patient_not_found_body">No matching record could be found for this document.</string>
+
+    <string name="err_face_no_match_title">Face not matched</string>
+    <string name="err_face_no_match_body">The face check didn\'t pass. You can try again.</string>
+
+    <string name="err_face_spoof_title">Liveness check failed</string>
+    <string name="err_face_spoof_body">We couldn\'t confirm a live person. Please try again with the live subject.</string>
+
+    <string name="err_face_locked_out_title">Face checks paused</string>
+    <string name="err_face_locked_out_body">Too many attempts. Face checks are paused for a cooldown period.</string>
+
+    <string name="err_subject_mismatch_title">Details don\'t match</string>
+    <string name="err_subject_mismatch_body">The document and the person don\'t appear to match. The process has been stopped.</string>
+
+    <string name="err_consent_withheld_title">Consent not given</string>
+    <string name="err_consent_withheld_body">Consent is required to continue. The process has been stopped and no enrollment was made.</string>
+
+    <string name="err_duplicate_service_title">Already added</string>
+    <string name="err_duplicate_service_body">This service is already recorded for this visit.</string>
+
+    <string name="err_service_ineligible_title">Not available</string>
+    <string name="err_service_ineligible_body">This service isn\'t available for this person right now.</string>
+
+    <string name="err_not_verified_title">Verification required</string>
+    <string name="err_not_verified_body">This person must be verified again before a service can be added.</string>
+</resources>

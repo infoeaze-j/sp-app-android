@@ -1,0 +1,71 @@
+# Detekt configuration for FaceVerify (Constitution Principle I — Code Quality).
+# Run in CI via the detekt CLI/plugin (see .github/workflows). Android Lint is the in-build gate.
+
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: true
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    threshold: 50          # Constitution: functions <= 50 lines
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 7
+  TooManyFunctions:
+    active: true
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 15
+  NestedBlockDepth:
+    active: true
+    threshold: 4
+
+style:
+  active: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+  MagicNumber:
+    active: true
+    ignoreNumbers: ['-1', '0', '1', '2', '100']
+    ignoreHashCodeFunction: true
+    ignoreEnums: true
+    ignoreAnnotation: true
+  ReturnCount:
+    active: true
+    max: 4
+  ForbiddenComment:
+    active: true
+    comments:
+      - reason: 'Untracked TODO/FIXME are not allowed (Constitution Principle I).'
+        value: 'TODO'
+      - reason: 'Untracked TODO/FIXME are not allowed (Constitution Principle I).'
+        value: 'FIXME'
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    # Compose @Composable functions are PascalCase by convention.
+    ignoreAnnotated: ['Composable']
+
+comments:
+  active: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: true
+
+potential-bugs:
+  active: true
+
+coroutines:
+  active: true
