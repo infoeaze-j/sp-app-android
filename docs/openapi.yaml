@@ -1,0 +1,482 @@
+openapi: 3.1.0
+info:
+  title: FaceVerify Back Office API
+  version: 0.1.0-provisional
+  description: |
+    Back-office API consumed by the FaceVerify Android app for operator
+    authentication, NFC document validation, face verification, and service
+    enrollment (feature 001-identity-verification-enrollment).
+
+    **Status:** Provisional. Field names and paths mirror the current Retrofit
+    client (`app/src/main/java/com/mediplus/faceverify/data/remote/*Api.kt`) and
+    the contract docs under
+    `specs/001-identity-verification-enrollment/contracts/`. The stable seam is
+    the client repository interface, not this wire shape.
+
+    **Privacy constraints enforced by the client (FR-017, FR-029, FR-030):**
+    - Session tokens are transient and redacted from all logs.
+    - `documentNumber` is the patient key and is never logged in the clear.
+    - The live face frame is held in memory for a single request and discarded
+      immediately; only outcome metadata is retained for audit — never the image.
+
+servers:
+  - url: https://backoffice.example.com/
+    description: Default back office (BuildConfig.BASE_URL; overridable per build type, e.g. MockWebServer in CI)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Operator sign-in and session lifecycle (FR-001–FR-006)
+  - name: Documents
+    description: Authoritative NFC document validation and patient resolution (FR-007, FR-008, FR-011, FR-011a)
+  - name: Face
+    description: Server-owned face match and liveness decision (FR-012–FR-017)
+  - name: Enrollment
+    description: Service listing and idempotent enrollment for the current visit (FR-018–FR-023a)
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate an operator and establish a session
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated; session established.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: |
+            Invalid credentials. Non-revealing: MUST NOT indicate whether the
+            identifier or the secret was wrong. No session created (FR-005).
+        '423':
+          description: Account locked. Server owns lockout policy (FR-006).
+        '429':
+          description: Throttled. Show cooldown; block further attempts (FR-006).
+        '5XX':
+          description: Transient/unknown failure — client must not appear signed in.
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate the current session (idempotent)
+      operationId: logout
+      responses:
+        '200':
+          description: Session invalidated. Client clears all verification state (FR-004a).
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+
+  /auth/session:
+    get:
+      tags: [Auth]
+      summary: Validate the current session
+      description: |
+        Any protected endpoint returning 401 signals session expiry/invalidation;
+        the app transitions to NotSignedIn and discards all verification state
+        (FR-004, FR-004a).
+      operationId: session
+      responses:
+        '200':
+          description: Session is valid.
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+
+  /documents/validate:
+    post:
+      tags: [Documents]
+      summary: Validate a read NFC document and resolve the patient
+      description: |
+        The chip is read on-device (JMRTD); this endpoint returns the
+        authoritative authenticity verdict and resolves the patient by document
+        number (FR-008, FR-011a).
+      operationId: validateDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateDocumentRequest'
+      responses:
+        '200':
+          description: |
+            Verdict returned. `authenticity: INVALID` (with `reason`) is a valid
+            200 response — the document is rejected, not document-verified (FR-008).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateDocumentResponse'
+        '404':
+          description: Patient not resolvable; halt (cannot key subsequent calls).
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+        '5XX':
+          description: Transient/timeout — retry allowed without losing session or prior steps (FR-009).
+
+  /face/verify:
+    post:
+      tags: [Face]
+      summary: Submit a live frame for face match and liveness verification
+      description: |
+        Submit a live frame against the trusted reference (DG2 photo and/or
+        server reference), keyed to the patient. The frame is transient in memory
+        only and discarded immediately after the response (FR-017).
+      operationId: verifyFace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceVerifyRequest'
+      responses:
+        '200':
+          description: |
+            Decision returned. `decision: FAIL`, `liveness: FAIL`, or
+            `sameSubject: false` are valid 200 responses recording a failed/rejected
+            attempt. `lockout` state is server-owned and authoritative (FR-015).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaceVerifyResponse'
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+        '5XX':
+          description: Transient/timeout — frame already discarded; safe retry within lockout budget.
+
+  /patients/{documentNumber}/services:
+    get:
+      tags: [Enrollment]
+      summary: List services eligible for this patient
+      operationId: listServices
+      parameters:
+        - $ref: '#/components/parameters/DocumentNumber'
+      responses:
+        '200':
+          description: Eligible services. Only server-reported services are selectable (FR-019, FR-023).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicesResponse'
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+        '404':
+          description: Patient not resolvable.
+
+  /patients/{documentNumber}/enrollments:
+    post:
+      tags: [Enrollment]
+      summary: Enroll the selected service for the current visit (idempotent)
+      description: |
+        Precondition (client-enforced): identity is currently verified within the
+        back-office window (FR-018, FR-024, FR-026). Same `idempotencyKey` on
+        retry guarantees no duplicate enrollment (FR-022, SC-003).
+      operationId: enroll
+      parameters:
+        - $ref: '#/components/parameters/DocumentNumber'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollRequest'
+      responses:
+        '201':
+          description: Enrollment confirmed. Success reported only on explicit `CONFIRMED` (FR-020).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentResponse'
+        '409':
+          description: Duplicate service, or not-verified/stale conflict; prevent and explain (FR-019).
+        '422':
+          description: Ineligible / business-rule rejection with `reason`; surface non-technical reason, not success (FR-021).
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+        '5XX':
+          description: |
+            Timeout/connectivity — `Uncertain`. Never show success; resolve with
+            the re-check GET reusing the same `idempotencyKey` (FR-022).
+    get:
+      tags: [Enrollment]
+      summary: Idempotent re-check of an uncertain enrollment outcome
+      description: |
+        Resolves whether an enrollment was actually created, without risking a
+        duplicate, after a timeout on the POST (FR-022).
+      operationId: recheckEnrollment
+      parameters:
+        - $ref: '#/components/parameters/DocumentNumber'
+        - name: idempotencyKey
+          in: query
+          required: true
+          description: The same key used on the original POST enrollment attempt.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current status for the given idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentResponse'
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+        '404':
+          description: No enrollment exists for this key (the POST never landed).
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Session token from `POST /auth/login`, attached as
+        `Authorization: Bearer <token>` to every protected request (FR-002).
+        Requests without a valid session are blocked client-side before dispatch
+        (FR-003). The token is redacted from all logs (FR-029).
+
+  parameters:
+    DocumentNumber:
+      name: documentNumber
+      in: path
+      required: true
+      description: Patient key derived from DG1/MRZ. Never logged in the clear (FR-029).
+      schema:
+        type: string
+
+  responses:
+    SessionInvalidated:
+      description: |
+        Session expired or invalidated. The app transitions to NotSignedIn,
+        discards all verification state, and routes to sign-in (FR-004, FR-004a).
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [identifier, secret]
+      properties:
+        identifier:
+          type: string
+          description: Operator username or email.
+        secret:
+          type: string
+          description: Password/credential.
+
+    LoginResponse:
+      type: object
+      required: [token, operator]
+      properties:
+        token:
+          type: string
+          description: Opaque session token; transient (memory only), redacted from logs.
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+        operator:
+          $ref: '#/components/schemas/Operator'
+        config:
+          $ref: '#/components/schemas/SessionConfig'
+
+    Operator:
+      type: object
+      required: [operatorId]
+      properties:
+        operatorId:
+          type: string
+        displayName:
+          type: [string, "null"]
+        permissions:
+          type: array
+          items:
+            type: string
+          default: []
+
+    SessionConfig:
+      type: [object, "null"]
+      properties:
+        verificationWindowSeconds:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            Back-office-owned verification-freshness window (FR-026). The app
+            enforces this value and MUST NOT hardcode it. If absent, verification
+            is treated as immediately stale (fail-safe).
+
+    ValidateDocumentRequest:
+      type: object
+      required: [documentNumber, identityFields, localIntegrity]
+      properties:
+        documentNumber:
+          type: string
+          description: Patient key from DG1/MRZ.
+        identityFields:
+          $ref: '#/components/schemas/IdentityFields'
+        securityObject:
+          type: [string, "null"]
+          description: Base64 SOD (security object document).
+        dataGroupHashes:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of data-group name to base64 hash (e.g. DG1, DG2).
+          default: {}
+        localIntegrity:
+          type: string
+          enum: [PASSED, FAILED, NOT_CHECKED]
+          description: Result of the on-device integrity read.
+
+    IdentityFields:
+      type: object
+      required: [surname, givenNames, dateOfBirth, nationality, sex, expiryDate, issuingAuthority]
+      properties:
+        surname:
+          type: string
+        givenNames:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        nationality:
+          type: string
+        sex:
+          type: string
+        expiryDate:
+          type: string
+          format: date
+        issuingAuthority:
+          type: string
+
+    ValidateDocumentResponse:
+      type: object
+      required: [authenticity]
+      properties:
+        authenticity:
+          type: string
+          enum: [VALID, INVALID]
+        reason:
+          type: [string, "null"]
+          description: Specific reason when INVALID.
+        documentVerified:
+          type: boolean
+          default: false
+          description: True requires server VALID and locally not-expired (FR-008).
+        referenceOnFile:
+          type: boolean
+          default: false
+        patientResolved:
+          type: boolean
+          default: false
+
+    FaceVerifyRequest:
+      type: object
+      required: [documentNumber, image]
+      properties:
+        documentNumber:
+          type: string
+          description: Patient key.
+        image:
+          type: string
+          format: byte
+          description: Base64 live frame — transient in memory, never persisted client-side (FR-017).
+        captureMeta:
+          $ref: '#/components/schemas/CaptureMeta'
+
+    CaptureMeta:
+      type: object
+      properties:
+        hasLivenessChallengeResponse:
+          type: boolean
+          default: false
+
+    FaceVerifyResponse:
+      type: object
+      required: [decision, liveness]
+      properties:
+        decision:
+          type: string
+          enum: [PASS, FAIL]
+        reason:
+          type: [string, "null"]
+        liveness:
+          type: string
+          enum: [PASS, FAIL]
+        sameSubject:
+          type: boolean
+          default: false
+        lockout:
+          $ref: '#/components/schemas/Lockout'
+
+    Lockout:
+      type: object
+      description: Server-owned, authoritative lockout state; persists across sessions (FR-015).
+      properties:
+        lockedOut:
+          type: boolean
+          default: false
+        remainingAttempts:
+          type: [integer, "null"]
+        cooldownUntil:
+          type: [string, "null"]
+          format: date-time
+
+    ServicesResponse:
+      type: object
+      properties:
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/Service'
+          default: []
+
+    Service:
+      type: object
+      required: [serviceId, description]
+      properties:
+        serviceId:
+          type: string
+        description:
+          type: string
+        eligibleForPatient:
+          type: boolean
+          default: false
+        alreadySelected:
+          type: boolean
+          default: false
+          description: Supports the duplicate guard (FR-019).
+
+    EnrollRequest:
+      type: object
+      required: [serviceId, idempotencyKey]
+      properties:
+        serviceId:
+          type: string
+        idempotencyKey:
+          type: string
+          format: uuid
+          description: Per-transaction key; retries reuse the same key (FR-022).
+
+    EnrollmentResponse:
+      type: object
+      required: [status]
+      properties:
+        enrollmentId:
+          type: [string, "null"]
+        status:
+          type: string
+          description: e.g. CONFIRMED, DUPLICATE, REJECTED. Success only on CONFIRMED (FR-020).
+        reason:
+          type: [string, "null"]
+        timestamp:
+          type: [string, "null"]
+          format: date-time
