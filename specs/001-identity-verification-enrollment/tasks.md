@@ -87,20 +87,20 @@ description: "Task list for Identity Verification & Service Enrollment"
 
 ### Tests for User Story 2 ⚠️ (write first, must FAIL before implementation)
 
-- [ ] T025 [P] [US2] Contract test for `POST /documents/validate` (Valid / Invalid+reason / transient / timeout) against MockWebServer in `app/src/test/java/com/mediplus/faceverify/data/remote/DocumentApiContractTest.kt` (FR-008)
-- [ ] T026 [P] [US2] Unit test `VerifyDocumentUseCase` (marks document-verified only on server `Valid` + not-expired; surfaces reason on reject) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/VerifyDocumentUseCaseTest.kt` (FR-008, FR-011a)
-- [ ] T027 [P] [US2] Unit test `NfcScanViewModel` states (idle/scanning/interrupted-retry/unavailable/read-success/confirm) in `app/src/test/java/com/mediplus/faceverify/ui/nfcscan/NfcScanViewModelTest.kt` (FR-009, FR-010)
-- [ ] T028 [P] [US2] Instrumented test for NFC availability/disabled handling in `app/src/androidTest/java/com/mediplus/faceverify/nfc/NfcAvailabilityTest.kt` (FR-010)
+- [X] T025 [P] [US2] Contract test for `POST /documents/validate` (Valid / Invalid+reason / transient / timeout) against MockWebServer in `app/src/test/java/com/mediplus/faceverify/data/remote/DocumentApiContractTest.kt` (FR-008)
+- [X] T026 [P] [US2] Unit test `VerifyDocumentUseCase` (marks document-verified only on server `Valid` + not-expired; surfaces reason on reject) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/VerifyDocumentUseCaseTest.kt` (FR-008, FR-011a)
+- [X] T027 [P] [US2] Unit test `NfcScanViewModel` states (idle/scanning/interrupted-retry/unavailable/read-success/confirm) in `app/src/test/java/com/mediplus/faceverify/ui/nfcscan/NfcScanViewModelTest.kt` (FR-009, FR-010)
+- [X] T028 [P] [US2] Instrumented test for NFC availability/disabled handling in `app/src/androidTest/java/com/mediplus/faceverify/nfc/NfcAvailabilityTest.kt` (FR-010)
 
 ### Implementation for User Story 2
 
-- [ ] T029 [P] [US2] Implement `NfcReader` (Android `NfcAdapter`/`IsoDep` + JMRTD/SCUBA secure messaging, DG1/DG2 parse, on-device integrity read) and `isAvailable()` in `app/src/main/java/com/mediplus/faceverify/core/nfc/NfcReader.kt` (FR-007, FR-010, FR-011, Decision 3/4)
-- [ ] T030 [P] [US2] Implement access-key derivation from MRZ via ML Kit Text Recognition with operator-entry fallback in `app/src/main/java/com/mediplus/faceverify/core/nfc/AccessKeyDeriver.kt` (Decision 3)
-- [ ] T031 [P] [US2] Create document DTOs and `DocumentApi` Retrofit interface (`/documents/validate`) in `app/src/main/java/com/mediplus/faceverify/data/remote/DocumentApi.kt`
-- [ ] T032 [US2] Define `DocumentRepository` interface and implement `validate(ReadDocument): AppResult<DocumentValidation>` in `app/src/main/java/com/mediplus/faceverify/data/repository/DocumentRepository.kt` (FR-008, FR-011a; depends on T031)
-- [ ] T033 [US2] Implement `VerifyDocumentUseCase` (read → validate → set `documentVerified` + `documentNumber` patient key) in `app/src/main/java/com/mediplus/faceverify/domain/usecase/VerifyDocumentUseCase.kt` (depends on T029, T032, T009)
-- [ ] T034 [US2] Implement `NfcScanScreen` + `NfcScanViewModel` + UI state (scan prompt, NFC-unavailable/disabled message, interrupted-retry, identity-details confirmation) in `app/src/main/java/com/mediplus/faceverify/ui/nfcscan/` with strings in `strings.xml` (FR-007, FR-009, FR-010; depends on T033)
-- [ ] T035 [US2] Gate the NFC step in the nav graph behind `SessionState.Active` and advance to the face step only on document-verified (FR-032; depends on T016, T034)
+- [X] T029 [P] [US2] Implement `NfcReader` (Android `NfcAdapter`/`IsoDep` + JMRTD/SCUBA secure messaging, DG1/DG2 parse, on-device integrity read) and `isAvailable()` in `app/src/main/java/com/mediplus/faceverify/core/nfc/NfcReader.kt` (FR-007, FR-010, FR-011, Decision 3/4)
+- [X] T030 [P] [US2] Implement access-key derivation from MRZ via ML Kit Text Recognition with operator-entry fallback in `app/src/main/java/com/mediplus/faceverify/core/nfc/AccessKeyDeriver.kt` (Decision 3)
+- [X] T031 [P] [US2] Create document DTOs and `DocumentApi` Retrofit interface (`/documents/validate`) in `app/src/main/java/com/mediplus/faceverify/data/remote/DocumentApi.kt`
+- [X] T032 [US2] Define `DocumentRepository` interface and implement `validate(ReadDocument): AppResult<DocumentValidation>` in `app/src/main/java/com/mediplus/faceverify/data/repository/DocumentRepository.kt` (FR-008, FR-011a; depends on T031)
+- [X] T033 [US2] Implement `VerifyDocumentUseCase` (read → validate → set `documentVerified` + `documentNumber` patient key) in `app/src/main/java/com/mediplus/faceverify/domain/usecase/VerifyDocumentUseCase.kt` (depends on T029, T032, T009)
+- [X] T034 [US2] Implement `NfcScanScreen` + `NfcScanViewModel` + UI state (scan prompt, NFC-unavailable/disabled message, interrupted-retry, identity-details confirmation) in `app/src/main/java/com/mediplus/faceverify/ui/nfcscan/` with strings in `strings.xml` (FR-007, FR-009, FR-010; depends on T033)
+- [X] T035 [US2] Gate the NFC step in the nav graph behind `SessionState.Active` and advance to the face step only on document-verified (FR-032; depends on T016, T034)
 
 **Checkpoint**: NFC document verification works independently against MockWebServer + a test chip.
 
@@ -114,21 +114,21 @@ description: "Task list for Identity Verification & Service Enrollment"
 
 ### Tests for User Story 3 ⚠️ (write first, must FAIL before implementation)
 
-- [ ] T036 [P] [US3] Contract test for `POST /face/verify` (pass+liveness / no-match / spoof-rejected / locked-out / timeout) against MockWebServer in `app/src/test/java/com/mediplus/faceverify/data/remote/FaceApiContractTest.kt` (FR-013, FR-014, FR-015)
-- [ ] T037 [P] [US3] Unit test `VerifyFaceUseCase` (consent-gated, lockout-aware, `sameSubject` discrepancy halt, face-verified only on pass+liveness) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/VerifyFaceUseCaseTest.kt` (FR-013, FR-015, FR-025, FR-028)
-- [ ] T038 [P] [US3] Unit test `RecordConsentUseCase` (Withheld → record + clean halt, no enroll) and `FaceLockoutState` mirroring in `app/src/test/java/com/mediplus/faceverify/domain/usecase/ConsentAndLockoutTest.kt` (FR-028, FR-015)
-- [ ] T039 [P] [US3] Unit test that a captured `TransientFrame` is cleared after `FaceRepository.verify` returns (and on failure/abort) in `app/src/test/java/com/mediplus/faceverify/data/repository/FaceFrameDisposalTest.kt` (FR-017)
-- [ ] T040 [P] [US3] Instrumented camera-permission + framing-guidance test in `app/src/androidTest/java/com/mediplus/faceverify/camera/FaceCaptureTest.kt` (FR-016)
+- [X] T036 [P] [US3] Contract test for `POST /face/verify` (pass+liveness / no-match / spoof-rejected / locked-out / timeout) against MockWebServer in `app/src/test/java/com/mediplus/faceverify/data/remote/FaceApiContractTest.kt` (FR-013, FR-014, FR-015)
+- [X] T037 [P] [US3] Unit test `VerifyFaceUseCase` (consent-gated, lockout-aware, `sameSubject` discrepancy halt, face-verified only on pass+liveness) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/VerifyFaceUseCaseTest.kt` (FR-013, FR-015, FR-025, FR-028)
+- [X] T038 [P] [US3] Unit test `RecordConsentUseCase` (Withheld → record + clean halt, no enroll) and `FaceLockoutState` mirroring in `app/src/test/java/com/mediplus/faceverify/domain/usecase/ConsentAndLockoutTest.kt` (FR-028, FR-015)
+- [X] T039 [P] [US3] Unit test that a captured `TransientFrame` is cleared after `FaceRepository.verify` returns (and on failure/abort) in `app/src/test/java/com/mediplus/faceverify/data/repository/FaceFrameDisposalTest.kt` (FR-017)
+- [X] T040 [P] [US3] Instrumented camera-permission + framing-guidance test in `app/src/androidTest/java/com/mediplus/faceverify/camera/FaceCaptureTest.kt` (FR-016)
 
 ### Implementation for User Story 3
 
-- [ ] T041 [P] [US3] Create `BiometricConsent`/`ConsentStatus`, `VerificationAttempt`, and `FaceLockoutState` domain models in `app/src/main/java/com/mediplus/faceverify/domain/model/FaceModels.kt` (FR-015, FR-017, FR-028)
-- [ ] T042 [P] [US3] Implement `TransientFrame` (in-memory-only, explicit `clear()`), CameraX controller, and `FaceFramingAnalyzer` (ML Kit, capture-quality only) in `app/src/main/java/com/mediplus/faceverify/core/camera/` (FR-016, FR-017, Decision 2)
-- [ ] T043 [P] [US3] Create face DTOs and `FaceApi` Retrofit interface (`/face/verify`) in `app/src/main/java/com/mediplus/faceverify/data/remote/FaceApi.kt`
-- [ ] T044 [US3] Define `FaceRepository` interface and implement `verify(documentNumber, TransientFrame): AppResult<FaceDecision>` that clears the frame after the decision returns/aborts in `app/src/main/java/com/mediplus/faceverify/data/repository/FaceRepository.kt` (FR-012, FR-013, FR-017; depends on T042, T043)
-- [ ] T045 [US3] Implement `RecordConsentUseCase` and `VerifyFaceUseCase` (consent gate, lockout enforcement, `sameSubject` check, set `faceVerified`) in `app/src/main/java/com/mediplus/faceverify/domain/usecase/` (FR-013–FR-015, FR-025, FR-028; depends on T041, T044, T009)
-- [ ] T046 [US3] Implement consent capture UI (consent obtained from the patient, not the operator) + `FaceCheckScreen` + `FaceCheckViewModel` + UI state (consent prompt, framing guidance, no-match/spoof messaging, lockout + cooldown, discrepancy halt) in `app/src/main/java/com/mediplus/faceverify/ui/facecheck/` with strings in `strings.xml` (FR-016, FR-025, FR-028, FR-031; depends on T045)
-- [ ] T047 [US3] Gate the face step behind document-verified + consent-granted + not-locked-out, and advance to enrollment only when `isCurrentlyVerified` (FR-032; depends on T016, T046)
+- [X] T041 [P] [US3] Create `BiometricConsent`/`ConsentStatus`, `VerificationAttempt`, and `FaceLockoutState` domain models in `app/src/main/java/com/mediplus/faceverify/domain/model/FaceModels.kt` (FR-015, FR-017, FR-028)
+- [X] T042 [P] [US3] Implement `TransientFrame` (in-memory-only, explicit `clear()`), CameraX controller, and `FaceFramingAnalyzer` (ML Kit, capture-quality only) in `app/src/main/java/com/mediplus/faceverify/core/camera/` (FR-016, FR-017, Decision 2)
+- [X] T043 [P] [US3] Create face DTOs and `FaceApi` Retrofit interface (`/face/verify`) in `app/src/main/java/com/mediplus/faceverify/data/remote/FaceApi.kt`
+- [X] T044 [US3] Define `FaceRepository` interface and implement `verify(documentNumber, TransientFrame): AppResult<FaceDecision>` that clears the frame after the decision returns/aborts in `app/src/main/java/com/mediplus/faceverify/data/repository/FaceRepository.kt` (FR-012, FR-013, FR-017; depends on T042, T043)
+- [X] T045 [US3] Implement `RecordConsentUseCase` and `VerifyFaceUseCase` (consent gate, lockout enforcement, `sameSubject` check, set `faceVerified`) in `app/src/main/java/com/mediplus/faceverify/domain/usecase/` (FR-013–FR-015, FR-025, FR-028; depends on T041, T044, T009)
+- [X] T046 [US3] Implement consent capture UI (consent obtained from the patient, not the operator) + `FaceCheckScreen` + `FaceCheckViewModel` + UI state (consent prompt, framing guidance, no-match/spoof messaging, lockout + cooldown, discrepancy halt) in `app/src/main/java/com/mediplus/faceverify/ui/facecheck/` with strings in `strings.xml` (FR-016, FR-025, FR-028, FR-031; depends on T045)
+- [X] T047 [US3] Gate the face step behind document-verified + consent-granted + not-locked-out, and advance to enrollment only when `isCurrentlyVerified` (FR-032; depends on T016, T046)
 
 **Checkpoint**: Face verification works independently; frame disposal and lockout are verified.
 
@@ -142,19 +142,19 @@ description: "Task list for Identity Verification & Service Enrollment"
 
 ### Tests for User Story 4 ⚠️ (write first, must FAIL before implementation)
 
-- [ ] T048 [P] [US4] Contract test for `GET /patients/{documentNumber}/services`, `POST .../enrollments`, and the idempotent re-check `GET` against MockWebServer in `app/src/test/java/com/mediplus/faceverify/data/remote/EnrollmentApiContractTest.kt` (FR-020, FR-022, FR-023)
-- [ ] T049 [P] [US4] Unit test `EvaluateVerifiedIdentityUseCase` (composite + server-supplied freshness window → blocks stale/unverified; absent window → treated as stale) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/EvaluateVerifiedIdentityUseCaseTest.kt` (FR-018, FR-024, FR-026)
-- [ ] T050 [P] [US4] Unit test `AddServiceUseCase` idempotency and uncertain-outcome handling (timeout never shows success; retry reuses idempotency key → no duplicate) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/AddServiceUseCaseTest.kt` (FR-020, FR-022)
-- [ ] T051 [P] [US4] Unit test `AddServiceViewModel` states (loading services, eligible/duplicate, confirmed/rejected/uncertain) in `app/src/test/java/com/mediplus/faceverify/ui/addservice/AddServiceViewModelTest.kt` (FR-019, FR-021)
+- [X] T048 [P] [US4] Contract test for `GET /patients/{documentNumber}/services`, `POST .../enrollments`, and the idempotent re-check `GET` against MockWebServer in `app/src/test/java/com/mediplus/faceverify/data/remote/EnrollmentApiContractTest.kt` (FR-020, FR-022, FR-023)
+- [X] T049 [P] [US4] Unit test `EvaluateVerifiedIdentityUseCase` (composite + server-supplied freshness window → blocks stale/unverified; absent window → treated as stale) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/EvaluateVerifiedIdentityUseCaseTest.kt` (FR-018, FR-024, FR-026)
+- [X] T050 [P] [US4] Unit test `AddServiceUseCase` idempotency and uncertain-outcome handling (timeout never shows success; retry reuses idempotency key → no duplicate) in `app/src/test/java/com/mediplus/faceverify/domain/usecase/AddServiceUseCaseTest.kt` (FR-020, FR-022)
+- [X] T051 [P] [US4] Unit test `AddServiceViewModel` states (loading services, eligible/duplicate, confirmed/rejected/uncertain) in `app/src/test/java/com/mediplus/faceverify/ui/addservice/AddServiceViewModelTest.kt` (FR-019, FR-021)
 
 ### Implementation for User Story 4
 
-- [ ] T052 [P] [US4] Create `Service` and `Enrollment`/`EnrollmentStatus` domain models (per-visit/transaction scope, not a standing subscription) in `app/src/main/java/com/mediplus/faceverify/domain/model/EnrollmentModels.kt` (FR-019, FR-020, FR-022, FR-023, FR-023a)
-- [ ] T053 [P] [US4] Create enrollment DTOs and `EnrollmentApi` Retrofit interface (services list, enroll, re-check) in `app/src/main/java/com/mediplus/faceverify/data/remote/EnrollmentApi.kt`
-- [ ] T054 [US4] Define `EnrollmentRepository` interface and implement `listServices` / `enroll` (idempotency key) / `recheck` in `app/src/main/java/com/mediplus/faceverify/data/repository/EnrollmentRepository.kt` (FR-020, FR-022, FR-023; depends on T053)
-- [ ] T055 [US4] Implement `ListEligibleServicesUseCase`, `EvaluateVerifiedIdentityUseCase` (freshness window injected from the server-supplied config via T016a), and `AddServiceUseCase` (precondition-gated, idempotent) in `app/src/main/java/com/mediplus/faceverify/domain/usecase/` (FR-018, FR-019, FR-024, FR-026; depends on T052, T054, T009, T016a)
-- [ ] T056 [US4] Implement `AddServiceScreen` + `AddServiceViewModel` + UI state (service picker, duplicate/ineligible block, confirmed/rejected/uncertain with safe re-check) in `app/src/main/java/com/mediplus/faceverify/ui/addservice/` with strings in `strings.xml` (FR-019, FR-021, FR-022; depends on T055)
-- [ ] T057 [US4] Gate the enrollment step behind `isCurrentlyVerified(window)` in the nav graph, showing which requirement is outstanding when blocked (FR-018, FR-024, FR-032; depends on T016, T056)
+- [X] T052 [P] [US4] Create `Service` and `Enrollment`/`EnrollmentStatus` domain models (per-visit/transaction scope, not a standing subscription) in `app/src/main/java/com/mediplus/faceverify/domain/model/EnrollmentModels.kt` (FR-019, FR-020, FR-022, FR-023, FR-023a)
+- [X] T053 [P] [US4] Create enrollment DTOs and `EnrollmentApi` Retrofit interface (services list, enroll, re-check) in `app/src/main/java/com/mediplus/faceverify/data/remote/EnrollmentApi.kt`
+- [X] T054 [US4] Define `EnrollmentRepository` interface and implement `listServices` / `enroll` (idempotency key) / `recheck` in `app/src/main/java/com/mediplus/faceverify/data/repository/EnrollmentRepository.kt` (FR-020, FR-022, FR-023; depends on T053)
+- [X] T055 [US4] Implement `ListEligibleServicesUseCase`, `EvaluateVerifiedIdentityUseCase` (freshness window injected from the server-supplied config via T016a), and `AddServiceUseCase` (precondition-gated, idempotent) in `app/src/main/java/com/mediplus/faceverify/domain/usecase/` (FR-018, FR-019, FR-024, FR-026; depends on T052, T054, T009, T016a)
+- [X] T056 [US4] Implement `AddServiceScreen` + `AddServiceViewModel` + UI state (service picker, duplicate/ineligible block, confirmed/rejected/uncertain with safe re-check) in `app/src/main/java/com/mediplus/faceverify/ui/addservice/` with strings in `strings.xml` (FR-019, FR-021, FR-022; depends on T055)
+- [X] T057 [US4] Gate the enrollment step behind `isCurrentlyVerified(window)` in the nav graph, showing which requirement is outstanding when blocked (FR-018, FR-024, FR-032; depends on T016, T056)
 
 **Checkpoint**: All four user stories are independently functional; the full sequential journey is wired.
 
@@ -164,14 +164,14 @@ description: "Task list for Identity Verification & Service Enrollment"
 
 **Purpose**: Constitution compliance, hardening, and validation across all stories.
 
-- [ ] T058 [P] Add a logging/redaction guard test that asserts no session token, `documentNumber`, or biometric data appears in any logged output across the suite in `app/src/test/java/com/mediplus/faceverify/core/LoggingRedactionTest.kt` (FR-029, FR-030, SC-005)
-- [ ] T059 [P] Add an end-to-end audit-trail test verifying sign-in, document, face, and enrollment outcomes record metadata only (never raw biometrics) in `app/src/test/java/com/mediplus/faceverify/AuditTrailTest.kt` (FR-017, FR-030)
-- [ ] T060 [P] Enable LeakCanary on the camera/NFC verification screens and add a bounded-memory/leak check note per Principle IV
-- [ ] T061 [P] Accessibility pass — 48dp targets, content descriptions, dynamic font, TalkBack labels across all screens (Principle III)
-- [ ] T062 [P] Measure and record cold-start (<2s), per-attempt end-to-end latency, and the full sign-in→enroll journey time (<5 min for a cooperative subject, SC-001) on the designated reference device (Google Pixel 6a, or an equivalent ~2022 mid-range device — record the actual device used) per Principle IV
-- [ ] T063 Configure Android backup/data-extraction rules to exclude all sensitive/session state in `app/src/main/res/xml/` and the manifest (Decision 6, FR-030)
-- [ ] T064 Run `quickstart.md` validation end-to-end and confirm ≥80% coverage on changed code with success + denial paths (Principle II)
-- [ ] T065 Configure CI to run build + Android Lint + `detekt`/`ktlint` + the full unit/instrumented suite as required status checks blocking merge, enforcing ≥80% coverage on changed code, in `.github/workflows/` (Constitution II & Quality Standards; depends on T004, T064)
+- [X] T058 [P] Add a logging/redaction guard test that asserts no session token, `documentNumber`, or biometric data appears in any logged output across the suite in `app/src/test/java/com/mediplus/faceverify/core/LoggingRedactionTest.kt` (FR-029, FR-030, SC-005)
+- [X] T059 [P] Add an end-to-end audit-trail test verifying sign-in, document, face, and enrollment outcomes record metadata only (never raw biometrics) in `app/src/test/java/com/mediplus/faceverify/AuditTrailTest.kt` (FR-017, FR-030)
+- [X] T060 [P] Enable LeakCanary on the camera/NFC verification screens and add a bounded-memory/leak check note per Principle IV
+- [X] T061 [P] Accessibility pass — 48dp targets, content descriptions, dynamic font, TalkBack labels across all screens (Principle III)
+- [X] T062 [P] Measure and record cold-start (<2s), per-attempt end-to-end latency, and the full sign-in→enroll journey time (<5 min for a cooperative subject, SC-001) on the designated reference device (Google Pixel 6a, or an equivalent ~2022 mid-range device — record the actual device used) per Principle IV
+- [X] T063 Configure Android backup/data-extraction rules to exclude all sensitive/session state in `app/src/main/res/xml/` and the manifest (Decision 6, FR-030)
+- [X] T064 Run `quickstart.md` validation end-to-end and confirm ≥80% coverage on changed code with success + denial paths (Principle II)
+- [X] T065 Configure CI to run build + Android Lint + `detekt`/`ktlint` + the full unit/instrumented suite as required status checks blocking merge, enforcing ≥80% coverage on changed code, in `.github/workflows/` (Constitution II & Quality Standards; depends on T004, T064)
 
 ---
 

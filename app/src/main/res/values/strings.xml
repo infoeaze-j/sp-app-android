@@ -28,6 +28,67 @@
     <string name="signin_show_password">Show password</string>
     <string name="signin_hide_password">Hide password</string>
 
+    <!-- ===== NFC document scan (US2) ===== -->
+    <string name="nfc_title">Scan document</string>
+    <string name="nfc_prompt_tap">Hold the document flat against the back of the phone and keep it still.</string>
+    <string name="nfc_unavailable_disabled">NFC is turned off. Turn it on in settings to scan a document.</string>
+    <string name="nfc_unavailable_none">This device has no NFC reader, so document scanning isn\'t available here.</string>
+    <string name="nfc_needs_key_title">Enter document details</string>
+    <string name="nfc_needs_key_desc">Enter the document number, date of birth and expiry (YYMMDD) to unlock the chip.</string>
+    <string name="nfc_doc_number_label">Document number</string>
+    <string name="nfc_dob_label">Date of birth (YYMMDD)</string>
+    <string name="nfc_expiry_label">Expiry date (YYMMDD)</string>
+    <string name="nfc_ready_button">Ready to scan</string>
+    <string name="nfc_reading">Reading document…</string>
+    <string name="nfc_validating">Checking document…</string>
+    <string name="nfc_confirm_title">Confirm identity</string>
+    <string name="nfc_confirm_desc">Check these details match the person in front of you.</string>
+    <string name="nfc_field_name">Name</string>
+    <string name="nfc_field_number">Document number</string>
+    <string name="nfc_field_dob">Date of birth</string>
+    <string name="nfc_field_nationality">Nationality</string>
+    <string name="nfc_field_sex">Sex</string>
+    <string name="nfc_field_expiry">Expiry</string>
+    <string name="nfc_confirm_button">Looks correct</string>
+
+    <!-- ===== Live face check (US3) ===== -->
+    <string name="face_title">Face check</string>
+    <string name="consent_title">Consent to a face check</string>
+    <string name="consent_body">Ask the patient: may we take a live photo to confirm their identity? This is used only for verification and is not stored.</string>
+    <string name="consent_grant">Patient consents</string>
+    <string name="consent_decline">Consent withheld</string>
+    <string name="face_consent_withheld_title">Consent withheld</string>
+    <string name="face_consent_withheld_body">The patient did not consent. The process has stopped and no enrollment was made.</string>
+    <string name="face_prompt">Position the patient\'s face inside the frame and hold still.</string>
+    <string name="face_framing_no_face">No face detected — center the patient\'s face in the frame.</string>
+    <string name="face_framing_multiple">More than one face detected — only the patient should be in frame.</string>
+    <string name="face_framing_too_small">Move a little closer.</string>
+    <string name="face_framing_pose">Look straight at the camera.</string>
+    <string name="face_framing_good">Looks good — capture now.</string>
+    <string name="face_capture_button">Capture</string>
+    <string name="face_submitting">Checking…</string>
+    <string name="face_discrepancy_title">Identity mismatch</string>
+    <string name="face_discrepancy_body">The person does not match the document. The process has stopped.</string>
+    <string name="camera_permission_rationale">The camera is needed to take a live photo for the face check.</string>
+    <string name="face_camera_preview_desc">Live camera preview for the face check</string>
+
+    <!-- ===== Add a service (US4) ===== -->
+    <string name="addservice_title">Add a service</string>
+    <string name="addservice_choose">Choose a service for this visit</string>
+    <string name="addservice_no_services">No services are available for this person right now.</string>
+    <string name="addservice_already_added">Already added</string>
+    <string name="addservice_ineligible_tag">Not available</string>
+    <string name="addservice_confirmed_title">Service added</string>
+    <string name="addservice_confirmed_body">The service was confirmed and added for this visit.</string>
+    <string name="addservice_done">Done</string>
+    <string name="addservice_uncertain_title">Not confirmed yet</string>
+    <string name="addservice_uncertain_body">We didn\'t get a confirmation. Nothing was assumed added — re-check to see if it went through.</string>
+    <string name="addservice_blocked_title">Verification required</string>
+    <string name="addservice_blocked_document">The document still needs to be verified before adding a service.</string>
+    <string name="addservice_blocked_face">The face check still needs to pass before adding a service.</string>
+    <string name="addservice_blocked_stale">Verification has expired. Please verify this person again.</string>
+    <string name="addservice_start_over">Start over</string>
+
     <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->
     <string name="err_generic_title">Something went wrong</string>
     <string name="err_generic_body">We couldn\'t complete that. Please try again.</string>

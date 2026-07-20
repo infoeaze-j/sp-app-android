@@ -67,6 +67,7 @@ class JmrtdNfcReader @Inject constructor(
             }
         }
 
+    @Suppress("DEPRECATION") // JMRTD's getInputStream(short) is the supported read path on 0.7.x.
     private fun readWithService(isoDep: IsoDep, accessKey: DocAccessKey): AppResult<ReadDocument> {
         val cardService = CardService.getInstance(isoDep)
         cardService.open()
@@ -102,6 +103,7 @@ class JmrtdNfcReader @Inject constructor(
         )
     }
 
+    @Suppress("DEPRECATION") // JMRTD's getInputStream(short) is the supported read path on 0.7.x.
     private fun readReferencePhoto(service: PassportService): ByteArray? {
         val dg2 = DG2File(service.getInputStream(PassportService.EF_DG2))
         val faceInfo = dg2.faceInfos.firstOrNull() ?: return null

@@ -14,6 +14,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.mediplus.faceverify.domain.model.SessionState
+import com.mediplus.faceverify.ui.addservice.AddServiceRoute
+import com.mediplus.faceverify.ui.facecheck.FaceCheckRoute
+import com.mediplus.faceverify.ui.nfcscan.NfcScanRoute
 import com.mediplus.faceverify.ui.signin.SignInRoute
 
 /**
@@ -53,9 +56,37 @@ fun NavGraph(
                 },
             )
         }
-        composable(AppRoute.NfcScan.path) { PlaceholderDestination("Scan document") }
-        composable(AppRoute.FaceCheck.path) { PlaceholderDestination("Face check") }
-        composable(AppRoute.AddService.path) { PlaceholderDestination("Add service") }
+        composable(AppRoute.NfcScan.path) {
+            NfcScanRoute(
+                onVerified = {
+                    navController.navigate(AppRoute.FaceCheck.path) {
+                        popUpTo(AppRoute.NfcScan.path) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(AppRoute.FaceCheck.path) {
+            FaceCheckRoute(
+                onVerified = {
+                    navController.navigate(AppRoute.AddService.path) {
+                        popUpTo(AppRoute.FaceCheck.path) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(AppRoute.AddService.path) {
+            AddServiceRoute(
+                onDone = {
+                    // Journey complete: return to the document step to process the next patient.
+                    navController.navigate(AppRoute.NfcScan.path) {
+                        popUpTo(AppRoute.AddService.path) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
     }
 }
 

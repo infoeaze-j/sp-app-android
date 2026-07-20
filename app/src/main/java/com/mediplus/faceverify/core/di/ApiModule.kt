@@ -2,6 +2,8 @@ package com.mediplus.faceverify.core.di
 
 import com.mediplus.faceverify.data.remote.AuthApi
 import com.mediplus.faceverify.data.remote.DocumentApi
+import com.mediplus.faceverify.data.remote.EnrollmentApi
+import com.mediplus.faceverify.data.remote.FaceApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -22,4 +24,12 @@ object ApiModule {
     @Provides
     @Singleton
     fun provideDocumentApi(retrofit: Retrofit): DocumentApi = retrofit.create()
+
+    @Provides
+    @Singleton
+    fun provideFaceApi(retrofit: Retrofit): FaceApi = retrofit.create()
+
+    @Provides
+    @Singleton
+    fun provideEnrollmentApi(retrofit: Retrofit): EnrollmentApi = retrofit.create()
 }

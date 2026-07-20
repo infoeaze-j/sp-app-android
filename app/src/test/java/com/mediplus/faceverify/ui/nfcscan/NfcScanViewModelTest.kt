@@ -1,0 +1,123 @@
+package com.mediplus.faceverify.ui.nfcscan
+
+import android.nfc.Tag
+import com.mediplus.faceverify.core.result.AppError
+import com.mediplus.faceverify.core.result.AppResult
+import com.mediplus.faceverify.core.result.DefaultErrorMapper
+import com.mediplus.faceverify.core.result.TransientKind
+import com.mediplus.faceverify.core.nfc.NfcReader
+import com.mediplus.faceverify.domain.model.DocAccessKey
+import com.mediplus.faceverify.domain.model.DocIntegrityResult
+import com.mediplus.faceverify.domain.model.DocumentIdentity
+import com.mediplus.faceverify.domain.model.DocumentValidation
+import com.mediplus.faceverify.domain.model.NfcAvailability
+import com.mediplus.faceverify.domain.model.ReadDocument
+import com.mediplus.faceverify.domain.usecase.VerifyDocumentUseCase
+import com.mediplus.faceverify.util.MainDispatcherRule
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import java.time.LocalDate
+
+/**
+ * T027 — NfcScanViewModel state machine: availability → key entry → reading → confirm → verified,
+ * plus the interrupted-retry and unavailable branches (FR-009, FR-010).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class NfcScanViewModelTest {
+
+    @get:Rule
+    val mainRule = MainDispatcherRule(UnconfinedTestDispatcher())
+
+    private val nfcReader = mockk<NfcReader>()
+    private val verifyDocument = mockk<VerifyDocumentUseCase>()
+    private val key = DocAccessKey.Mrz("P1234567", "900101", "300101")
+
+    private fun buildVm() = NfcScanViewModel(nfcReader, verifyDocument, DefaultErrorMapper())
+
+    private fun readDocument() = ReadDocument(
+        documentNumber = "P1234567",
+        identity = DocumentIdentity(
+            "P1234567", "DOE", "JANE", "900101", "UTO", "F", LocalDate.of(2030, 1, 1), "UTO",
+        ),
+        referencePhoto = null,
+        securityObjectBase64 = null,
+        dataGroupHashes = emptyMap(),
+        localIntegrity = DocIntegrityResult.PASSED,
+    )
+
+    @Test
+    fun `unavailable NFC surfaces the unavailable state`() {
+        every { nfcReader.isAvailable() } returns NfcAvailability.DISABLED
+        val vm = buildVm()
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is NfcPhase.Unavailable)
+        assertEquals(NfcAvailability.DISABLED, (phase as NfcPhase.Unavailable).availability)
+    }
+
+    @Test
+    fun `available NFC without a key asks for the access key`() {
+        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        val vm = buildVm()
+        assertEquals(NfcPhase.NeedsAccessKey, vm.uiState.value.phase)
+    }
+
+    @Test
+    fun `providing a key makes the reader ready to scan`() {
+        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        val vm = buildVm()
+        vm.setAccessKey(key)
+        assertEquals(NfcPhase.ReadyToScan, vm.uiState.value.phase)
+    }
+
+    @Test
+    fun `a successful read moves to identity confirmation`() {
+        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.read(any(), any()) } returns AppResult.Success(readDocument())
+        val vm = buildVm()
+        vm.setAccessKey(key)
+
+        vm.onTagDiscovered(mockk<Tag>())
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is NfcPhase.Confirm)
+        assertEquals("DOE", (phase as NfcPhase.Confirm).identity.surname)
+    }
+
+    @Test
+    fun `an interrupted read is retryable`() {
+        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.read(any(), any()) } returns
+            AppResult.TransientFailure(AppError.Transient(TransientKind.UNKNOWN))
+        val vm = buildVm()
+        vm.setAccessKey(key)
+
+        vm.onTagDiscovered(mockk<Tag>())
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is NfcPhase.Failed)
+        assertTrue((phase as NfcPhase.Failed).retryable)
+    }
+
+    @Test
+    fun `confirming a valid document reaches the verified state`() {
+        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.read(any(), any()) } returns AppResult.Success(readDocument())
+        coEvery { verifyDocument(any()) } returns AppResult.Success(
+            DocumentValidation(DocumentValidation.Authenticity.VALID, null, true, true, true),
+        )
+        val vm = buildVm()
+        vm.setAccessKey(key)
+        vm.onTagDiscovered(mockk<Tag>())
+
+        vm.onConfirm()
+
+        assertEquals(NfcPhase.Verified, vm.uiState.value.phase)
+    }
+}

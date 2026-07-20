@@ -4,6 +4,10 @@ import com.mediplus.faceverify.data.repository.AuthRepository
 import com.mediplus.faceverify.data.repository.AuthRepositoryImpl
 import com.mediplus.faceverify.data.repository.DocumentRepository
 import com.mediplus.faceverify.data.repository.DocumentRepositoryImpl
+import com.mediplus.faceverify.data.repository.EnrollmentRepository
+import com.mediplus.faceverify.data.repository.EnrollmentRepositoryImpl
+import com.mediplus.faceverify.data.repository.FaceRepository
+import com.mediplus.faceverify.data.repository.FaceRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -22,4 +26,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindDocumentRepository(impl: DocumentRepositoryImpl): DocumentRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindFaceRepository(impl: FaceRepositoryImpl): FaceRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindEnrollmentRepository(impl: EnrollmentRepositoryImpl): EnrollmentRepository
 }

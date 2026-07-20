@@ -34,6 +34,7 @@ android {
     buildTypes {
         debug {
             buildConfigField("String", "BASE_URL", "\"https://backoffice.example.com/\"")
+            enableUnitTestCoverage = true
         }
         release {
             optimization {

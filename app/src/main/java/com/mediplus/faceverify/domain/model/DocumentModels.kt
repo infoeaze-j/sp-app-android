@@ -77,8 +77,11 @@ data class ReadDocument(
     }
 }
 
-private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean =
-    if (this == null || other == null) this == other else this.contentEquals(other)
+private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean {
+    if (this == null) return other == null
+    if (other == null) return false
+    return this.contentEquals(other)
+}
 
 /** Authoritative server verdict for a read document (FR-008). */
 data class DocumentValidation(
