@@ -18,8 +18,6 @@ interface DevSettingsStore {
     suspend fun current(): DevSettings
     suspend fun setFakeEnabled(enabled: Boolean)
     suspend fun setAuth(scenario: AuthScenario)
-    suspend fun setNfc(scenario: NfcScenario)
-    suspend fun setDocument(scenario: DocumentScenario)
     suspend fun setCard(scenario: CardScenario)
     suspend fun setMember(scenario: MemberScenario)
     suspend fun setFace(scenario: FaceScenario)
@@ -45,12 +43,6 @@ class DataStoreDevSettingsStore @Inject constructor(
 
     override suspend fun setAuth(scenario: AuthScenario) =
         edit { it[DevPrefKeys.AUTH] = scenario.name }
-
-    override suspend fun setNfc(scenario: NfcScenario) =
-        edit { it[DevPrefKeys.NFC] = scenario.name }
-
-    override suspend fun setDocument(scenario: DocumentScenario) =
-        edit { it[DevPrefKeys.DOCUMENT] = scenario.name }
 
     override suspend fun setCard(scenario: CardScenario) =
         edit { it[DevPrefKeys.CARD] = scenario.name }

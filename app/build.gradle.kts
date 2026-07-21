@@ -140,11 +140,6 @@ dependencies {
     implementation(libs.mlkit.face.detection)
     implementation(libs.mlkit.text.recognition)
 
-    // NFC / eMRTD
-    implementation(libs.jmrtd)
-    implementation(libs.scuba.sc.android)
-    implementation(libs.bouncycastle.prov)
-
     // Storage (non-sensitive prefs only)
     implementation(libs.androidx.datastore.preferences)
 

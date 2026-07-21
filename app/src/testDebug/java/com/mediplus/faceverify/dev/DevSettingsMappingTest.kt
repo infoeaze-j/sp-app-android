@@ -13,7 +13,7 @@ class DevSettingsMappingTest {
         assertEquals(DevSettings(), settings)
         assertEquals(true, settings.fakeEnabled)
         assertEquals(AuthScenario.SUCCESS, settings.auth)
-        assertEquals(NfcScenario.SUCCESS, settings.nfc)
+        assertEquals(CardScenario.SUCCESS, settings.card)
         assertEquals(500L, settings.latencyMillis)
         assertEquals(300L, settings.verificationWindowSeconds)
     }
@@ -23,7 +23,7 @@ class DevSettingsMappingTest {
         val prefs = mutablePreferencesOf().toMutablePreferences().apply {
             set(DevPrefKeys.FAKE_ENABLED, false)
             set(DevPrefKeys.AUTH, AuthScenario.ACCOUNT_LOCKED.name)
-            set(DevPrefKeys.NFC, NfcScenario.NO_NFC_HARDWARE.name)
+            set(DevPrefKeys.CARD, CardScenario.NO_NFC_HARDWARE.name)
             set(DevPrefKeys.ENROLL, EnrollScenario.TIMEOUT.name)
             set(DevPrefKeys.LATENCY_MS, 0L)
         }
@@ -32,7 +32,7 @@ class DevSettingsMappingTest {
 
         assertEquals(false, settings.fakeEnabled)
         assertEquals(AuthScenario.ACCOUNT_LOCKED, settings.auth)
-        assertEquals(NfcScenario.NO_NFC_HARDWARE, settings.nfc)
+        assertEquals(CardScenario.NO_NFC_HARDWARE, settings.card)
         assertEquals(EnrollScenario.TIMEOUT, settings.enroll)
         assertEquals(0L, settings.latencyMillis)
     }

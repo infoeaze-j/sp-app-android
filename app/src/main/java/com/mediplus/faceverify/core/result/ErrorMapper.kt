@@ -40,16 +40,6 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_account_locked_title,
             R.string.err_account_locked_body,
         )
-        BusinessCode.DOCUMENT_INVALID -> UiMessage(
-            R.string.err_document_invalid_title,
-            R.string.err_document_invalid_body,
-            R.string.action_rescan,
-        )
-        BusinessCode.DOCUMENT_EXPIRED -> UiMessage(
-            R.string.err_document_expired_title,
-            R.string.err_document_expired_body,
-            R.string.action_rescan,
-        )
         BusinessCode.MEMBER_INVALID -> UiMessage(
             R.string.err_member_invalid_title,
             R.string.err_member_invalid_body,

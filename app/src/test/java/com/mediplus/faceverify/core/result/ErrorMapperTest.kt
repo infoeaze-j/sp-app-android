@@ -60,12 +60,12 @@ class ErrorMapperTest {
 
     @Test
     fun `distinct business codes surface distinct, specific messages`() {
-        // Invalid credentials must not read the same as a document rejection, etc. (FR-021 specificity).
+        // Invalid credentials must not read the same as a membership rejection, etc. (FR-021 specificity).
         val invalidCreds = mapper.toUserMessage(AppError.Business(BusinessCode.INVALID_CREDENTIALS))
-        val docInvalid = mapper.toUserMessage(AppError.Business(BusinessCode.DOCUMENT_INVALID))
+        val memberInvalid = mapper.toUserMessage(AppError.Business(BusinessCode.MEMBER_INVALID))
         val duplicate = mapper.toUserMessage(AppError.Business(BusinessCode.DUPLICATE_SERVICE))
-        assertNotEquals(invalidCreds.bodyRes, docInvalid.bodyRes)
-        assertNotEquals(docInvalid.bodyRes, duplicate.bodyRes)
+        assertNotEquals(invalidCreds.bodyRes, memberInvalid.bodyRes)
+        assertNotEquals(memberInvalid.bodyRes, duplicate.bodyRes)
     }
 
     @Test

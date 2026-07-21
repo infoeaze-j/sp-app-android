@@ -3,7 +3,7 @@ package com.mediplus.faceverify.nfc
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.mediplus.faceverify.core.nfc.JmrtdNfcReader
+import com.mediplus.faceverify.core.nfc.NdefMemberCardReader
 import com.mediplus.faceverify.domain.model.NfcAvailability
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -21,7 +21,7 @@ class NfcAvailabilityTest {
     @Test
     fun isAvailable_returnsAValidState() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val reader = JmrtdNfcReader(context, Dispatchers.IO)
+        val reader = NdefMemberCardReader(context, Dispatchers.IO)
 
         val availability = reader.isAvailable()
 

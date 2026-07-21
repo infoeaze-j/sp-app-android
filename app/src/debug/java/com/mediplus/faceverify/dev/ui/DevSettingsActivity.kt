@@ -26,8 +26,6 @@ class DevSettingsActivity : ComponentActivity() {
                         settings = settings,
                         onFakeEnabled = vm::setFakeEnabled,
                         onAuth = vm::setAuth,
-                        onNfc = vm::setNfc,
-                        onDocument = vm::setDocument,
                         onCard = vm::setCard,
                         onMember = vm::setMember,
                         onFace = vm::setFace,

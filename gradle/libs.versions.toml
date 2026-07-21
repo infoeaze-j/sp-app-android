@@ -29,11 +29,6 @@ camerax = "1.5.0"
 mlkitFaceDetection = "16.1.7"
 mlkitTextRecognition = "16.0.1"
 
-# NFC / eMRTD
-jmrtd = "0.7.42"
-scubaScAndroid = "0.0.26"
-bouncycastle = "1.78.1"
-
 # Storage
 datastore = "1.1.7"
 
@@ -108,11 +103,6 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 # ML Kit
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
 mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
-
-# NFC / eMRTD
-jmrtd = { group = "org.jmrtd", name = "jmrtd", version.ref = "jmrtd" }
-scuba-sc-android = { group = "net.sf.scuba", name = "scuba-sc-android", version.ref = "scubaScAndroid" }
-bouncycastle-prov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 
 # Storage
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }

@@ -1,12 +1,10 @@
 package com.mediplus.faceverify.core.di
 
 import com.mediplus.faceverify.data.repository.AuthRepository
-import com.mediplus.faceverify.data.repository.DocumentRepository
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.data.repository.FaceRepository
 import com.mediplus.faceverify.data.repository.MemberRepository
 import com.mediplus.faceverify.dev.repository.SwitchingAuthRepository
-import com.mediplus.faceverify.dev.repository.SwitchingDocumentRepository
 import com.mediplus.faceverify.dev.repository.SwitchingEnrollmentRepository
 import com.mediplus.faceverify.dev.repository.SwitchingFaceRepository
 import com.mediplus.faceverify.dev.repository.SwitchingMemberRepository
@@ -24,10 +22,6 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAuthRepository(impl: SwitchingAuthRepository): AuthRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindDocumentRepository(impl: SwitchingDocumentRepository): DocumentRepository
 
     @Binds
     @Singleton

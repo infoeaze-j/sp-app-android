@@ -4,8 +4,6 @@ import com.mediplus.faceverify.core.camera.TransientFrame
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.data.repository.AuthRepository
 import com.mediplus.faceverify.data.repository.AuthRepositoryImpl
-import com.mediplus.faceverify.data.repository.DocumentRepository
-import com.mediplus.faceverify.data.repository.DocumentRepositoryImpl
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.data.repository.EnrollmentRepositoryImpl
 import com.mediplus.faceverify.data.repository.FaceRepository
@@ -13,12 +11,10 @@ import com.mediplus.faceverify.data.repository.FaceRepositoryImpl
 import com.mediplus.faceverify.data.repository.MemberRepository
 import com.mediplus.faceverify.data.repository.MemberRepositoryImpl
 import com.mediplus.faceverify.dev.DevSettingsStore
-import com.mediplus.faceverify.domain.model.DocumentValidation
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.FaceDecision
 import com.mediplus.faceverify.domain.model.MemberNumber
 import com.mediplus.faceverify.domain.model.MemberVerification
-import com.mediplus.faceverify.domain.model.ReadDocument
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.Session
 import com.mediplus.faceverify.domain.model.SessionState
@@ -41,17 +37,6 @@ class SwitchingAuthRepository @Inject constructor(
     override fun sessionState(): StateFlow<SessionState> = real.sessionState()
 
     private suspend fun pick(): AuthRepository = if (store.current().fakeEnabled) fake else real
-}
-
-class SwitchingDocumentRepository @Inject constructor(
-    private val real: DocumentRepositoryImpl,
-    private val fake: FakeDocumentRepository,
-    private val store: DevSettingsStore,
-) : DocumentRepository {
-    override suspend fun validate(read: ReadDocument): AppResult<DocumentValidation> =
-        pick().validate(read)
-
-    private suspend fun pick(): DocumentRepository = if (store.current().fakeEnabled) fake else real
 }
 
 class SwitchingMemberRepository @Inject constructor(

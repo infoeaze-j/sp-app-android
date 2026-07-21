@@ -59,8 +59,6 @@ sealed interface AppError {
 enum class BusinessCode {
     INVALID_CREDENTIALS,
     ACCOUNT_LOCKED,
-    DOCUMENT_INVALID,
-    DOCUMENT_EXPIRED,
     MEMBER_INVALID,
     CARD_UNREADABLE,
     PATIENT_NOT_FOUND,

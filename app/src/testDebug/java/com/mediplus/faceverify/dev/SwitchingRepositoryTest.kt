@@ -4,21 +4,18 @@ import com.mediplus.faceverify.core.camera.TransientFrame
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.session.InMemorySessionManager
 import com.mediplus.faceverify.data.repository.AuthRepositoryImpl
-import com.mediplus.faceverify.data.repository.DocumentRepositoryImpl
 import com.mediplus.faceverify.data.repository.EnrollmentRepositoryImpl
 import com.mediplus.faceverify.data.repository.FaceRepositoryImpl
+import com.mediplus.faceverify.data.repository.MemberRepositoryImpl
 import com.mediplus.faceverify.dev.repository.FakeAuthRepository
-import com.mediplus.faceverify.dev.repository.FakeDocumentRepository
 import com.mediplus.faceverify.dev.repository.FakeEnrollmentRepository
 import com.mediplus.faceverify.dev.repository.FakeFaceRepository
+import com.mediplus.faceverify.dev.repository.FakeMemberRepository
 import com.mediplus.faceverify.dev.repository.SwitchingAuthRepository
-import com.mediplus.faceverify.dev.repository.SwitchingDocumentRepository
 import com.mediplus.faceverify.dev.repository.SwitchingEnrollmentRepository
 import com.mediplus.faceverify.dev.repository.SwitchingFaceRepository
-import com.mediplus.faceverify.domain.model.DocIntegrityResult
-import com.mediplus.faceverify.domain.model.DocumentIdentity
-import com.mediplus.faceverify.domain.model.DocumentValidation
-import com.mediplus.faceverify.domain.model.ReadDocument
+import com.mediplus.faceverify.dev.repository.SwitchingMemberRepository
+import com.mediplus.faceverify.domain.model.MemberVerification
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -26,7 +23,6 @@ import io.mockk.spyk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.time.LocalDate
 
 /**
  * Covers all four Switching*Repository routers for both master-toggle states. Each test asserts
@@ -35,38 +31,29 @@ import java.time.LocalDate
  */
 class SwitchingRepositoryTest {
 
-    // ---- Document ----
+    // ---- Member ----
 
-    private val read = ReadDocument(
-        memberNumber = "X123",
-        identity = DocumentIdentity("X123", "Doe", "Jane", "1990-01-01", "UTO", "F", LocalDate.of(2030, 1, 1), "GOV"),
-        referencePhoto = null,
-        securityObjectBase64 = null,
-        dataGroupHashes = emptyMap(),
-        localIntegrity = DocIntegrityResult.PASSED,
-    )
-
-    private val realDocument = mockk<DocumentRepositoryImpl>().also {
-        coEvery { it.validate(any()) } returns AppResult.Success(
-            DocumentValidation(DocumentValidation.Authenticity.VALID, "REAL", true, true, true),
+    private val realMember = mockk<MemberRepositoryImpl>().also {
+        coEvery { it.verify(any()) } returns AppResult.Success(
+            MemberVerification(MemberVerification.Status.VALID, "REAL", true, true, true, null),
         )
     }
 
     @Test
-    fun `document validate delegates to fake when fake is enabled`() = runTest {
+    fun `member verify delegates to fake when fake is enabled`() = runTest {
         val store = TestDevSettingsStore(DevSettings(fakeEnabled = true, latencyMillis = 0L))
-        val switching = SwitchingDocumentRepository(realDocument, FakeDocumentRepository(store), store)
+        val switching = SwitchingMemberRepository(realMember, FakeMemberRepository(store), store)
 
-        val result = switching.validate(read) as AppResult.Success
+        val result = switching.verify(FakeData.memberNumber) as AppResult.Success
         assertEquals(null, result.data.reason) // fake VALID has null reason
     }
 
     @Test
-    fun `document validate delegates to real when fake is disabled`() = runTest {
+    fun `member verify delegates to real when fake is disabled`() = runTest {
         val store = TestDevSettingsStore(DevSettings(fakeEnabled = false, latencyMillis = 0L))
-        val switching = SwitchingDocumentRepository(realDocument, FakeDocumentRepository(store), store)
+        val switching = SwitchingMemberRepository(realMember, FakeMemberRepository(store), store)
 
-        val result = switching.validate(read) as AppResult.Success
+        val result = switching.verify(FakeData.memberNumber) as AppResult.Success
         assertEquals("REAL", result.data.reason)
     }
 
