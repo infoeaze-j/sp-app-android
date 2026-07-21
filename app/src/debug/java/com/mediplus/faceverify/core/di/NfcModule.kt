@@ -1,6 +1,8 @@
 package com.mediplus.faceverify.core.di
 
+import com.mediplus.faceverify.core.nfc.MemberCardReader
 import com.mediplus.faceverify.core.nfc.NfcReader
+import com.mediplus.faceverify.dev.nfc.SwitchingMemberCardReader
 import com.mediplus.faceverify.dev.nfc.SwitchingNfcReader
 import dagger.Binds
 import dagger.Module
@@ -16,4 +18,8 @@ abstract class NfcModule {
     @Binds
     @Singleton
     abstract fun bindNfcReader(impl: SwitchingNfcReader): NfcReader
+
+    @Binds
+    @Singleton
+    abstract fun bindMemberCardReader(impl: SwitchingMemberCardReader): MemberCardReader
 }

@@ -24,10 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mediplus.faceverify.dev.AuthScenario
+import com.mediplus.faceverify.dev.CardScenario
 import com.mediplus.faceverify.dev.DevSettings
 import com.mediplus.faceverify.dev.DocumentScenario
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
+import com.mediplus.faceverify.dev.MemberScenario
 import com.mediplus.faceverify.dev.NfcScenario
 import com.mediplus.faceverify.dev.ServicesScenario
 
@@ -39,6 +41,8 @@ fun DevSettingsScreen(
     onAuth: (AuthScenario) -> Unit,
     onNfc: (NfcScenario) -> Unit,
     onDocument: (DocumentScenario) -> Unit,
+    onCard: (CardScenario) -> Unit,
+    onMember: (MemberScenario) -> Unit,
     onFace: (FaceScenario) -> Unit,
     onServices: (ServicesScenario) -> Unit,
     onEnroll: (EnrollScenario) -> Unit,
@@ -64,6 +68,8 @@ fun DevSettingsScreen(
         ScenarioPicker("Auth (login)", AuthScenario.entries, settings.auth, onAuth)
         ScenarioPicker("NFC scan (emulated chip)", NfcScenario.entries, settings.nfc, onNfc)
         ScenarioPicker("Document validate", DocumentScenario.entries, settings.document, onDocument)
+        ScenarioPicker("Card tap (emulated NFC)", CardScenario.entries, settings.card, onCard)
+        ScenarioPicker("Member verify", MemberScenario.entries, settings.member, onMember)
         ScenarioPicker("Face verify", FaceScenario.entries, settings.face, onFace)
         ScenarioPicker("Services list", ServicesScenario.entries, settings.services, onServices)
         ScenarioPicker("Enrollment", EnrollScenario.entries, settings.enroll, onEnroll)

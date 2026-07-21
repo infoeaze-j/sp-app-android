@@ -10,10 +10,14 @@ import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.data.repository.EnrollmentRepositoryImpl
 import com.mediplus.faceverify.data.repository.FaceRepository
 import com.mediplus.faceverify.data.repository.FaceRepositoryImpl
+import com.mediplus.faceverify.data.repository.MemberRepository
+import com.mediplus.faceverify.data.repository.MemberRepositoryImpl
 import com.mediplus.faceverify.dev.DevSettingsStore
 import com.mediplus.faceverify.domain.model.DocumentValidation
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.FaceDecision
+import com.mediplus.faceverify.domain.model.MemberNumber
+import com.mediplus.faceverify.domain.model.MemberVerification
 import com.mediplus.faceverify.domain.model.ReadDocument
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.Session
@@ -48,6 +52,17 @@ class SwitchingDocumentRepository @Inject constructor(
         pick().validate(read)
 
     private suspend fun pick(): DocumentRepository = if (store.current().fakeEnabled) fake else real
+}
+
+class SwitchingMemberRepository @Inject constructor(
+    private val real: MemberRepositoryImpl,
+    private val fake: FakeMemberRepository,
+    private val store: DevSettingsStore,
+) : MemberRepository {
+    override suspend fun verify(memberNumber: MemberNumber): AppResult<MemberVerification> =
+        pick().verify(memberNumber)
+
+    private suspend fun pick(): MemberRepository = if (store.current().fakeEnabled) fake else real
 }
 
 class SwitchingFaceRepository @Inject constructor(

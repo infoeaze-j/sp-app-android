@@ -6,6 +6,9 @@ import com.mediplus.faceverify.domain.model.DocumentValidation
 import com.mediplus.faceverify.domain.model.FaceDecision
 import com.mediplus.faceverify.domain.model.FaceLockoutState
 import com.mediplus.faceverify.domain.model.LivenessResult
+import com.mediplus.faceverify.domain.model.MemberDetails
+import com.mediplus.faceverify.domain.model.MemberNumber
+import com.mediplus.faceverify.domain.model.MemberVerification
 import com.mediplus.faceverify.domain.model.Operator
 import com.mediplus.faceverify.domain.model.ReadDocument
 import com.mediplus.faceverify.domain.model.Service
@@ -59,6 +62,35 @@ object FakeData {
         memberVerified = false,
         referenceOnFile = true,
         patientResolved = true,
+    )
+
+    /** The card number the emulated tap returns. */
+    val memberNumber: MemberNumber = MemberNumber.parse("1234567")!!
+
+    val memberDetails: MemberDetails = MemberDetails(
+        memberNumber = "1234567",
+        fullName = "Jane Doe",
+        dateOfBirth = "1985-04-12",
+        membershipStatus = "ACTIVE",
+        plan = "Gold",
+    )
+
+    val verificationValid: MemberVerification = MemberVerification(
+        status = MemberVerification.Status.VALID,
+        reason = null,
+        memberVerified = true,
+        memberResolved = true,
+        referenceOnFile = true,
+        member = memberDetails,
+    )
+
+    val verificationInvalid: MemberVerification = MemberVerification(
+        status = MemberVerification.Status.INVALID,
+        reason = "MEMBERSHIP_EXPIRED",
+        memberVerified = false,
+        memberResolved = true,
+        referenceOnFile = true,
+        member = memberDetails,
     )
 
     val services: List<Service> = listOf(

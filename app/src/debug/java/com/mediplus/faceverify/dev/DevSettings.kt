@@ -11,6 +11,8 @@ data class DevSettings(
     val auth: AuthScenario = AuthScenario.SUCCESS,
     val nfc: NfcScenario = NfcScenario.SUCCESS,
     val document: DocumentScenario = DocumentScenario.SUCCESS,
+    val card: CardScenario = CardScenario.SUCCESS,
+    val member: MemberScenario = MemberScenario.SUCCESS,
     val face: FaceScenario = FaceScenario.PASS,
     val services: ServicesScenario = ServicesScenario.SUCCESS,
     val enroll: EnrollScenario = EnrollScenario.CONFIRMED,
@@ -24,6 +26,8 @@ object DevPrefKeys {
     val AUTH = stringPreferencesKey("dev_scenario_auth")
     val NFC = stringPreferencesKey("dev_scenario_nfc")
     val DOCUMENT = stringPreferencesKey("dev_scenario_document")
+    val CARD = stringPreferencesKey("dev_scenario_card")
+    val MEMBER = stringPreferencesKey("dev_scenario_member")
     val FACE = stringPreferencesKey("dev_scenario_face")
     val SERVICES = stringPreferencesKey("dev_scenario_services")
     val ENROLL = stringPreferencesKey("dev_scenario_enroll")
@@ -42,6 +46,8 @@ fun Preferences.toDevSettings(): DevSettings {
         auth = this[DevPrefKeys.AUTH].toEnumOr(defaults.auth),
         nfc = this[DevPrefKeys.NFC].toEnumOr(defaults.nfc),
         document = this[DevPrefKeys.DOCUMENT].toEnumOr(defaults.document),
+        card = this[DevPrefKeys.CARD].toEnumOr(defaults.card),
+        member = this[DevPrefKeys.MEMBER].toEnumOr(defaults.member),
         face = this[DevPrefKeys.FACE].toEnumOr(defaults.face),
         services = this[DevPrefKeys.SERVICES].toEnumOr(defaults.services),
         enroll = this[DevPrefKeys.ENROLL].toEnumOr(defaults.enroll),

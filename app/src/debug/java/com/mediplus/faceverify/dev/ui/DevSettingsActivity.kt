@@ -28,6 +28,8 @@ class DevSettingsActivity : ComponentActivity() {
                         onAuth = vm::setAuth,
                         onNfc = vm::setNfc,
                         onDocument = vm::setDocument,
+                        onCard = vm::setCard,
+                        onMember = vm::setMember,
                         onFace = vm::setFace,
                         onServices = vm::setServices,
                         onEnroll = vm::setEnroll,
