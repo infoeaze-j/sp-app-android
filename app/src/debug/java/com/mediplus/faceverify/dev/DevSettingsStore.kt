@@ -3,9 +3,12 @@ package com.mediplus.faceverify.dev
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +31,9 @@ class DataStoreDevSettingsStore @Inject constructor(
     private val dataStore: DataStore<Preferences>,
 ) : DevSettingsStore {
 
-    override val settings: Flow<DevSettings> = dataStore.data.map { it.toDevSettings() }
+    override val settings: Flow<DevSettings> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it.toDevSettings() }
 
     override suspend fun current(): DevSettings = settings.first()
 

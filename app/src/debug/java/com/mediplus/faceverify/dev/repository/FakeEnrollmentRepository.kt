@@ -20,7 +20,11 @@ import javax.inject.Singleton
 /**
  * Fake enrollment: returns the persisted scenarios. A [TIMEOUT][EnrollScenario.TIMEOUT] models a POST
  * that landed but whose ack was lost — the enrollment is recorded, so [recheck] with the same key
- * resolves it (mirrors FR-022). Singleton so the idempotency map survives across calls.
+ * resolves it (mirrors FR-022). [enroll] itself is idempotent too: once a key has landed, any later
+ * call with that same key — including retries after a TIMEOUT — replays the original Confirmed
+ * [Enrollment] instead of re-evaluating the configured scenario, mirroring a real back office that
+ * never creates a duplicate enrollment for a retried key (FR-022). Singleton so the idempotency map
+ * survives across calls.
  */
 @Singleton
 class FakeEnrollmentRepository @Inject constructor(
@@ -49,6 +53,7 @@ class FakeEnrollmentRepository @Inject constructor(
     ): AppResult<Enrollment> {
         val settings = store.current()
         delay(settings.latencyMillis)
+        landed[idempotencyKey]?.let { return AppResult.Success(it) }
         val confirmed = confirmedEnrollment(documentNumber, serviceId, idempotencyKey)
         return when (settings.enroll) {
             EnrollScenario.CONFIRMED -> {

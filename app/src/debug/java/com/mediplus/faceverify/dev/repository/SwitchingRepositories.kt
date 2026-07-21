@@ -45,7 +45,9 @@ class SwitchingDocumentRepository @Inject constructor(
     private val store: DevSettingsStore,
 ) : DocumentRepository {
     override suspend fun validate(read: ReadDocument): AppResult<DocumentValidation> =
-        (if (store.current().fakeEnabled) fake else real).validate(read)
+        pick().validate(read)
+
+    private suspend fun pick(): DocumentRepository = if (store.current().fakeEnabled) fake else real
 }
 
 class SwitchingFaceRepository @Inject constructor(
@@ -54,7 +56,13 @@ class SwitchingFaceRepository @Inject constructor(
     private val store: DevSettingsStore,
 ) : FaceRepository {
     override suspend fun verify(documentNumber: String, frame: TransientFrame): AppResult<FaceDecision> =
-        (if (store.current().fakeEnabled) fake else real).verify(documentNumber, frame)
+        try {
+            pick().verify(documentNumber, frame)
+        } finally {
+            frame.clear()
+        }
+
+    private suspend fun pick(): FaceRepository = if (store.current().fakeEnabled) fake else real
 }
 
 class SwitchingEnrollmentRepository @Inject constructor(
@@ -63,11 +71,13 @@ class SwitchingEnrollmentRepository @Inject constructor(
     private val store: DevSettingsStore,
 ) : EnrollmentRepository {
     override suspend fun listServices(documentNumber: String): AppResult<List<Service>> =
-        (if (store.current().fakeEnabled) fake else real).listServices(documentNumber)
+        pick().listServices(documentNumber)
 
     override suspend fun enroll(documentNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment> =
-        (if (store.current().fakeEnabled) fake else real).enroll(documentNumber, serviceId, idempotencyKey)
+        pick().enroll(documentNumber, serviceId, idempotencyKey)
 
     override suspend fun recheck(documentNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
-        (if (store.current().fakeEnabled) fake else real).recheck(documentNumber, idempotencyKey)
+        pick().recheck(documentNumber, idempotencyKey)
+
+    private suspend fun pick(): EnrollmentRepository = if (store.current().fakeEnabled) fake else real
 }

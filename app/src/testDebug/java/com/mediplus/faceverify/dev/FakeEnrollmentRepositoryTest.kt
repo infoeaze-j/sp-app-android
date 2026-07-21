@@ -53,6 +53,21 @@ class FakeEnrollmentRepositoryTest {
     }
 
     @Test
+    fun `re-enrolling with the same key after a TIMEOUT replays the original Confirmed enrollment`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(enroll = EnrollScenario.TIMEOUT, latencyMillis = 0L))
+        val repo = FakeEnrollmentRepository(store)
+
+        val first = repo.enroll("X123", "svc-blood", "key-42")
+        assertTrue(first is AppResult.Timeout)
+
+        val retry = repo.enroll("X123", "svc-blood", "key-42")
+
+        val enrollment = (retry as AppResult.Success).data
+        assertEquals("enr-key-42", enrollment.enrollmentId)
+        assertTrue(enrollment.status is EnrollmentStatus.Confirmed)
+    }
+
+    @Test
     fun `recheck with an unknown key returns success-null`() = runTest {
         val store = TestDevSettingsStore(DevSettings(latencyMillis = 0L))
 
