@@ -50,6 +50,16 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_document_expired_body,
             R.string.action_rescan,
         )
+        BusinessCode.MEMBER_INVALID -> UiMessage(
+            R.string.err_member_invalid_title,
+            R.string.err_member_invalid_body,
+            R.string.action_rescan,
+        )
+        BusinessCode.CARD_UNREADABLE -> UiMessage(
+            R.string.err_card_unreadable_title,
+            R.string.err_card_unreadable_body,
+            R.string.action_enter_manually,
+        )
         BusinessCode.PATIENT_NOT_FOUND -> UiMessage(
             R.string.err_patient_not_found_title,
             R.string.err_patient_not_found_body,

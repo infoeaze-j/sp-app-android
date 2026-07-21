@@ -1,5 +1,6 @@
 package com.mediplus.faceverify.core.result
 
+import com.mediplus.faceverify.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -65,5 +66,23 @@ class ErrorMapperTest {
         val duplicate = mapper.toUserMessage(AppError.Business(BusinessCode.DUPLICATE_SERVICE))
         assertNotEquals(invalidCreds.bodyRes, docInvalid.bodyRes)
         assertNotEquals(docInvalid.bodyRes, duplicate.bodyRes)
+    }
+
+    @Test
+    fun `member invalid maps to its own message with a rescan action`() {
+        val message = mapper.toUserMessage(AppError.Business(BusinessCode.MEMBER_INVALID, "MEMBERSHIP_EXPIRED"))
+
+        assertEquals(R.string.err_member_invalid_title, message.titleRes)
+        assertEquals(R.string.err_member_invalid_body, message.bodyRes)
+        assertEquals(R.string.action_rescan, message.actionRes)
+    }
+
+    @Test
+    fun `an unreadable card offers manual entry rather than a bare retry`() {
+        val message = mapper.toUserMessage(AppError.Business(BusinessCode.CARD_UNREADABLE))
+
+        assertEquals(R.string.err_card_unreadable_title, message.titleRes)
+        assertEquals(R.string.err_card_unreadable_body, message.bodyRes)
+        assertEquals(R.string.action_enter_manually, message.actionRes)
     }
 }

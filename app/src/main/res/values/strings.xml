@@ -10,6 +10,7 @@
     <string name="action_start_over">Start over</string>
     <string name="action_grant_permission">Allow</string>
     <string name="action_open_settings">Open settings</string>
+    <string name="action_enter_manually">Enter number</string>
     <string name="action_continue">Continue</string>
     <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
@@ -50,6 +51,12 @@
     <string name="nfc_field_sex">Sex</string>
     <string name="nfc_field_expiry">Expiry</string>
     <string name="nfc_confirm_button">Looks correct</string>
+
+    <!-- ===== Member card errors ===== -->
+    <string name="err_member_invalid_title">Membership not valid</string>
+    <string name="err_member_invalid_body">This membership can\'t be used right now. Ask the member to contact support.</string>
+    <string name="err_card_unreadable_title">Card couldn\'t be read</string>
+    <string name="err_card_unreadable_body">Try tapping again, or enter the number printed on the card.</string>
 
     <!-- ===== Live face check (US3) ===== -->
     <string name="face_title">Face check</string>
