@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.mediplus.faceverify.core.nfc.JmrtdNfcReader
 import com.mediplus.faceverify.domain.model.NfcAvailability
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,7 +19,7 @@ import org.junit.runner.RunWith
 class NfcAvailabilityTest {
 
     @Test
-    fun isAvailable_returnsAValidState() {
+    fun isAvailable_returnsAValidState() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val reader = JmrtdNfcReader(context, Dispatchers.IO)
 

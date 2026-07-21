@@ -14,6 +14,7 @@ class TestDevSettingsStore(initial: DevSettings = DevSettings(latencyMillis = 0L
     override suspend fun current(): DevSettings = state.value
     override suspend fun setFakeEnabled(enabled: Boolean) { state.value = state.value.copy(fakeEnabled = enabled) }
     override suspend fun setAuth(scenario: AuthScenario) { state.value = state.value.copy(auth = scenario) }
+    override suspend fun setNfc(scenario: NfcScenario) { state.value = state.value.copy(nfc = scenario) }
     override suspend fun setDocument(scenario: DocumentScenario) { state.value = state.value.copy(document = scenario) }
     override suspend fun setFace(scenario: FaceScenario) { state.value = state.value.copy(face = scenario) }
     override suspend fun setServices(scenario: ServicesScenario) { state.value = state.value.copy(services = scenario) }

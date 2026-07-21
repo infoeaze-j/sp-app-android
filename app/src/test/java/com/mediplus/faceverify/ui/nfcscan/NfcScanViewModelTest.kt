@@ -1,10 +1,11 @@
 package com.mediplus.faceverify.ui.nfcscan
 
-import android.nfc.Tag
+import android.app.Activity
 import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.DefaultErrorMapper
 import com.mediplus.faceverify.core.result.TransientKind
+import com.mediplus.faceverify.core.nfc.NfcHost
 import com.mediplus.faceverify.core.nfc.NfcReader
 import com.mediplus.faceverify.domain.model.DocAccessKey
 import com.mediplus.faceverify.domain.model.DocIntegrityResult
@@ -15,7 +16,6 @@ import com.mediplus.faceverify.domain.model.ReadDocument
 import com.mediplus.faceverify.domain.usecase.VerifyDocumentUseCase
 import com.mediplus.faceverify.util.MainDispatcherRule
 import io.mockk.coEvery
-import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -38,6 +38,7 @@ class NfcScanViewModelTest {
     private val nfcReader = mockk<NfcReader>()
     private val verifyDocument = mockk<VerifyDocumentUseCase>()
     private val key = DocAccessKey.Mrz("P1234567", "900101", "300101")
+    private val host = NfcHost(mockk<Activity>(relaxed = true))
 
     private fun buildVm() = NfcScanViewModel(nfcReader, verifyDocument, DefaultErrorMapper())
 
@@ -54,7 +55,7 @@ class NfcScanViewModelTest {
 
     @Test
     fun `unavailable NFC surfaces the unavailable state`() {
-        every { nfcReader.isAvailable() } returns NfcAvailability.DISABLED
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.DISABLED
         val vm = buildVm()
         val phase = vm.uiState.value.phase
         assertTrue(phase is NfcPhase.Unavailable)
@@ -63,27 +64,37 @@ class NfcScanViewModelTest {
 
     @Test
     fun `available NFC without a key asks for the access key`() {
-        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
         val vm = buildVm()
         assertEquals(NfcPhase.NeedsAccessKey, vm.uiState.value.phase)
     }
 
     @Test
     fun `providing a key makes the reader ready to scan`() {
-        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
         val vm = buildVm()
         vm.setAccessKey(key)
         assertEquals(NfcPhase.ReadyToScan, vm.uiState.value.phase)
     }
 
     @Test
+    fun `starting a scan without a key asks for the access key`() {
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        val vm = buildVm()
+
+        vm.startScan(host)
+
+        assertEquals(NfcPhase.NeedsAccessKey, vm.uiState.value.phase)
+    }
+
+    @Test
     fun `a successful read moves to identity confirmation`() {
-        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
-        coEvery { nfcReader.read(any(), any()) } returns AppResult.Success(readDocument())
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.awaitAndRead(any(), any(), any()) } returns AppResult.Success(readDocument())
         val vm = buildVm()
         vm.setAccessKey(key)
 
-        vm.onTagDiscovered(mockk<Tag>())
+        vm.startScan(host)
 
         val phase = vm.uiState.value.phase
         assertTrue(phase is NfcPhase.Confirm)
@@ -91,14 +102,32 @@ class NfcScanViewModelTest {
     }
 
     @Test
+    fun `presenting the document shows the reading state before the read completes`() {
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        val phasesWhilePresented = mutableListOf<NfcPhase>()
+        lateinit var vm: NfcScanViewModel
+        coEvery { nfcReader.awaitAndRead(any(), any(), any()) } coAnswers {
+            thirdArg<() -> Unit>().invoke()
+            phasesWhilePresented += vm.uiState.value.phase
+            AppResult.Success(readDocument())
+        }
+        vm = buildVm()
+        vm.setAccessKey(key)
+
+        vm.startScan(host)
+
+        assertEquals(listOf<NfcPhase>(NfcPhase.Reading), phasesWhilePresented)
+    }
+
+    @Test
     fun `an interrupted read is retryable`() {
-        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
-        coEvery { nfcReader.read(any(), any()) } returns
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.awaitAndRead(any(), any(), any()) } returns
             AppResult.TransientFailure(AppError.Transient(TransientKind.UNKNOWN))
         val vm = buildVm()
         vm.setAccessKey(key)
 
-        vm.onTagDiscovered(mockk<Tag>())
+        vm.startScan(host)
 
         val phase = vm.uiState.value.phase
         assertTrue(phase is NfcPhase.Failed)
@@ -106,15 +135,29 @@ class NfcScanViewModelTest {
     }
 
     @Test
+    fun `retrying after a failed read returns to a scannable state`() {
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.awaitAndRead(any(), any(), any()) } returns AppResult.Timeout
+        val vm = buildVm()
+        vm.setAccessKey(key)
+        vm.startScan(host)
+        assertTrue(vm.uiState.value.phase is NfcPhase.Failed)
+
+        vm.retry()
+
+        assertEquals(NfcPhase.ReadyToScan, vm.uiState.value.phase)
+    }
+
+    @Test
     fun `confirming a valid document reaches the verified state`() {
-        every { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
-        coEvery { nfcReader.read(any(), any()) } returns AppResult.Success(readDocument())
+        coEvery { nfcReader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { nfcReader.awaitAndRead(any(), any(), any()) } returns AppResult.Success(readDocument())
         coEvery { verifyDocument(any()) } returns AppResult.Success(
             DocumentValidation(DocumentValidation.Authenticity.VALID, null, true, true, true),
         )
         val vm = buildVm()
         vm.setAccessKey(key)
-        vm.onTagDiscovered(mockk<Tag>())
+        vm.startScan(host)
 
         vm.onConfirm()
 

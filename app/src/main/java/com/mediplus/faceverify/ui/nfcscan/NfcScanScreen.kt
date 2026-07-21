@@ -2,7 +2,6 @@ package com.mediplus.faceverify.ui.nfcscan
 
 import android.app.Activity
 import android.content.Intent
-import android.nfc.NfcAdapter
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,6 +36,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.faceverify.R
 import com.mediplus.faceverify.core.nfc.AccessKeyDeriver
+import com.mediplus.faceverify.core.nfc.NfcHost
 import com.mediplus.faceverify.core.ui.components.ErrorState
 import com.mediplus.faceverify.core.ui.components.LoadingState
 import com.mediplus.faceverify.core.ui.theme.LocalSpacing
@@ -62,18 +62,16 @@ fun NfcScanRoute(
         if (state.phase is NfcPhase.Verified) onVerified()
     }
 
-    // Enable NFC reader mode only while we're actually waiting for a tap.
-    DisposableEffect(state.phase, activity) {
-        val adapter = activity?.let { NfcAdapter.getDefaultAdapter(it) }
-        val scanning = state.phase == NfcPhase.ReadyToScan
-        if (activity != null && adapter != null && scanning) {
-            val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
-                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
-            adapter.enableReaderMode(activity, { tag -> viewModel.onTagDiscovered(tag) }, flags, null)
-        }
-        onDispose {
-            if (activity != null && adapter != null) adapter.disableReaderMode(activity)
-        }
+    // Listen for a tap only while we're actually waiting for one. Keyed on a boolean (not the phase)
+    // so the in-flight read isn't cancelled the moment the phase advances to Reading.
+    val waitingForTap = state.phase == NfcPhase.ReadyToScan
+    androidx.compose.runtime.LaunchedEffect(waitingForTap, activity) {
+        if (waitingForTap && activity != null) viewModel.startScan(NfcHost(activity))
+    }
+
+    // The scan outlives recomposition, so it is stopped explicitly when the screen goes away.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.stopScan() }
     }
 
     NfcScanScreen(

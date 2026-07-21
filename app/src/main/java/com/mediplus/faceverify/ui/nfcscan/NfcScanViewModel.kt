@@ -1,6 +1,5 @@
 package com.mediplus.faceverify.ui.nfcscan
 
-import android.nfc.Tag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mediplus.faceverify.core.result.AppResult
@@ -9,6 +8,7 @@ import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.ErrorMapper
 import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.core.result.appErrorOrNull
+import com.mediplus.faceverify.core.nfc.NfcHost
 import com.mediplus.faceverify.core.nfc.NfcReader
 import com.mediplus.faceverify.domain.model.DocAccessKey
 import com.mediplus.faceverify.domain.model.DocumentIdentity
@@ -16,6 +16,7 @@ import com.mediplus.faceverify.domain.model.NfcAvailability
 import com.mediplus.faceverify.domain.model.ReadDocument
 import com.mediplus.faceverify.domain.usecase.VerifyDocumentUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +50,7 @@ class NfcScanViewModel @Inject constructor(
 
     private var accessKey: DocAccessKey? = null
     private var lastRead: ReadDocument? = null
+    private var scanJob: Job? = null
 
     init {
         checkAvailability()
@@ -56,10 +58,12 @@ class NfcScanViewModel @Inject constructor(
 
     /** Re-evaluate NFC hardware state (also used to recover from the disabled/unavailable state). */
     fun checkAvailability() {
-        _uiState.value = when (val availability = nfcReader.isAvailable()) {
-            NfcAvailability.AVAILABLE ->
-                NfcScanUiState(if (accessKey == null) NfcPhase.NeedsAccessKey else NfcPhase.ReadyToScan)
-            else -> NfcScanUiState(NfcPhase.Unavailable(availability))
+        viewModelScope.launch {
+            _uiState.value = when (val availability = nfcReader.isAvailable()) {
+                NfcAvailability.AVAILABLE ->
+                    NfcScanUiState(if (accessKey == null) NfcPhase.NeedsAccessKey else NfcPhase.ReadyToScan)
+                else -> NfcScanUiState(NfcPhase.Unavailable(availability))
+            }
         }
     }
 
@@ -71,18 +75,24 @@ class NfcScanViewModel @Inject constructor(
         }
     }
 
-    /** Called by the screen when the NFC reader mode discovers a document tag. */
-    fun onTagDiscovered(tag: Tag) {
+    /**
+     * Start listening for a document tap on [host] and read it when presented. Idempotent: a scan
+     * already in flight is left alone. The job outlives recomposition; [stopScan] ends it.
+     */
+    fun startScan(host: NfcHost) {
         val key = accessKey
         if (key == null) {
             _uiState.value = NfcScanUiState(NfcPhase.NeedsAccessKey)
             return
         }
-        if (_uiState.value.phase == NfcPhase.Reading || _uiState.value.phase == NfcPhase.Validating) return
+        if (scanJob?.isActive == true) return
+        if (_uiState.value.phase != NfcPhase.ReadyToScan) return
 
-        _uiState.value = NfcScanUiState(NfcPhase.Reading)
-        viewModelScope.launch {
-            _uiState.value = when (val result = nfcReader.read(tag, key)) {
+        scanJob = viewModelScope.launch {
+            val result = nfcReader.awaitAndRead(host, key) {
+                _uiState.value = NfcScanUiState(NfcPhase.Reading)
+            }
+            _uiState.value = when (result) {
                 is AppResult.Success -> {
                     lastRead = result.data
                     NfcScanUiState(NfcPhase.Confirm(result.data.identity))
@@ -90,6 +100,12 @@ class NfcScanViewModel @Inject constructor(
                 else -> NfcScanUiState(NfcPhase.Failed(map(result), retryable = true))
             }
         }
+    }
+
+    /** Stop listening (screen left the composition); the reader tears down its NFC reader mode. */
+    fun stopScan() {
+        scanJob?.cancel()
+        scanJob = null
     }
 
     /** Operator confirmed the displayed identity → validate with the back office. */
@@ -110,6 +126,7 @@ class NfcScanViewModel @Inject constructor(
     /** Return to a scannable state after a failure (session/prior steps are preserved) (FR-009). */
     fun retry() {
         lastRead = null
+        stopScan()
         checkAvailability()
     }
 

@@ -1,5 +1,6 @@
 package com.mediplus.faceverify.core.nfc
 
+import android.app.Activity
 import android.content.Context
 import android.nfc.NfcAdapter
 import android.nfc.Tag
@@ -16,6 +17,7 @@ import com.mediplus.faceverify.domain.model.NfcAvailability
 import com.mediplus.faceverify.domain.model.ReadDocument
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import net.sf.scuba.smartcards.CardService
 import org.jmrtd.BACKey
@@ -27,6 +29,7 @@ import org.jmrtd.lds.icao.MRZInfo
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 /**
  * On-device eMRTD reader (Decision 3, Decision 4). Establishes BAC secure messaging with the chip
@@ -34,11 +37,26 @@ import javax.inject.Singleton
  * Security Object for the server to authenticate. The authoritative validity verdict is the back
  * office's; this only performs the local read (FR-007, FR-011).
  */
-interface NfcReader {
-    fun isAvailable(): NfcAvailability
+/**
+ * The UI host a reader needs to listen for a tap. Wrapping the [Activity] keeps `android.nfc`
+ * types out of the ViewModel and lets alternative readers (e.g. the debug fake) ignore it.
+ */
+@JvmInline
+value class NfcHost(val activity: Activity)
 
-    /** Reads the chip on [tag] using [accessKey]. The discovered NFC [Tag] is supplied by the UI. */
-    suspend fun read(tag: Tag, accessKey: DocAccessKey): AppResult<ReadDocument>
+interface NfcReader {
+    suspend fun isAvailable(): NfcAvailability
+
+    /**
+     * Suspends until a document is presented to [host], then reads it with [accessKey].
+     * [onDocumentPresented] fires once the chip is in range, before the slower chip read, so the
+     * UI can distinguish "waiting for a tap" from "reading". Cancelling the caller stops listening.
+     */
+    suspend fun awaitAndRead(
+        host: NfcHost,
+        accessKey: DocAccessKey,
+        onDocumentPresented: () -> Unit = {},
+    ): AppResult<ReadDocument>
 }
 
 @Singleton
@@ -47,12 +65,45 @@ class JmrtdNfcReader @Inject constructor(
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : NfcReader {
 
-    override fun isAvailable(): NfcAvailability {
+    override suspend fun isAvailable(): NfcAvailability {
         val adapter = NfcAdapter.getDefaultAdapter(context) ?: return NfcAvailability.UNAVAILABLE
         return if (adapter.isEnabled) NfcAvailability.AVAILABLE else NfcAvailability.DISABLED
     }
 
-    override suspend fun read(tag: Tag, accessKey: DocAccessKey): AppResult<ReadDocument> =
+    override suspend fun awaitAndRead(
+        host: NfcHost,
+        accessKey: DocAccessKey,
+        onDocumentPresented: () -> Unit,
+    ): AppResult<ReadDocument> {
+        val adapter = NfcAdapter.getDefaultAdapter(host.activity)
+            ?: return transient("No NFC adapter on this device")
+        return try {
+            val tag = awaitTag(adapter, host.activity)
+            onDocumentPresented()
+            read(tag, accessKey)
+        } finally {
+            // Reader mode must stay on for the whole read; only tear it down once we're done.
+            runCatching { adapter.disableReaderMode(host.activity) }
+        }
+    }
+
+    /** Enables NFC reader mode and suspends until a tag is presented (or the caller is cancelled). */
+    private suspend fun awaitTag(adapter: NfcAdapter, activity: Activity): Tag =
+        suspendCancellableCoroutine { continuation ->
+            val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
+                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+            continuation.invokeOnCancellation {
+                runCatching { adapter.disableReaderMode(activity) }
+            }
+            adapter.enableReaderMode(
+                activity,
+                { tag -> if (continuation.isActive) continuation.resume(tag) },
+                flags,
+                null,
+            )
+        }
+
+    private suspend fun read(tag: Tag, accessKey: DocAccessKey): AppResult<ReadDocument> =
         withContext(dispatcher) {
             val isoDep = IsoDep.get(tag)
                 ?: return@withContext transient("This document isn't NFC-readable")

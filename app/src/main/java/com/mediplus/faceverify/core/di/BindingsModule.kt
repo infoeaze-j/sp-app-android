@@ -1,7 +1,5 @@
 package com.mediplus.faceverify.core.di
 
-import com.mediplus.faceverify.core.nfc.JmrtdNfcReader
-import com.mediplus.faceverify.core.nfc.NfcReader
 import com.mediplus.faceverify.core.result.DefaultErrorMapper
 import com.mediplus.faceverify.core.result.ErrorMapper
 import com.mediplus.faceverify.core.session.InMemorySessionManager
@@ -36,8 +34,4 @@ abstract class BindingsModule {
     @Binds
     @Singleton
     abstract fun bindDateProvider(impl: SystemDateProvider): DateProvider
-
-    @Binds
-    @Singleton
-    abstract fun bindNfcReader(impl: JmrtdNfcReader): NfcReader
 }

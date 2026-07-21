@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 data class DevSettings(
     val fakeEnabled: Boolean = true,
     val auth: AuthScenario = AuthScenario.SUCCESS,
+    val nfc: NfcScenario = NfcScenario.SUCCESS,
     val document: DocumentScenario = DocumentScenario.SUCCESS,
     val face: FaceScenario = FaceScenario.PASS,
     val services: ServicesScenario = ServicesScenario.SUCCESS,
@@ -21,6 +22,7 @@ data class DevSettings(
 object DevPrefKeys {
     val FAKE_ENABLED = booleanPreferencesKey("dev_fake_enabled")
     val AUTH = stringPreferencesKey("dev_scenario_auth")
+    val NFC = stringPreferencesKey("dev_scenario_nfc")
     val DOCUMENT = stringPreferencesKey("dev_scenario_document")
     val FACE = stringPreferencesKey("dev_scenario_face")
     val SERVICES = stringPreferencesKey("dev_scenario_services")
@@ -38,6 +40,7 @@ fun Preferences.toDevSettings(): DevSettings {
     return DevSettings(
         fakeEnabled = this[DevPrefKeys.FAKE_ENABLED] ?: defaults.fakeEnabled,
         auth = this[DevPrefKeys.AUTH].toEnumOr(defaults.auth),
+        nfc = this[DevPrefKeys.NFC].toEnumOr(defaults.nfc),
         document = this[DevPrefKeys.DOCUMENT].toEnumOr(defaults.document),
         face = this[DevPrefKeys.FACE].toEnumOr(defaults.face),
         services = this[DevPrefKeys.SERVICES].toEnumOr(defaults.services),

@@ -9,6 +9,7 @@ import com.mediplus.faceverify.dev.DevSettingsStore
 import com.mediplus.faceverify.dev.DocumentScenario
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
+import com.mediplus.faceverify.dev.NfcScenario
 import com.mediplus.faceverify.dev.ServicesScenario
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,7 @@ class DevSettingsViewModel @Inject constructor(
 
     fun setFakeEnabled(enabled: Boolean) = launchEdit { store.setFakeEnabled(enabled) }
     fun setAuth(scenario: AuthScenario) = launchEdit { store.setAuth(scenario) }
+    fun setNfc(scenario: NfcScenario) = launchEdit { store.setNfc(scenario) }
     fun setDocument(scenario: DocumentScenario) = launchEdit { store.setDocument(scenario) }
     fun setFace(scenario: FaceScenario) = launchEdit { store.setFace(scenario) }
     fun setServices(scenario: ServicesScenario) = launchEdit { store.setServices(scenario) }
