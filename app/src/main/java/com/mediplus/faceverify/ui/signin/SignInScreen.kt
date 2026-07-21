@@ -38,7 +38,7 @@ import com.mediplus.faceverify.core.ui.theme.LocalSpacing
 
 /**
  * US1 sign-in destination. Owns credential entry, loading, non-revealing errors, sign-in lockout
- * messaging, and the "session ended" notice. On success it hands control back to the nav graph.
+ * messaging, and the "session ended" notice. On success, it hands control back to the nav graph.
  */
 @Composable
 fun SignInRoute(
