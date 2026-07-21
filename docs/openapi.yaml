@@ -4,7 +4,7 @@ info:
   version: 0.1.0-provisional
   description: |
     Back-office API consumed by the FaceVerify Android app for operator
-    authentication, NFC document validation, face verification, and service
+    authentication, member card verification, face verification, and service
     enrollment (feature 001-identity-verification-enrollment).
 
     **Status:** Provisional. Field names and paths mirror the current Retrofit
@@ -15,7 +15,7 @@ info:
 
     **Privacy constraints enforced by the client (FR-017, FR-029, FR-030):**
     - Session tokens are transient and redacted from all logs.
-    - `documentNumber` is the patient key and is never logged in the clear.
+    - `memberNumber` is the patient key and is never logged in the clear.
     - The live face frame is held in memory for a single request and discarded
       immediately; only outcome metadata is retained for audit — never the image.
 
@@ -29,8 +29,8 @@ security:
 tags:
   - name: Auth
     description: Operator sign-in and session lifecycle (FR-001–FR-006)
-  - name: Documents
-    description: Authoritative NFC document validation and patient resolution (FR-007, FR-008, FR-011, FR-011a)
+  - name: Members
+    description: Authoritative member card verification and patient resolution (FR-007, FR-008, FR-011, FR-011a)
   - name: Face
     description: Server-owned face match and liveness decision (FR-012–FR-017)
   - name: Enrollment
@@ -93,32 +93,32 @@ paths:
         '401':
           $ref: '#/components/responses/SessionInvalidated'
 
-  /documents/validate:
+  /members/verify:
     post:
-      tags: [Documents]
-      summary: Validate a read NFC document and resolve the patient
+      tags: [Members]
+      summary: Verify a scanned member card and resolve the member
       description: |
-        The chip is read on-device (JMRTD); this endpoint returns the
-        authoritative authenticity verdict and resolves the patient by document
-        number (FR-008, FR-011a).
-      operationId: validateDocument
+        The card number is read on-device from an NDEF text record (or entered by
+        the operator when the card is unreadable); this endpoint returns the
+        authoritative verdict and resolves the member by card number (FR-008, FR-011a).
+      operationId: verifyMember
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ValidateDocumentRequest'
+              $ref: '#/components/schemas/VerifyMemberRequest'
       responses:
         '200':
           description: |
-            Verdict returned. `authenticity: INVALID` (with `reason`) is a valid
-            200 response — the document is rejected, not document-verified (FR-008).
+            Verdict returned. `status: INVALID` (with `reason`) is a valid 200
+            response — the membership is rejected, not member-verified (FR-008).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidateDocumentResponse'
+                $ref: '#/components/schemas/VerifyMemberResponse'
         '404':
-          description: Patient not resolvable; halt (cannot key subsequent calls).
+          description: Member not resolvable; halt (cannot key subsequent calls).
         '401':
           $ref: '#/components/responses/SessionInvalidated'
         '5XX':
@@ -154,13 +154,13 @@ paths:
         '5XX':
           description: Transient/timeout — frame already discarded; safe retry within lockout budget.
 
-  /patients/{documentNumber}/services:
+  /patients/{memberNumber}/services:
     get:
       tags: [Enrollment]
       summary: List services eligible for this patient
       operationId: listServices
       parameters:
-        - $ref: '#/components/parameters/DocumentNumber'
+        - $ref: '#/components/parameters/MemberNumber'
       responses:
         '200':
           description: Eligible services. Only server-reported services are selectable (FR-019, FR-023).
@@ -173,7 +173,7 @@ paths:
         '404':
           description: Patient not resolvable.
 
-  /patients/{documentNumber}/enrollments:
+  /patients/{memberNumber}/enrollments:
     post:
       tags: [Enrollment]
       summary: Enroll the selected service for the current visit (idempotent)
@@ -183,7 +183,7 @@ paths:
         retry guarantees no duplicate enrollment (FR-022, SC-003).
       operationId: enroll
       parameters:
-        - $ref: '#/components/parameters/DocumentNumber'
+        - $ref: '#/components/parameters/MemberNumber'
       requestBody:
         required: true
         content:
@@ -215,7 +215,7 @@ paths:
         duplicate, after a timeout on the POST (FR-022).
       operationId: recheckEnrollment
       parameters:
-        - $ref: '#/components/parameters/DocumentNumber'
+        - $ref: '#/components/parameters/MemberNumber'
         - name: idempotencyKey
           in: query
           required: true
@@ -247,13 +247,14 @@ components:
         (FR-003). The token is redacted from all logs (FR-029).
 
   parameters:
-    DocumentNumber:
-      name: documentNumber
+    MemberNumber:
+      name: memberNumber
       in: path
       required: true
-      description: Patient key derived from DG1/MRZ. Never logged in the clear (FR-029).
+      description: Patient key read from the member card. Never logged in the clear (FR-029).
       schema:
         type: string
+        pattern: '^[0-9]{7,32}$'
 
   responses:
     SessionInvalidated:
@@ -313,76 +314,58 @@ components:
             enforces this value and MUST NOT hardcode it. If absent, verification
             is treated as immediately stale (fail-safe).
 
-    ValidateDocumentRequest:
+    VerifyMemberRequest:
       type: object
-      required: [documentNumber, identityFields, localIntegrity]
+      required: [memberNumber]
       properties:
-        documentNumber:
+        memberNumber:
           type: string
-          description: Patient key from DG1/MRZ.
-        identityFields:
-          $ref: '#/components/schemas/IdentityFields'
-        securityObject:
-          type: [string, "null"]
-          description: Base64 SOD (security object document).
-        dataGroupHashes:
-          type: object
-          additionalProperties:
-            type: string
-          description: Map of data-group name to base64 hash (e.g. DG1, DG2).
-          default: {}
-        localIntegrity:
-          type: string
-          enum: [PASSED, FAILED, NOT_CHECKED]
-          description: Result of the on-device integrity read.
+          pattern: '^[0-9]{7,32}$'
+          description: Digits only, longer than 6 characters.
 
-    IdentityFields:
+    VerifyMemberResponse:
       type: object
-      required: [surname, givenNames, dateOfBirth, nationality, sex, expiryDate, issuingAuthority]
+      required: [status]
       properties:
-        surname:
-          type: string
-        givenNames:
-          type: string
-        dateOfBirth:
-          type: string
-          format: date
-        nationality:
-          type: string
-        sex:
-          type: string
-        expiryDate:
-          type: string
-          format: date
-        issuingAuthority:
-          type: string
-
-    ValidateDocumentResponse:
-      type: object
-      required: [authenticity]
-      properties:
-        authenticity:
+        status:
           type: string
           enum: [VALID, INVALID]
         reason:
           type: [string, "null"]
           description: Specific reason when INVALID.
-        documentVerified:
+        memberVerified:
           type: boolean
           default: false
-          description: True requires server VALID and locally not-expired (FR-008).
+        memberResolved:
+          type: boolean
+          default: false
         referenceOnFile:
           type: boolean
           default: false
-        patientResolved:
-          type: boolean
-          default: false
+        member:
+          $ref: '#/components/schemas/Member'
+
+    Member:
+      type: object
+      required: [memberNumber]
+      properties:
+        memberNumber:
+          type: string
+        fullName:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        membershipStatus:
+          type: string
+        plan:
+          type: [string, "null"]
 
     FaceVerifyRequest:
       type: object
-      required: [documentNumber, image]
+      required: [memberNumber, image]
       properties:
-        documentNumber:
+        memberNumber:
           type: string
           description: Patient key.
         image:
