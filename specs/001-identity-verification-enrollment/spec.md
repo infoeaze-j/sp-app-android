@@ -18,9 +18,9 @@ Because this is an identity/biometric flow in a medical context, correctness of 
 
 ### Session 2026-07-20
 
-- Q: When a session expires between identity verification and enrollment, do prior verification results survive re-login? → A: No — verification is strictly session-bound; any session loss requires full re-verification (NFC + face) after re-login.
-- Q: How does the app tell the back office which patient this is? → A: By the identity document's unique identifier (document number) read from NFC; the back office uses it to fetch the reference photo, eligible services, and duplicate checks.
-- Q: Where does the face-verification attempt limit/lockout live, and does it survive re-login? → A: The back office owns the limit and lockout, keyed to the patient/document, so lockout persists across sessions and re-logins; the app enforces the returned rule client-side.
+- Q: When a session expires between identity verification and enrollment, do prior verification results survive re-login? → A: No — verification is strictly session-bound; any session loss requires full re-verification (member card + face) after re-login.
+- Q: How does the app tell the back office which patient this is? → A: By the member card's unique card number read from the card by NFC (or entered by the operator when the card is unreadable); the back office uses it to fetch the reference photo, eligible services, and duplicate checks.
+- Q: Where does the face-verification attempt limit/lockout live, and does it survive re-login? → A: The back office owns the limit and lockout, keyed to the patient/member, so lockout persists across sessions and re-logins; the app enforces the returned rule client-side.
 - Q: When biometric consent is withheld, is there an alternative verification path or only a clean stop? → A: Clean stop only — the app records "consent withheld", halts the journey, and does not enroll; no non-biometric alternative exists in this feature.
 - Q: How long does the app retain a captured face image? → A: Discard immediately after the verification decision returns (or on failure/abort) — held only transiently in memory for the single submission, never written to disk; audit stores outcome/metadata only.
 
@@ -43,20 +43,20 @@ The operator opens the app and signs in with their credentials. The app authenti
 
 ---
 
-### User Story 2 - Verify a person's identity with their NFC document (Priority: P1)
+### User Story 2 - Verify a person's membership with their member card (Priority: P1)
 
-With an active session, the operator scans the subject's NFC-enabled identity document. The app reads the document's identity data (and its reference photo where available), confirms the document is readable and valid, and surfaces the identity details for the operator to confirm before proceeding.
+With an active session, the operator taps the subject's member card against the phone. The app reads the card number from the card, submits it to the back office for the authoritative membership verdict, and surfaces the returned member details for the operator to confirm before proceeding.
 
-**Why this priority**: The document establishes the trusted reference identity that face verification is measured against, and confirms the person presented a genuine, valid credential. It is a precondition for a trustworthy match.
+**Why this priority**: The member card resolves which patient this is and confirms the membership is usable. It is the precondition for keying every subsequent back-office call.
 
-**Independent Test**: Scan a valid NFC document and confirm the identity fields are read and displayed; present an unreadable/expired/unsupported document and confirm the app reports why and does not treat it as verified.
+**Independent Test**: Tap a valid member card and confirm the returned member details are displayed; present an unreadable card and confirm manual entry is offered; submit a card whose membership the back office rejects and confirm the app reports why and does not treat it as verified.
 
 **Acceptance Scenarios**:
 
-1. **Given** an active session, **When** the operator scans a supported, valid NFC identity document, **Then** the app reads the identity data, confirms document validity, and presents the details for confirmation.
-2. **Given** an NFC document that is expired, unsupported, or fails its authenticity/integrity check, **When** it is scanned, **Then** the app rejects it with a specific reason and does not mark the identity as document-verified.
-3. **Given** an NFC read that is interrupted (card moved away, timeout), **When** the read fails, **Then** the app reports the interruption and lets the operator retry without losing the session or prior progress.
-4. **Given** NFC is unavailable or disabled on the device, **When** the operator reaches this step, **Then** the app clearly explains the limitation and how to proceed.
+1. **Given** an active session, **When** the operator taps a readable member card, **Then** the app reads the card number, verifies it with the back office, and presents the returned member details for confirmation.
+2. **Given** a card that carries no readable number, **When** it is tapped, **Then** the app reports that the card could not be read and offers manual entry of the number printed on the card.
+3. **Given** a card number the back office rejects, **When** it is verified, **Then** the app rejects it with a specific reason and does not mark the identity as member-verified.
+4. **Given** NFC is unavailable or disabled on the device, **When** the operator reaches this step, **Then** the app explains the limitation and offers manual entry of the card number.
 
 ---
 
@@ -124,12 +124,12 @@ Once the subject's identity is verified, the operator selects and adds a service
 
 #### NFC Document Scanning
 
-- **FR-007**: The app MUST read identity data from a supported NFC-enabled identity document and present the read identity details to the operator for confirmation before advancing.
-- **FR-008**: The app MUST confirm the scanned document is valid — not expired and passing its integrity/authenticity check — and MUST reject documents that fail, with a specific reason.
-- **FR-009**: The app MUST handle interrupted or timed-out NFC reads gracefully, allowing retry without loss of session or prior verified steps.
+- **FR-007**: The app MUST read the member card number from a tapped NFC member card and present the member details the back office returns to the operator for confirmation before advancing.
+- **FR-008**: The app MUST treat the back office as the sole authority on membership validity — a member card carries no expiry, so there is no local pre-check — and MUST reject a membership the back office does not confirm, with a specific reason.
+- **FR-009**: The app MUST handle interrupted or timed-out card reads gracefully, allowing retry without loss of session or prior verified steps.
 - **FR-010**: The app MUST detect when NFC is unsupported or disabled on the device and MUST inform the operator with a clear explanation.
-- **FR-011**: Where the document provides a reference photo, the app MUST make it available as a reference for face verification.
-- **FR-011a**: The app MUST use the identity document's unique identifier (document number) read from NFC as the key that identifies the patient to the back office — for retrieving any reference photo/record on file, listing the patient's eligible services, and performing duplicate-enrollment checks. The app MUST NOT require a separate operator-entered patient identifier for this resolution.
+- **FR-011**: Where the back office holds a reference photo for the resolved member, the app MUST rely on it as the reference for face verification.
+- **FR-011a**: The app MUST use the member card number as the key that identifies the patient to the back office — for retrieving any reference photo/record on file, listing the patient's eligible services, and performing duplicate-enrollment checks. The number is read from the card by NFC; when the card is unreadable the operator MAY enter it manually, and the same format rule (digits only, longer than 6 characters) applies to both paths.
 
 #### Face Verification
 
@@ -160,14 +160,14 @@ Once the subject's identity is verified, the operator selects and adds a service
 - **FR-029**: The app MUST NOT log or expose sensitive identity or biometric data in error messages, diagnostics, or persisted logs; user-facing errors MUST be actionable but non-revealing.
 - **FR-030**: The app MUST maintain an audit trail of key actions (sign-in, document scan result, face-verification result, enrollment result) sufficient to reconstruct what happened, storing outcome/metadata only and NEVER persisting raw biometric artifacts (see FR-017).
 - **FR-031**: The app operates in **assisted mode**: a signed-in staff **operator** verifies and enrolls a distinct **patient (subject)**. The operator is the authenticated account; consent for biometric processing MUST be obtained from the patient, not the operator.
-- **FR-032**: The app MUST enforce a **single sequential enrollment journey** in this order — sign in → scan NFC document → live face check → add service — where each step gates the next and the operator processes one patient/visit at a time. A later step MUST NOT be reachable until its prerequisite step has succeeded.
+- **FR-032**: The app MUST enforce a **single sequential enrollment journey** in this order — sign in → scan member card → live face check → add service — where each step gates the next and the operator processes one patient/visit at a time. A later step MUST NOT be reachable until its prerequisite step has succeeded.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Operator**: The authenticated staff user of the app who verifies and enrolls patients (assisted mode). Key attributes: identity/credentials, session state, permissions.
 - **Session**: The proof of authenticated access attached to protected requests. Attributes: validity, expiry, association to an operator.
 - **Subject (Patient)**: The person whose identity is being verified and for whom a visit/service is added. Identified to the back office by the document's unique identifier (document number). Attributes: document identifier (patient key), identity details (from the document), verification state, verification timestamp/window, consent status.
-- **Identity Document**: The NFC-enabled credential presented by the subject. Attributes: unique document identifier (used as the patient lookup key), readable identity fields, validity/expiry, authenticity result, optional reference photo.
+- **Member Card**: The NFC member card presented by the subject. Attributes: unique card number (the patient lookup key; digits only, longer than 6 characters) and the member details the back office returns for it — name, date of birth, membership status, and plan.
 - **Verification Attempt**: A single face-verification event. Attributes: outcome (pass/fail), reason, confidence result, liveness result, timestamp — used for audit and retry/lockout rules.
 - **Verified Identity**: The composite result that the subject is confirmed (document-verified AND face-verified for the same person, within the window). Precondition for enrollment.
 - **Service**: The reason/purpose of the patient's current visit (e.g., the visit type selected when booking), chosen per transaction from a back-office catalog. Attributes: identifier, description, eligibility for this patient, whether already selected for this visit.
@@ -198,6 +198,6 @@ Once the subject's identity is verified, the operator selects and adds a service
 
 - **CLARIFY-1 (actor/mode) — RESOLVED**: Assisted mode. A staff **operator** signs in and verifies/enrolls a distinct **patient**; consent is obtained from the patient. (FR-031.)
 - **CLARIFY-2 (service scope) — RESOLVED**: "Adding a service" means selecting the service for the current **transaction/visit** — analogous to booking a visit and choosing why the patient is there — from a back-office catalog, per visit rather than as a standing subscription. (FR-023, FR-023a.)
-- **CLARIFY-3 (flow linkage) — RESOLVED**: A single enforced sequential journey: sign in → NFC → face → add service, each step gating the next. (FR-032.)
+- **CLARIFY-3 (flow linkage) — RESOLVED**: A single enforced sequential journey: sign in → member card → face → add service, each step gating the next. (FR-032.)
 
 Remaining details for `/speckit-clarify` / planning (non-blocking): specific numeric thresholds (match confidence %, retry/lockout counts, verification-freshness window duration) — to be set as configuration/business values.

@@ -67,6 +67,10 @@ memory) is satisfied by running ML Kit off the UI thread and closing every `Imag
 
 ## Decision 3 — On-device eMRTD reading via Android NFC + JMRTD; access key derived from MRZ/CAN
 
+> **SUPERSEDED (2026-07-21)** by member card verification: the eMRTD/JMRTD path was removed in
+> favour of reading a card number from an NDEF text record. See `contracts/member-card-api.md`.
+> Retained as the record of the original decision.
+
 **Decision**: Read the NFC-enabled identity document on-device using Android's `NfcAdapter`
 (ISO 14443, `IsoDep`) with **JMRTD** (+ **SCUBA** provider) to establish secure messaging
 (BAC or PACE) and parse standard datagroups (DG1 = MRZ/identity fields, DG2 = reference face image
@@ -93,6 +97,9 @@ serves as the patient lookup key the spec already mandates.
 ---
 
 ## Decision 4 — Document authenticity/validity: on-device integrity read, back office is source of truth
+
+> **SUPERSEDED (2026-07-21)**: a member card carries no expiry and no security object, so there is
+> no on-device pre-check at all — membership validity is entirely server-owned (FR-008).
 
 **Decision**: On-device, JMRTD verifies chip-level integrity where feasible (datagroup hashes vs the
 Document Security Object) and reads expiry from DG1. The **authoritative** validity/authenticity

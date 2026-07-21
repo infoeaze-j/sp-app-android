@@ -10,9 +10,10 @@ decisions.
 ## Prerequisites
 
 - **Android Studio** (current stable) with Android SDK for `compileSdk 36`; JDK 11+.
-- A **physical Android device** (`minSdk 24`) with **camera + NFC** — face capture and eMRTD reading
-  cannot be validated on an emulator. NFC must be enabled in device settings.
-- A **supported NFC identity document** with a readable chip (for full end-to-end validation).
+- A **physical Android device** (`minSdk 24`) with **camera + NFC** — face capture and member card
+  reading cannot be validated on an emulator. NFC must be enabled in device settings.
+- A **member card** carrying its number in an NDEF text record (for full end-to-end validation). The
+  manual-entry path and the debug fake reader both work without one.
 - Back-office endpoints for the four APIs, **or** the bundled MockWebServer fixtures (below) for CI
   and device-free validation.
 
@@ -44,15 +45,19 @@ tests first; then walk the on-device flow for camera/NFC coverage.
    **Expect**: blocked + routed to sign-in; **all prior verification state discarded** (FR-004a). (AS-3)
 4. Disable connectivity → sign in → **Expect**: connectivity explained; app not shown as signed in. (AS-4)
 
-### Scenario B — NFC document verification (US2, FR-007–FR-011a)
-1. With an Active session, scan a **valid** document → **Expect**: identity fields read + shown for
-   confirmation; patient resolved by document number. (AS-1)
-2. Scan an **expired/unsupported/tampered** document → **Expect**: rejected with a **specific** reason;
-   not document-verified. (AS-2, FR-008)
-3. Move the card away mid-read → **Expect**: interruption reported; retry works; session/progress
-   intact. (AS-3, FR-009)
-4. Toggle NFC **off** in settings → reach this step → **Expect**: clear explanation of the limitation.
-   (AS-4, FR-010)
+### Scenario B — Member card verification (US2, FR-007–FR-011a)
+1. With an Active session, tap a **valid** member card → **Expect**: card number read, verified with
+   the back office, and the returned member details shown for confirmation. (AS-1)
+2. Tap a card carrying **no readable number** → **Expect**: "card couldn't be read" plus the
+   **manual-entry** keypad; typing the printed number verifies identically. (AS-2)
+3. Verify a card number the back office **rejects** → **Expect**: rejected with a **specific** reason;
+   not member-verified. (AS-3, FR-008)
+4. Move the card away mid-read → **Expect**: interruption reported; retry works; session/progress
+   intact. (FR-009)
+5. Toggle NFC **off** in settings → reach this step → **Expect**: clear explanation **and** the
+   manual-entry option — no dead end. (AS-4, FR-010)
+6. Enter a malformed number (fewer than 7 digits, or letters) → **Expect**: rejected on-device; the
+   back office is never called. (FR-011a)
 
 ### Scenario C — Live face check (US3, FR-012–FR-017, FR-028)
 1. **Consent prompt appears before any capture**; decline → **Expect**: "consent withheld" recorded,

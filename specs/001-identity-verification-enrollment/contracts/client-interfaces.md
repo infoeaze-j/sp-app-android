@@ -16,21 +16,21 @@ interface AuthRepository {
     fun sessionState(): StateFlow<SessionState>     // Active/Expired/Invalidated/None
 }
 
-interface DocumentRepository {
-    // On-device chip read happens in core/nfc; this validates + resolves the patient.
-    suspend fun validate(read: ReadDocument): AppResult<DocumentValidation>   // FR-008, FR-011a
+interface MemberRepository {
+    // On-device card read happens in core/nfc; this verifies + resolves the member.
+    suspend fun verify(memberNumber: MemberNumber): AppResult<MemberVerification>   // FR-008, FR-011a
 }
 
 interface FaceRepository {
     // image is transient: caller passes an in-memory frame and MUST clear it after this returns (FR-017).
-    suspend fun verify(documentNumber: String, frame: TransientFrame): AppResult<FaceDecision> // FR-013..FR-015
+    suspend fun verify(memberNumber: String, frame: TransientFrame): AppResult<FaceDecision> // FR-013..FR-015
 }
 
 interface EnrollmentRepository {
-    suspend fun listServices(documentNumber: String): AppResult<List<Service>>              // FR-023
-    suspend fun enroll(documentNumber: String, serviceId: String, idempotencyKey: String):
+    suspend fun listServices(memberNumber: String): AppResult<List<Service>>              // FR-023
+    suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String):
         AppResult<Enrollment>                                                                // FR-020, FR-022
-    suspend fun recheck(documentNumber: String, idempotencyKey: String): AppResult<Enrollment?> // FR-022
+    suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> // FR-022
 }
 ```
 
@@ -43,9 +43,11 @@ interface SessionManager {                          // in-memory, session-bound 
     fun clearAll()                                  // drops session + ALL verification state (FR-004a)
 }
 
-interface NfcReader {                               // core/nfc — JMRTD/SCUBA
-    suspend fun read(accessKey: DocAccessKey): AppResult<ReadDocument>   // DG1/DG2 + integrity (FR-007, FR-011)
-    fun isAvailable(): NfcAvailability              // supported/disabled/unavailable (FR-010)
+interface MemberCardReader {                        // core/nfc — NDEF text record
+    suspend fun isAvailable(): NfcAvailability      // supported/disabled/unavailable (FR-010)
+    // Suspends until a card is tapped, then reads its number (FR-007). An unreadable card is a
+    // CARD_UNREADABLE business rejection, so the UI routes to manual entry rather than a bare retry.
+    suspend fun awaitAndRead(host: NfcHost, onCardPresented: () -> Unit = {}): AppResult<MemberNumber>
 }
 
 interface FaceFramingAnalyzer {                     // core/camera — ML Kit, capture-quality ONLY (FR-016)

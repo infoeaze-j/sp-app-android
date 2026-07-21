@@ -129,8 +129,8 @@ paths:
       tags: [Face]
       summary: Submit a live frame for face match and liveness verification
       description: |
-        Submit a live frame against the trusted reference (DG2 photo and/or
-        server reference), keyed to the patient. The frame is transient in memory
+        Submit a live frame against the trusted reference (the back-office
+        reference photo on file for the member), keyed to the patient. The frame is transient in memory
         only and discarded immediately after the response (FR-017).
       operationId: verifyFace
       requestBody:

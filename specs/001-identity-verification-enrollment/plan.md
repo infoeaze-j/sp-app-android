@@ -6,9 +6,9 @@
 
 ## Summary
 
-Deliver an Android app that lets an authenticated staff **operator** verify a **patient's** identity and enroll them into a per-visit service by orchestrating four back-office APIs — login, NFC document validation, face verification, and service enrollment — through a single, enforced sequential journey (sign in → scan NFC → live face check → add service). The back office owns all business thresholds (match confidence, retry/lockout, eligibility, duplicate detection); the app enforces the returned rules client-side, handles every failure/timeout state visibly, and treats biometric data as transient-in-memory-only (never persisted).
+Deliver an Android app that lets an authenticated staff **operator** verify a **patient's** identity and enroll them into a per-visit service by orchestrating four back-office APIs — login, member card verification, face verification, and service enrollment — through a single, enforced sequential journey (sign in → scan member card → live face check → add service). The back office owns all business thresholds (match confidence, retry/lockout, eligibility, duplicate detection); the app enforces the returned rules client-side, handles every failure/timeout state visibly, and treats biometric data as transient-in-memory-only (never persisted).
 
-Technical approach: a single-module Kotlin/Android app built with Jetpack Compose + Material 3, MVVM + unidirectional data flow, Hilt for DI, Coroutines/Flow for async, Retrofit/OkHttp/kotlinx.serialization for the API layer, CameraX for live capture, ML Kit Face Detection for on-device capture-quality guidance only (the match/liveness decision stays server-side), and Android NFC + JMRTD for on-device eMRTD chip reading. Verification state is session-bound and held in memory; captured face frames are discarded immediately after the decision returns.
+Technical approach: a single-module Kotlin/Android app built with Jetpack Compose + Material 3, MVVM + unidirectional data flow, Hilt for DI, Coroutines/Flow for async, Retrofit/OkHttp/kotlinx.serialization for the API layer, CameraX for live capture, ML Kit Face Detection for on-device capture-quality guidance only (the match/liveness decision stays server-side), and Android NFC (`Ndef`/`NdefRecord`, reader mode) for on-device member card reading. Verification state is session-bound and held in memory; captured face frames are discarded immediately after the decision returns.
 
 ## Technical Context
 
@@ -22,7 +22,7 @@ Technical approach: a single-module Kotlin/Android app built with Jetpack Compos
 - Camera: CameraX (core, camera2, lifecycle, view)
 - On-device face framing: ML Kit Face Detection (capture-quality guidance only)
 - On-device MRZ read (access key): ML Kit Text Recognition (optional path to derive the NFC access key)
-- NFC eMRTD: Android `NfcAdapter` + JMRTD + SCUBA (secure messaging / datagroup parsing)
+- NFC member card: Android `NfcAdapter` reader mode + `Ndef` (well-known Text record; no secure messaging)
 - Local storage: Jetpack DataStore (non-sensitive prefs); session token held in memory (optionally EncryptedSharedPreferences if persistence is later required)
 
 **Storage**: No biometric persistence (FR-017). In-memory verification state only; DataStore for non-sensitive UI/config preferences; audit outcomes/metadata are recorded to the back office, not stored locally as raw biometrics.
@@ -70,7 +70,7 @@ specs/001-identity-verification-enrollment/
 ├── quickstart.md        # Phase 1 output — build/run/validate guide
 ├── contracts/           # Phase 1 output — API + client interface contracts
 │   ├── auth-api.md
-│   ├── nfc-document-api.md
+│   ├── member-card-api.md
 │   ├── face-verification-api.md
 │   ├── enrollment-api.md
 │   └── client-interfaces.md
@@ -88,7 +88,7 @@ app/src/main/java/com/mediplus/faceverify/
 ├── core/
 │   ├── di/                          # Hilt modules (network, dispatchers, storage)
 │   ├── session/                     # SessionManager (in-memory, session-bound state)
-│   ├── nfc/                         # NfcReader (JMRTD/SCUBA), access-key derivation
+│   ├── nfc/                         # MemberCardReader (NDEF text record)
 │   ├── camera/                      # CameraX controller, ML Kit framing analyzer
 │   ├── result/                      # Result/AppError types, error → message mapping
 │   └── ui/                          # theme (Material 3 tokens), shared composables

@@ -5,7 +5,7 @@
 Provisional contract for listing eligible services and adding one for the current visit
 (FR-018–FR-023a). Enrollment is idempotent to prevent duplicates on retry (Decision 7).
 
-## GET /patients/{documentNumber}/services
+## GET /patients/{memberNumber}/services
 
 List services available/eligible for this patient (keyed by document number, FR-011a, FR-023).
 
@@ -21,7 +21,7 @@ List services available/eligible for this patient (keyed by document number, FR-
 **Rules**: Only server-reported services are selectable (the app invents none). `alreadySelected`
 supports the duplicate guard (FR-019). Selection is per current visit/transaction (FR-023a).
 
-## POST /patients/{documentNumber}/enrollments
+## POST /patients/{memberNumber}/enrollments
 
 Add the selected service (visit reason) for the current transaction.
 
@@ -54,7 +54,7 @@ FR-024, FR-026). Blocked otherwise with an explanation (AS-2).
 - Same `idempotencyKey` on retry guarantees no duplicate enrollment (FR-022, SC-003).
 - Each visit is its own enrollment record (FR-023a).
 
-## Idempotent re-check (optional) GET /patients/{documentNumber}/enrollments?idempotencyKey=...
+## Idempotent re-check (optional) GET /patients/{memberNumber}/enrollments?idempotencyKey=...
 
 Lets the app resolve an `Uncertain` outcome safely (was it actually created?) without risking a
 duplicate (FR-022).

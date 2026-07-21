@@ -52,29 +52,58 @@ Proof of authenticated access attached to every protected request (FR-002).
 
 ---
 
-## Entity: IdentityDocument
+## Entity: MemberNumber
 
-The NFC-enabled credential read on-device (FR-007, FR-008, FR-011, FR-011a).
+The validated member card number, read on-device from an NDEF text record or entered manually
+(FR-007, FR-011a). A value class with a private constructor, so an instance is proof the format rule
+already passed and no caller re-validates.
 
 | Field | Type | Notes / Rules |
 |-------|------|---------------|
-| `documentNumber` | String | **Patient key** sent to the back office (FR-011a). From DG1/MRZ. |
-| `identityFields` | DocumentIdentity | Name, DOB, nationality, sex, expiry, issuing authority (from DG1). |
-| `expiryDate` | LocalDate | Used for local not-expired check; server is authoritative (FR-008). |
-| `referencePhoto` | ByteArray? | DG2 face image **if present**; transient, for face-verification reference (FR-011). Cleared with the verification submission. |
-| `integrity` | DocIntegrityResult | On-device chip integrity read (see Decision 4). |
-| `authenticity` | DocAuthenticityVerdict | Authoritative server verdict (see below). |
-
-**DocIntegrityResult** (sealed): `Passed` · `Failed(reason)` · `NotChecked`.
-
-**DocAuthenticityVerdict** (sealed): `Valid` · `Invalid(reason)` · `Pending`.
+| `value` | String | The digits. Constructed only via `parse`. |
 
 **Rules**:
-- Document is treated as **document-verified** only when the back office returns `Valid` and the
-  document is not expired (FR-008). `Invalid` carries a specific reason surfaced to the operator.
-- `referencePhoto` is transient (FR-017); if absent, the server-side reference photo is used
-  (Decision 3).
-- `documentNumber` MUST NOT be logged in the clear (FR-029).
+- Format rule (sole owner): digits only, `MIN_LENGTH = 7` to `MAX_LENGTH = 32`. Surrounding
+  whitespace is trimmed; leading zeros are preserved; anything else parses to `null`.
+- Bounded above so a garbage NDEF payload cannot become an unbounded URL path segment.
+- `toString()` is deliberately redacting (`MemberNumber(***)`) so an accidental interpolation into a
+  log line or exception message cannot leak the patient key (FR-029). Use `value` to send it.
+
+---
+
+## Entity: MemberVerification
+
+The authoritative back-office verdict for a scanned card (FR-008, FR-011, FR-011a).
+
+| Field | Type | Notes / Rules |
+|-------|------|---------------|
+| `status` | Status | `VALID` · `INVALID`. |
+| `reason` | String? | Specific reason when `INVALID`; surfaced as a curated message, never raw. |
+| `memberVerified` | Boolean | Server's own flag; required for a verified outcome. |
+| `memberResolved` | Boolean | Whether the back office resolved a member for this number. |
+| `referenceOnFile` | Boolean | Whether a reference photo exists for face verification (FR-011). |
+| `member` | MemberDetails? | Present when resolved. |
+
+**Rules**:
+- Member-verified **only** when `status == VALID` **and** `memberVerified` **and** a resolved member
+  with details. Membership validity is entirely server-owned — a member card carries no expiry, so
+  there is no local pre-check (FR-008).
+- Without resolved details there is nothing to key `/face/verify` or `/patients/...` on, so an
+  unresolved member halts the journey.
+
+---
+
+## Entity: MemberDetails
+
+The member the back office returned, shown for operator confirmation (FR-011).
+
+| Field | Type | Notes / Rules |
+|-------|------|---------------|
+| `memberNumber` | String | **Patient key** for all subsequent calls (FR-011a). Never logged in the clear (FR-029). |
+| `fullName` | String | Shown on the confirmation step. |
+| `dateOfBirth` | String | Shown on the confirmation step. |
+| `membershipStatus` | String | Shown on the confirmation step. |
+| `plan` | String? | Shown when present.
 
 ---
 
@@ -141,14 +170,14 @@ Composite precondition for enrollment (FR-024, FR-025, FR-026).
 
 | Field | Type | Notes / Rules |
 |-------|------|---------------|
-| `documentNumber` | String | Ties the composite to one patient. |
-| `documentVerified` | Boolean | Set only on server `Valid` + not expired. |
+| `memberNumber` | String | Ties the composite to one patient. |
+| `memberVerified` | Boolean | Set only on server `VALID` + `memberVerified`. |
 | `faceVerified` | Boolean | Set only on server pass + liveness pass (FR-013). |
-| `sameSubject` | Boolean | Document subject and face subject correspond (FR-025). |
+| `sameSubject` | Boolean | Member on file and face subject correspond (FR-025). |
 | `verifiedAt` | Instant? | Freshness anchor for the verification-freshness window (FR-026). |
 
 **Derived rule** — `isCurrentlyVerified(window)`:
-`documentVerified && faceVerified && sameSubject && verifiedAt != null && (now - verifiedAt) <= window`.
+`memberVerified && faceVerified && sameSubject && verifiedAt != null && (now - verifiedAt) <= window`.
 
 **Rules**:
 - Enrollment is permitted **only** when `isCurrentlyVerified(window)` is true (FR-018, FR-024).
@@ -169,7 +198,7 @@ The reason/purpose of the current visit, chosen per transaction (FR-023, FR-023a
 | `alreadySelected` | Boolean | Patient already holds/added this for the relevant scope (duplicate guard, FR-019). |
 
 **Rules**: Selectable list comes from the back office for the specific patient (keyed by
-`documentNumber`); the app does not invent services. Selection applies to the **current
+`memberNumber`); the app does not invent services. Selection applies to the **current
 visit/transaction only** (FR-023a), not a standing subscription.
 
 ---
@@ -181,7 +210,7 @@ The record that a verified patient had a service added for the current visit (FR
 | Field | Type | Notes / Rules |
 |-------|------|---------------|
 | `enrollmentId` | String? | Assigned by the back office on confirmation. |
-| `documentNumber` | String | Patient key. |
+| `memberNumber` | String | Patient key. |
 | `service` | Service | The selected visit reason. |
 | `idempotencyKey` | String | Per-transaction key so retries never duplicate (FR-022, Decision 7). |
 | `status` | EnrollmentStatus | See below. |
@@ -244,8 +273,8 @@ NotSignedIn
 |------|-------------|-------------|
 | No action without `Session.Active` | Journey guard | FR-003 |
 | Session loss discards verification | Journey + SessionManager | FR-004a |
-| Document verified only on server `Valid` + not expired | IdentityDocument rules | FR-008 |
-| Patient keyed by `documentNumber` | IdentityDocument / repositories | FR-011a |
+| Member verified only on server `VALID` + `memberVerified` | MemberVerification rules | FR-008 |
+| Patient keyed by `memberNumber` | MemberNumber / repositories | FR-011a |
 | Face-verified only on server pass + liveness | VerifiedIdentity/VerificationAttempt | FR-013 |
 | Lockout server-owned, persists across sessions | FaceLockoutState | FR-015 |
 | Face image never persisted | VerificationAttempt (no image field) | FR-017 |

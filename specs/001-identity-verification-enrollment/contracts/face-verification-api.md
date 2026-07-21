@@ -14,13 +14,13 @@ server owns the match threshold and liveness verdict (Decision 2); the app captu
 
 ## POST /face/verify
 
-Submit a live frame for verification against the trusted reference (DG2 photo and/or server
-reference on file), keyed to the patient.
+Submit a live frame for verification against the trusted reference (the back-office reference
+photo on file for the resolved member), keyed to the patient.
 
 **Request** (multipart or JSON with base64; frame transient in memory only)
 ```json
 {
-  "documentNumber": "string (patient key)",
+  "memberNumber": "string (patient key)",
   "image": "base64 (live frame, transient — never persisted client-side)",
   "captureMeta": { "hasLivenessChallengeResponse": true }
 }
