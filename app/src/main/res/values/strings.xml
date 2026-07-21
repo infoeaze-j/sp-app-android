@@ -29,7 +29,7 @@
     <string name="signin_show_password">Show password</string>
     <string name="signin_hide_password">Hide password</string>
 
-    <!-- ===== NFC document scan (US2) ===== -->
+    <!-- ===== NFC document scan (US2) — superseded, removed with the eMRTD path ===== -->
     <string name="nfc_title">Scan document</string>
     <string name="nfc_prompt_tap">Hold the document flat against the back of the phone and keep it still.</string>
     <string name="nfc_unavailable_disabled">NFC is turned off. Turn it on in settings to scan a document.</string>
@@ -51,6 +51,26 @@
     <string name="nfc_field_sex">Sex</string>
     <string name="nfc_field_expiry">Expiry</string>
     <string name="nfc_confirm_button">Looks correct</string>
+
+    <!-- ===== Member card scan (US2) ===== -->
+    <string name="card_title">Scan member card</string>
+    <string name="card_prompt_tap">Hold the member card flat against the back of the phone and keep it still.</string>
+    <string name="card_unavailable_disabled">NFC is turned off. Turn it on in settings, or enter the card number instead.</string>
+    <string name="card_unavailable_none">This device has no NFC reader. Enter the card number printed on the card.</string>
+    <string name="card_manual_title">Enter card number</string>
+    <string name="card_manual_desc">Type the number printed on the member card.</string>
+    <string name="card_number_label">Card number</string>
+    <string name="card_reading">Reading card…</string>
+    <string name="card_verifying">Checking membership…</string>
+    <string name="card_confirm_title">Confirm member</string>
+    <string name="card_confirm_desc">Check these details match the person in front of you.</string>
+    <string name="card_field_name">Name</string>
+    <string name="card_field_number">Card number</string>
+    <string name="card_field_dob">Date of birth</string>
+    <string name="card_field_status">Membership</string>
+    <string name="card_field_plan">Plan</string>
+    <string name="card_confirm_button">Looks correct</string>
+    <string name="card_submit_button">Check membership</string>
 
     <!-- ===== Member card errors ===== -->
     <string name="err_member_invalid_title">Membership not valid</string>
