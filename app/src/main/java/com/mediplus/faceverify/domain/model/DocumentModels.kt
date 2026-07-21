@@ -2,18 +2,6 @@ package com.mediplus.faceverify.domain.model
 
 import java.time.LocalDate
 
-/** Whether the device can read an NFC document right now (FR-010). */
-enum class NfcAvailability {
-    /** NFC hardware present and enabled. */
-    AVAILABLE,
-
-    /** NFC hardware present but turned off in settings. */
-    DISABLED,
-
-    /** No NFC hardware on this device. */
-    UNAVAILABLE,
-}
-
 /** On-device chip-integrity outcome (Decision 4). The server holds the authoritative verdict. */
 enum class DocIntegrityResult { PASSED, FAILED, NOT_CHECKED }
 

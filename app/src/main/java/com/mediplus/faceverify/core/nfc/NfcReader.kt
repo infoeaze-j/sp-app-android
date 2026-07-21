@@ -37,13 +37,6 @@ import kotlin.coroutines.resume
  * Security Object for the server to authenticate. The authoritative validity verdict is the back
  * office's; this only performs the local read (FR-007, FR-011).
  */
-/**
- * The UI host a reader needs to listen for a tap. Wrapping the [Activity] keeps `android.nfc`
- * types out of the ViewModel and lets alternative readers (e.g. the debug fake) ignore it.
- */
-@JvmInline
-value class NfcHost(val activity: Activity)
-
 interface NfcReader {
     suspend fun isAvailable(): NfcAvailability
 
