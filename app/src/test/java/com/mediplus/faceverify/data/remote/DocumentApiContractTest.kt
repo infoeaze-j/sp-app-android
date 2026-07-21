@@ -57,7 +57,7 @@ class DocumentApiContractTest {
     fun tearDown() = server.shutdown()
 
     private fun readDocument() = ReadDocument(
-        documentNumber = "P1234567",
+        memberNumber = "P1234567",
         identity = DocumentIdentity(
             "P1234567", "DOE", "JANE", "900101", "UTO", "F", LocalDate.of(2030, 1, 1), "UTO",
         ),
@@ -71,7 +71,7 @@ class DocumentApiContractTest {
     fun `VALID document maps to a verified validation`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"authenticity":"VALID","documentVerified":true,"referenceOnFile":true,"patientResolved":true}""",
+                """{"authenticity":"VALID","memberVerified":true,"referenceOnFile":true,"patientResolved":true}""",
             ),
         )
 
@@ -79,14 +79,14 @@ class DocumentApiContractTest {
 
         val validation = (result as AppResult.Success).data
         assertEquals(DocumentValidation.Authenticity.VALID, validation.authenticity)
-        assertTrue(validation.documentVerified)
+        assertTrue(validation.memberVerified)
     }
 
     @Test
     fun `INVALID document carries the specific reason`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"authenticity":"INVALID","reason":"integrity-failed","documentVerified":false,"patientResolved":true}""",
+                """{"authenticity":"INVALID","reason":"integrity-failed","memberVerified":false,"patientResolved":true}""",
             ),
         )
 

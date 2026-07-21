@@ -55,9 +55,9 @@ class SwitchingFaceRepository @Inject constructor(
     private val fake: FakeFaceRepository,
     private val store: DevSettingsStore,
 ) : FaceRepository {
-    override suspend fun verify(documentNumber: String, frame: TransientFrame): AppResult<FaceDecision> =
+    override suspend fun verify(memberNumber: String, frame: TransientFrame): AppResult<FaceDecision> =
         try {
-            pick().verify(documentNumber, frame)
+            pick().verify(memberNumber, frame)
         } finally {
             frame.clear()
         }
@@ -70,14 +70,14 @@ class SwitchingEnrollmentRepository @Inject constructor(
     private val fake: FakeEnrollmentRepository,
     private val store: DevSettingsStore,
 ) : EnrollmentRepository {
-    override suspend fun listServices(documentNumber: String): AppResult<List<Service>> =
-        pick().listServices(documentNumber)
+    override suspend fun listServices(memberNumber: String): AppResult<List<Service>> =
+        pick().listServices(memberNumber)
 
-    override suspend fun enroll(documentNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment> =
-        pick().enroll(documentNumber, serviceId, idempotencyKey)
+    override suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment> =
+        pick().enroll(memberNumber, serviceId, idempotencyKey)
 
-    override suspend fun recheck(documentNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
-        pick().recheck(documentNumber, idempotencyKey)
+    override suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
+        pick().recheck(memberNumber, idempotencyKey)
 
     private suspend fun pick(): EnrollmentRepository = if (store.current().fakeEnabled) fake else real
 }

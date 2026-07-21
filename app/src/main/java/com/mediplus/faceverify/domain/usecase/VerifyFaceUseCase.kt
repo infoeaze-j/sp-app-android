@@ -50,12 +50,12 @@ class VerifyFaceUseCase @Inject constructor(
             frame.clear()
             return FaceCheckResult.Rejected(BusinessCode.FACE_LOCKED_OUT, lockout)
         }
-        val documentNumber = sessionManager.verifiedIdentity.value?.documentNumber
-        if (documentNumber == null) {
+        val memberNumber = sessionManager.verifiedIdentity.value?.memberNumber
+        if (memberNumber == null) {
             frame.clear()
             return FaceCheckResult.Rejected(BusinessCode.NOT_CURRENTLY_VERIFIED, null)
         }
-        return when (val result = faceRepository.verify(documentNumber, frame)) {
+        return when (val result = faceRepository.verify(memberNumber, frame)) {
             is AppResult.Success -> interpret(result.data)
             is AppResult.BusinessRejection -> FaceCheckResult.Rejected(result.error.code, null)
             is AppResult.TransientFailure -> FaceCheckResult.Error(result.error)

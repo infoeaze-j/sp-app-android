@@ -17,7 +17,7 @@ interface FaceApi {
 
 @Serializable
 data class FaceVerifyRequest(
-    val documentNumber: String,
+    val memberNumber: String,
     val image: String,
     val captureMeta: CaptureMetaDto = CaptureMetaDto(),
 )

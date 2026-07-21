@@ -6,15 +6,15 @@ import kotlin.time.Duration
  * The composite precondition for enrollment (FR-024, FR-025, FR-026). Enrollment is permitted only
  * when every part is satisfied *and* the verification is still fresh.
  *
- * @param documentNumber ties the composite to exactly one patient (FR-011a)
- * @param documentVerified set only on server `Valid` + locally not-expired (FR-008)
+ * @param memberNumber ties the composite to exactly one patient (FR-011a)
+ * @param memberVerified set only on server VALID + memberVerified (FR-008)
  * @param faceVerified set only on server pass + liveness pass (FR-013)
- * @param sameSubject document subject and live face correspond (FR-025)
+ * @param sameSubject member on file and live face correspond (FR-025)
  * @param verifiedAt freshness anchor in monotonic millis; null until face verification completes
  */
 data class VerifiedIdentity(
-    val documentNumber: String,
-    val documentVerified: Boolean = false,
+    val memberNumber: String,
+    val memberVerified: Boolean = false,
     val faceVerified: Boolean = false,
     val sameSubject: Boolean = false,
     val verifiedAt: Long? = null,
@@ -25,7 +25,7 @@ data class VerifiedIdentity(
      * immediately stale — fail-safe re-verification.
      */
     fun isCurrentlyVerified(window: Duration?, nowMillis: Long): Boolean {
-        if (!documentVerified || !faceVerified || !sameSubject) return false
+        if (!memberVerified || !faceVerified || !sameSubject) return false
         val anchor = verifiedAt ?: return false
         if (window == null) return false
         val elapsed = nowMillis - anchor
@@ -41,7 +41,7 @@ data class VerifiedIdentity(
 enum class JourneyStep {
     NOT_SIGNED_IN,
     SIGNED_IN,
-    DOCUMENT_SCAN,
+    MEMBER_SCAN,
     CONSENT,
     FACE_CHECK,
     READY_TO_ENROLL,
@@ -61,19 +61,19 @@ object JourneyGate {
      */
     fun furthestReachable(
         sessionActive: Boolean,
-        documentVerified: Boolean,
+        memberVerified: Boolean,
         consentGranted: Boolean,
         faceVerified: Boolean,
         currentlyVerified: Boolean,
         lockedOut: Boolean,
     ): JourneyStep = when {
         !sessionActive -> JourneyStep.NOT_SIGNED_IN
-        !documentVerified -> JourneyStep.DOCUMENT_SCAN
+        !memberVerified -> JourneyStep.MEMBER_SCAN
         !consentGranted -> JourneyStep.CONSENT
         lockedOut -> JourneyStep.FACE_CHECK
         !faceVerified -> JourneyStep.FACE_CHECK
         currentlyVerified -> JourneyStep.ENROLLMENT
-        else -> JourneyStep.DOCUMENT_SCAN // verified but stale → re-verify (FR-026)
+        else -> JourneyStep.MEMBER_SCAN // verified but stale → re-verify (FR-026)
     }
 
     /** Whether [target] is reachable right now (it is at or below the furthest reachable step). */

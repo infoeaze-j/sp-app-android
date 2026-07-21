@@ -24,9 +24,9 @@ import javax.inject.Inject
  * on explicit confirmation; timeouts surface as [AppResult.Timeout] (uncertain, never success).
  */
 interface EnrollmentRepository {
-    suspend fun listServices(documentNumber: String): AppResult<List<Service>>
-    suspend fun enroll(documentNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment>
-    suspend fun recheck(documentNumber: String, idempotencyKey: String): AppResult<Enrollment?>
+    suspend fun listServices(memberNumber: String): AppResult<List<Service>>
+    suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment>
+    suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?>
 }
 
 class EnrollmentRepositoryImpl @Inject constructor(
@@ -34,8 +34,8 @@ class EnrollmentRepositoryImpl @Inject constructor(
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : EnrollmentRepository {
 
-    override suspend fun listServices(documentNumber: String): AppResult<List<Service>> =
-        apiCall(dispatcher, { api.listServices(documentNumber) }) { response ->
+    override suspend fun listServices(memberNumber: String): AppResult<List<Service>> =
+        apiCall(dispatcher, { api.listServices(memberNumber) }) { response ->
             val body = response.body()
             when {
                 response.isSuccessful && body != null -> AppResult.Success(body.services.map(ServiceDto::toDomain))
@@ -48,15 +48,15 @@ class EnrollmentRepositoryImpl @Inject constructor(
         }
 
     override suspend fun enroll(
-        documentNumber: String,
+        memberNumber: String,
         serviceId: String,
         idempotencyKey: String,
     ): AppResult<Enrollment> =
-        apiCall(dispatcher, { api.enroll(documentNumber, EnrollRequest(serviceId, idempotencyKey)) }) { response ->
+        apiCall(dispatcher, { api.enroll(memberNumber, EnrollRequest(serviceId, idempotencyKey)) }) { response ->
             val body = response.body()
             when {
                 response.isSuccessful && body != null && body.isConfirmed() ->
-                    AppResult.Success(body.toEnrollment(documentNumber, serviceId, idempotencyKey))
+                    AppResult.Success(body.toEnrollment(memberNumber, serviceId, idempotencyKey))
                 response.code() == HttpURLConnection.HTTP_CONFLICT ->
                     AppResult.BusinessRejection(AppError.Business(BusinessCode.DUPLICATE_SERVICE, body?.reason))
                 response.code() == UNPROCESSABLE_ENTITY ->
@@ -67,12 +67,12 @@ class EnrollmentRepositoryImpl @Inject constructor(
             }
         }
 
-    override suspend fun recheck(documentNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
-        apiCall(dispatcher, { api.recheck(documentNumber, idempotencyKey) }) { response ->
+    override suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
+        apiCall(dispatcher, { api.recheck(memberNumber, idempotencyKey) }) { response ->
             val body = response.body()
             when {
                 response.isSuccessful && body != null && body.isConfirmed() ->
-                    AppResult.Success(body.toEnrollment(documentNumber, serviceId = "", idempotencyKey))
+                    AppResult.Success(body.toEnrollment(memberNumber, serviceId = "", idempotencyKey))
                 // 200-without-body / 204 / 404 → the enrollment was never created; safe to retry.
                 response.isSuccessful || response.code() == HttpURLConnection.HTTP_NOT_FOUND ->
                     AppResult.Success(null)
@@ -93,12 +93,12 @@ private fun ServiceDto.toDomain() = Service(serviceId, description, eligibleForP
 private fun EnrollmentResponse.isConfirmed(): Boolean = status.equals("CONFIRMED", ignoreCase = true)
 
 private fun EnrollmentResponse.toEnrollment(
-    documentNumber: String,
+    memberNumber: String,
     serviceId: String,
     idempotencyKey: String,
 ) = Enrollment(
     enrollmentId = enrollmentId,
-    documentNumber = documentNumber,
+    memberNumber = memberNumber,
     service = Service(serviceId, description = "", eligibleForPatient = true, alreadySelected = false),
     idempotencyKey = idempotencyKey,
     status = EnrollmentStatus.Confirmed(enrollmentId ?: ""),

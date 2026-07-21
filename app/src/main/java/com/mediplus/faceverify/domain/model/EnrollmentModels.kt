@@ -33,7 +33,7 @@ sealed interface EnrollmentStatus {
  */
 data class Enrollment(
     val enrollmentId: String?,
-    val documentNumber: String,
+    val memberNumber: String,
     val service: Service,
     val idempotencyKey: String,
     val status: EnrollmentStatus,

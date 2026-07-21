@@ -19,7 +19,7 @@ class FakeFaceRepository @Inject constructor(
     private val store: DevSettingsStore,
 ) : FaceRepository {
 
-    override suspend fun verify(documentNumber: String, frame: TransientFrame): AppResult<FaceDecision> {
+    override suspend fun verify(memberNumber: String, frame: TransientFrame): AppResult<FaceDecision> {
         try {
             val settings = store.current()
             delay(settings.latencyMillis)

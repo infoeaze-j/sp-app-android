@@ -43,7 +43,7 @@ class AddServiceViewModelTest {
 
     private fun confirmed() = Enrollment(
         enrollmentId = "E1",
-        documentNumber = "P1",
+        memberNumber = "P1",
         service = services.first(),
         idempotencyKey = "k",
         status = EnrollmentStatus.Confirmed("E1"),

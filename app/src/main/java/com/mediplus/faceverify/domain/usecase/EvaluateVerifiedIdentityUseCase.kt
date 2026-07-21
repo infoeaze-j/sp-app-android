@@ -26,7 +26,7 @@ class EvaluateVerifiedIdentityUseCase @Inject constructor(
         val window = sessionManager.verificationWindow.value
         val now = time.nowMillis()
         return when {
-            identity == null || !identity.documentVerified -> VerificationEvaluation(false, Outstanding.DOCUMENT)
+            identity == null || !identity.memberVerified -> VerificationEvaluation(false, Outstanding.DOCUMENT)
             !identity.faceVerified || !identity.sameSubject -> VerificationEvaluation(false, Outstanding.FACE)
             !identity.isCurrentlyVerified(window, now) -> VerificationEvaluation(false, Outstanding.STALE)
             else -> VerificationEvaluation(true, Outstanding.NONE)

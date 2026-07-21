@@ -30,7 +30,7 @@ class EvaluateVerifiedIdentityUseCaseTest {
     @Test
     fun `document-only is blocked on the face step`() {
         val manager = session().apply {
-            updateVerifiedIdentity { VerifiedIdentity("P1", documentVerified = true) }
+            updateVerifiedIdentity { VerifiedIdentity("P1", memberVerified = true) }
         }
         val result = evaluate(manager, now = 0)
         assertEquals(Outstanding.FACE, result.outstanding)
@@ -40,7 +40,7 @@ class EvaluateVerifiedIdentityUseCaseTest {
     fun `absent window is treated as stale`() {
         val manager = session().apply {
             updateVerifiedIdentity {
-                VerifiedIdentity("P1", documentVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 0)
+                VerifiedIdentity("P1", memberVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 0)
             }
             // no setVerificationWindow → null window
         }
@@ -53,7 +53,7 @@ class EvaluateVerifiedIdentityUseCaseTest {
     fun `fresh verification within the window is currently verified`() {
         val manager = session().apply {
             updateVerifiedIdentity {
-                VerifiedIdentity("P1", documentVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 1_000)
+                VerifiedIdentity("P1", memberVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 1_000)
             }
             setVerificationWindow(900.seconds)
         }
@@ -66,7 +66,7 @@ class EvaluateVerifiedIdentityUseCaseTest {
     fun `verification older than the window is stale`() {
         val manager = session().apply {
             updateVerifiedIdentity {
-                VerifiedIdentity("P1", documentVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 0)
+                VerifiedIdentity("P1", memberVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 0)
             }
             setVerificationWindow(60.seconds)
         }

@@ -21,7 +21,7 @@ enum class DocIntegrityResult { PASSED, FAILED, NOT_CHECKED }
 sealed interface DocAccessKey {
     /** BAC/PACE key derived from MRZ fields (dates are YYMMDD as printed in the MRZ). */
     data class Mrz(
-        val documentNumber: String,
+        val memberNumber: String,
         val dateOfBirthYyMmDd: String,
         val expiryYyMmDd: String,
     ) : DocAccessKey
@@ -32,7 +32,7 @@ sealed interface DocAccessKey {
 
 /** Identity fields parsed from DG1/MRZ. */
 data class DocumentIdentity(
-    val documentNumber: String,
+    val memberNumber: String,
     val surname: String,
     val givenNames: String,
     val dateOfBirth: String,
@@ -44,10 +44,10 @@ data class DocumentIdentity(
 
 /**
  * A document read on-device (FR-007, FR-011). [referencePhoto] (DG2) is transient and cleared with
- * the verification submission; [documentNumber] is the patient key sent to the back office (FR-011a).
+ * the verification submission; [memberNumber] is the patient key sent to the back office (FR-011a).
  */
 data class ReadDocument(
-    val documentNumber: String,
+    val memberNumber: String,
     val identity: DocumentIdentity,
     val referencePhoto: ByteArray?,
     val securityObjectBase64: String?,
@@ -58,7 +58,7 @@ data class ReadDocument(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ReadDocument) return false
-        return documentNumber == other.documentNumber &&
+        return memberNumber == other.memberNumber &&
             identity == other.identity &&
             referencePhoto.contentEqualsNullable(other.referencePhoto) &&
             securityObjectBase64 == other.securityObjectBase64 &&
@@ -67,7 +67,7 @@ data class ReadDocument(
     }
 
     override fun hashCode(): Int {
-        var result = documentNumber.hashCode()
+        var result = memberNumber.hashCode()
         result = 31 * result + identity.hashCode()
         result = 31 * result + (referencePhoto?.contentHashCode() ?: 0)
         result = 31 * result + (securityObjectBase64?.hashCode() ?: 0)
@@ -87,7 +87,7 @@ private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean {
 data class DocumentValidation(
     val authenticity: Authenticity,
     val reason: String?,
-    val documentVerified: Boolean,
+    val memberVerified: Boolean,
     val referenceOnFile: Boolean,
     val patientResolved: Boolean,
 ) {

@@ -38,7 +38,7 @@ class SwitchingRepositoryTest {
     // ---- Document ----
 
     private val read = ReadDocument(
-        documentNumber = "X123",
+        memberNumber = "X123",
         identity = DocumentIdentity("X123", "Doe", "Jane", "1990-01-01", "UTO", "F", LocalDate.of(2030, 1, 1), "GOV"),
         referencePhoto = null,
         securityObjectBase64 = null,

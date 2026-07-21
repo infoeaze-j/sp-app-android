@@ -49,7 +49,7 @@ class DocumentRepositoryImpl @Inject constructor(
 }
 
 private fun ReadDocument.toRequest() = ValidateDocumentRequest(
-    documentNumber = documentNumber,
+    memberNumber = memberNumber,
     identityFields = IdentityFieldsDto(
         surname = identity.surname,
         givenNames = identity.givenNames,
@@ -71,7 +71,7 @@ private fun ValidateDocumentResponse.toValidation() = DocumentValidation(
         DocumentValidation.Authenticity.INVALID
     },
     reason = reason,
-    documentVerified = documentVerified,
+    memberVerified = memberVerified,
     referenceOnFile = referenceOnFile,
     patientResolved = patientResolved,
 )

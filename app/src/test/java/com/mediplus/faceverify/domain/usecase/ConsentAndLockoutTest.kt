@@ -49,7 +49,7 @@ class ConsentAndLockoutTest {
     fun `server lockout in a failed decision is mirrored to the caller`() = runTest {
         val faceRepository = mockk<FaceRepository>()
         val sessionManager = InMemorySessionManager().apply {
-            updateVerifiedIdentity { VerifiedIdentity("P1", documentVerified = true) }
+            updateVerifiedIdentity { VerifiedIdentity("P1", memberVerified = true) }
         }
         val useCase = VerifyFaceUseCase(faceRepository, sessionManager, TimeProvider { 0L })
         val lockout = FaceLockoutState(lockedOut = true, remainingAttempts = 0, cooldownUntilMillis = 9_000)

@@ -33,7 +33,7 @@ class FakeEnrollmentRepository @Inject constructor(
 
     private val landed = ConcurrentHashMap<String, Enrollment>()
 
-    override suspend fun listServices(documentNumber: String): AppResult<List<Service>> {
+    override suspend fun listServices(memberNumber: String): AppResult<List<Service>> {
         val settings = store.current()
         delay(settings.latencyMillis)
         return when (settings.services) {
@@ -47,14 +47,14 @@ class FakeEnrollmentRepository @Inject constructor(
     }
 
     override suspend fun enroll(
-        documentNumber: String,
+        memberNumber: String,
         serviceId: String,
         idempotencyKey: String,
     ): AppResult<Enrollment> {
         val settings = store.current()
         delay(settings.latencyMillis)
         landed[idempotencyKey]?.let { return AppResult.Success(it) }
-        val confirmed = confirmedEnrollment(documentNumber, serviceId, idempotencyKey)
+        val confirmed = confirmedEnrollment(memberNumber, serviceId, idempotencyKey)
         return when (settings.enroll) {
             EnrollScenario.CONFIRMED -> {
                 landed[idempotencyKey] = confirmed
@@ -73,18 +73,18 @@ class FakeEnrollmentRepository @Inject constructor(
         }
     }
 
-    override suspend fun recheck(documentNumber: String, idempotencyKey: String): AppResult<Enrollment?> {
+    override suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> {
         delay(store.current().latencyMillis)
         return AppResult.Success(landed[idempotencyKey])
     }
 
-    private fun confirmedEnrollment(documentNumber: String, serviceId: String, idempotencyKey: String): Enrollment {
+    private fun confirmedEnrollment(memberNumber: String, serviceId: String, idempotencyKey: String): Enrollment {
         val id = "enr-$idempotencyKey"
         val service = FakeData.services.firstOrNull { it.serviceId == serviceId }
             ?: Service(serviceId, "", eligibleForPatient = true, alreadySelected = false)
         return Enrollment(
             enrollmentId = id,
-            documentNumber = documentNumber,
+            memberNumber = memberNumber,
             service = service,
             idempotencyKey = idempotencyKey,
             status = EnrollmentStatus.Confirmed(id),

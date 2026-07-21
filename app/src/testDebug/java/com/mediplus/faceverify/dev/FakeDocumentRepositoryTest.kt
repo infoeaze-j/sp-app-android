@@ -15,7 +15,7 @@ import java.time.LocalDate
 class FakeDocumentRepositoryTest {
 
     private val read = ReadDocument(
-        documentNumber = "X123",
+        memberNumber = "X123",
         identity = DocumentIdentity("X123", "Doe", "Jane", "1990-01-01", "UTO", "F", LocalDate.of(2030, 1, 1), "GOV"),
         referencePhoto = null,
         securityObjectBase64 = null,
@@ -31,7 +31,7 @@ class FakeDocumentRepositoryTest {
 
         val validation = (result as AppResult.Success).data
         assertEquals(DocumentValidation.Authenticity.VALID, validation.authenticity)
-        assertEquals(true, validation.documentVerified)
+        assertEquals(true, validation.memberVerified)
     }
 
     @Test
@@ -42,7 +42,7 @@ class FakeDocumentRepositoryTest {
 
         val validation = (result as AppResult.Success).data
         assertEquals(DocumentValidation.Authenticity.INVALID, validation.authenticity)
-        assertEquals(false, validation.documentVerified)
+        assertEquals(false, validation.memberVerified)
     }
 
     @Test

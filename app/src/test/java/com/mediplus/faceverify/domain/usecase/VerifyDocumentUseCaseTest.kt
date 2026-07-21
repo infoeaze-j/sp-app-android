@@ -41,9 +41,9 @@ class VerifyDocumentUseCaseTest {
     }
 
     private fun readDocument(expiry: LocalDate = LocalDate.of(2030, 1, 1)) = ReadDocument(
-        documentNumber = "P1234567",
+        memberNumber = "P1234567",
         identity = DocumentIdentity(
-            documentNumber = "P1234567",
+            memberNumber = "P1234567",
             surname = "DOE",
             givenNames = "JANE",
             dateOfBirth = "900101",
@@ -73,8 +73,8 @@ class VerifyDocumentUseCaseTest {
 
         assertTrue(result is AppResult.Success)
         val identity = sessionManager.verifiedIdentity.value
-        assertEquals("P1234567", identity?.documentNumber)
-        assertTrue(identity?.documentVerified == true)
+        assertEquals("P1234567", identity?.memberNumber)
+        assertTrue(identity?.memberVerified == true)
         assertFalse(identity?.faceVerified == true)
     }
 
@@ -99,7 +99,7 @@ class VerifyDocumentUseCaseTest {
             BusinessCode.PATIENT_NOT_FOUND,
             (result as AppResult.BusinessRejection).error.code,
         )
-        assertFalse(sessionManager.verifiedIdentity.value?.documentVerified == true)
+        assertFalse(sessionManager.verifiedIdentity.value?.memberVerified == true)
     }
 
     @Test

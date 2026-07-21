@@ -135,7 +135,7 @@ class JmrtdNfcReader @Inject constructor(
         val mrzKey = accessKey as? DocAccessKey.Mrz
             ?: return transient("Unsupported document key")
         service.sendSelectApplet(false)
-        service.doBAC(BACKey(mrzKey.documentNumber, mrzKey.dateOfBirthYyMmDd, mrzKey.expiryYyMmDd))
+        service.doBAC(BACKey(mrzKey.memberNumber, mrzKey.dateOfBirthYyMmDd, mrzKey.expiryYyMmDd))
 
         val dg1 = DG1File(service.getInputStream(PassportService.EF_DG1))
         val sod = SODFile(service.getInputStream(PassportService.EF_SOD))
@@ -143,7 +143,7 @@ class JmrtdNfcReader @Inject constructor(
 
         return AppResult.Success(
             ReadDocument(
-                documentNumber = dg1.mrzInfo.documentNumber.trimEnd('<'),
+                memberNumber = dg1.mrzInfo.documentNumber.trimEnd('<'),
                 identity = dg1.mrzInfo.toIdentity(),
                 referencePhoto = referencePhoto,
                 securityObjectBase64 = Base64.encodeToString(sod.encoded, Base64.NO_WRAP),
@@ -173,7 +173,7 @@ class JmrtdNfcReader @Inject constructor(
 }
 
 private fun MRZInfo.toIdentity(): DocumentIdentity = DocumentIdentity(
-    documentNumber = documentNumber.trimEnd('<'),
+    memberNumber = documentNumber.trimEnd('<'),
     surname = primaryIdentifier.replace("<", " ").trim(),
     givenNames = secondaryIdentifier.replace("<", " ").trim(),
     dateOfBirth = dateOfBirth,

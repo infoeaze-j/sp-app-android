@@ -34,7 +34,7 @@ class ErrorMapperTest {
 
     @Test
     fun `server reason never changes the mapped message (non-revealing)`() {
-        val sensitive = "documentNumber=99887766 name=DOE face-embedding=0xDEADBEEF token=abc123"
+        val sensitive = "memberNumber=99887766 name=DOE face-embedding=0xDEADBEEF token=abc123"
         BusinessCode.entries.forEach { code ->
             val withReason = mapper.toUserMessage(AppError.Business(code, serverReason = sensitive))
             val withoutReason = mapper.toUserMessage(AppError.Business(code, serverReason = null))

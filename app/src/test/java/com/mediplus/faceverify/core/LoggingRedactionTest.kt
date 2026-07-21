@@ -30,7 +30,7 @@ class LoggingRedactionTest {
     private val logBuffer = StringBuilder()
 
     private val token = "SECRET-TOKEN-abc123"
-    private val documentNumber = "P9988776655"
+    private val memberNumber = "P9988776655"
     private val imageBase64 = "QUJDREVGRw==BIOMETRIC-IMAGE"
 
     @Before
@@ -55,8 +55,8 @@ class LoggingRedactionTest {
 
     @Test
     fun `token, document number, and image never appear in logs`() {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"documentNumber":"$documentNumber"}"""))
-        val body = """{"documentNumber":"$documentNumber","image":"$imageBase64"}"""
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"memberNumber":"$memberNumber"}"""))
+        val body = """{"memberNumber":"$memberNumber","image":"$imageBase64"}"""
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder().url(server.url("/face/verify")).post(body).build()
 
@@ -64,7 +64,7 @@ class LoggingRedactionTest {
 
         val logs = logBuffer.toString()
         assertFalse("token leaked: $logs", logs.contains(token))
-        assertFalse("documentNumber leaked: $logs", logs.contains(documentNumber))
+        assertFalse("memberNumber leaked: $logs", logs.contains(memberNumber))
         assertFalse("image leaked: $logs", logs.contains(imageBase64))
     }
 }

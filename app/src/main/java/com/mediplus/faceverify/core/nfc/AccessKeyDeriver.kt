@@ -26,34 +26,34 @@ class AccessKeyDeriver @Inject constructor() {
     }
 
     /** Operator-entry fallback when OCR is unavailable or the MRZ can't be read. */
-    fun fromManualEntry(documentNumber: String, dobYyMmDd: String, expiryYyMmDd: String): DocAccessKey.Mrz =
+    fun fromManualEntry(memberNumber: String, dobYyMmDd: String, expiryYyMmDd: String): DocAccessKey.Mrz =
         DocAccessKey.Mrz(
-            documentNumber = documentNumber.trim().uppercase().trimEnd('<'),
+            memberNumber = memberNumber.trim().uppercase().trimEnd('<'),
             dateOfBirthYyMmDd = dobYyMmDd.trim(),
             expiryYyMmDd = expiryYyMmDd.trim(),
         )
 
     private fun parseTd3(lines: List<String>): DocAccessKey.Mrz? {
         val line = lines.firstOrNull { it.length == TD3_LINE_LEN } ?: return null
-        val documentNumber = line.substring(0, 9).trimEnd('<')
+        val memberNumber = line.substring(0, 9).trimEnd('<')
         val dob = line.substring(13, 19)
         val expiry = line.substring(21, 27)
-        return buildKey(documentNumber, dob, expiry)
+        return buildKey(memberNumber, dob, expiry)
     }
 
     private fun parseTd1(lines: List<String>): DocAccessKey.Mrz? {
         // TD1 splits the key across the first line (document number) and second line (dates).
         val line1 = lines.firstOrNull { it.length == TD1_LINE_LEN } ?: return null
         val line2 = lines.filter { it.length == TD1_LINE_LEN }.getOrNull(1) ?: return null
-        val documentNumber = line1.substring(5, 14).trimEnd('<')
+        val memberNumber = line1.substring(5, 14).trimEnd('<')
         val dob = line2.substring(0, 6)
         val expiry = line2.substring(8, 14)
-        return buildKey(documentNumber, dob, expiry)
+        return buildKey(memberNumber, dob, expiry)
     }
 
-    private fun buildKey(documentNumber: String, dob: String, expiry: String): DocAccessKey.Mrz? {
-        if (documentNumber.isBlank() || !dob.matches(SIX_DIGITS) || !expiry.matches(SIX_DIGITS)) return null
-        return DocAccessKey.Mrz(documentNumber, dob, expiry)
+    private fun buildKey(memberNumber: String, dob: String, expiry: String): DocAccessKey.Mrz? {
+        if (memberNumber.isBlank() || !dob.matches(SIX_DIGITS) || !expiry.matches(SIX_DIGITS)) return null
+        return DocAccessKey.Mrz(memberNumber, dob, expiry)
     }
 
     private companion object {

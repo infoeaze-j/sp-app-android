@@ -14,18 +14,18 @@ import retrofit2.http.Query
  */
 interface EnrollmentApi {
 
-    @GET("patients/{documentNumber}/services")
-    suspend fun listServices(@Path("documentNumber") documentNumber: String): Response<ServicesResponse>
+    @GET("patients/{memberNumber}/services")
+    suspend fun listServices(@Path("memberNumber") memberNumber: String): Response<ServicesResponse>
 
-    @POST("patients/{documentNumber}/enrollments")
+    @POST("patients/{memberNumber}/enrollments")
     suspend fun enroll(
-        @Path("documentNumber") documentNumber: String,
+        @Path("memberNumber") memberNumber: String,
         @Body body: EnrollRequest,
     ): Response<EnrollmentResponse>
 
-    @GET("patients/{documentNumber}/enrollments")
+    @GET("patients/{memberNumber}/enrollments")
     suspend fun recheck(
-        @Path("documentNumber") documentNumber: String,
+        @Path("memberNumber") memberNumber: String,
         @Query("idempotencyKey") idempotencyKey: String,
     ): Response<EnrollmentResponse>
 }

@@ -40,14 +40,14 @@ class AddServiceUseCaseTest {
 
     private fun markVerified() {
         sessionManager.updateVerifiedIdentity {
-            VerifiedIdentity("P1", documentVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 1_000)
+            VerifiedIdentity("P1", memberVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 1_000)
         }
         sessionManager.setVerificationWindow(900.seconds)
     }
 
     private fun confirmed(key: String) = Enrollment(
         enrollmentId = "E1",
-        documentNumber = "P1",
+        memberNumber = "P1",
         service = Service("svc", "", eligibleForPatient = true, alreadySelected = false),
         idempotencyKey = key,
         status = EnrollmentStatus.Confirmed("E1"),

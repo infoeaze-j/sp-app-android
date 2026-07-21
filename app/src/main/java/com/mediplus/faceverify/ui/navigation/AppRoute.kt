@@ -8,7 +8,7 @@ import com.mediplus.faceverify.domain.model.JourneyStep
  */
 enum class AppRoute(val path: String, val requiredStep: JourneyStep) {
     SignIn("signin", JourneyStep.NOT_SIGNED_IN),
-    NfcScan("nfc", JourneyStep.DOCUMENT_SCAN),
+    NfcScan("nfc", JourneyStep.MEMBER_SCAN),
     FaceCheck("face", JourneyStep.FACE_CHECK),
     AddService("addservice", JourneyStep.ENROLLMENT),
 }

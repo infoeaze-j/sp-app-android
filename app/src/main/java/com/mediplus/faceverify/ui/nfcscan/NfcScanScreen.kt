@@ -231,7 +231,7 @@ private fun ConfirmContent(
             modifier = Modifier.padding(vertical = spacing.sm),
         )
         Field(R.string.nfc_field_name, "${identity.surname}, ${identity.givenNames}")
-        Field(R.string.nfc_field_number, identity.documentNumber)
+        Field(R.string.nfc_field_number, identity.memberNumber)
         Field(R.string.nfc_field_dob, identity.dateOfBirth)
         Field(R.string.nfc_field_nationality, identity.nationality)
         Field(R.string.nfc_field_sex, identity.sex)

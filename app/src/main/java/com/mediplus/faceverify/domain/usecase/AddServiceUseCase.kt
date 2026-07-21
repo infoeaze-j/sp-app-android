@@ -15,9 +15,9 @@ class ListEligibleServicesUseCase @Inject constructor(
     private val sessionManager: SessionManager,
 ) {
     suspend operator fun invoke(): AppResult<List<Service>> {
-        val documentNumber = sessionManager.verifiedIdentity.value?.documentNumber
+        val memberNumber = sessionManager.verifiedIdentity.value?.memberNumber
             ?: return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
-        return enrollmentRepository.listServices(documentNumber)
+        return enrollmentRepository.listServices(memberNumber)
     }
 }
 
@@ -36,15 +36,15 @@ class AddServiceUseCase @Inject constructor(
         if (!evaluate().isCurrentlyVerified) {
             return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
         }
-        val documentNumber = sessionManager.verifiedIdentity.value?.documentNumber
+        val memberNumber = sessionManager.verifiedIdentity.value?.memberNumber
             ?: return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
-        return enrollmentRepository.enroll(documentNumber, serviceId, idempotencyKey)
+        return enrollmentRepository.enroll(memberNumber, serviceId, idempotencyKey)
     }
 
     /** Resolve an uncertain outcome safely, reusing the same [idempotencyKey] (FR-022). */
     suspend fun recheck(idempotencyKey: String): AppResult<Enrollment?> {
-        val documentNumber = sessionManager.verifiedIdentity.value?.documentNumber
+        val memberNumber = sessionManager.verifiedIdentity.value?.memberNumber
             ?: return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
-        return enrollmentRepository.recheck(documentNumber, idempotencyKey)
+        return enrollmentRepository.recheck(memberNumber, idempotencyKey)
     }
 }

@@ -28,9 +28,9 @@ object FakeData {
      * face step, which is faked independently.
      */
     val readDocument: ReadDocument = ReadDocument(
-        documentNumber = "P1234567",
+        memberNumber = "P1234567",
         identity = DocumentIdentity(
-            documentNumber = "P1234567",
+            memberNumber = "P1234567",
             surname = "DOE",
             givenNames = "JANE",
             dateOfBirth = "900101",
@@ -48,7 +48,7 @@ object FakeData {
     val validationValid: DocumentValidation = DocumentValidation(
         authenticity = DocumentValidation.Authenticity.VALID,
         reason = null,
-        documentVerified = true,
+        memberVerified = true,
         referenceOnFile = true,
         patientResolved = true,
     )
@@ -56,7 +56,7 @@ object FakeData {
     val validationInvalid: DocumentValidation = DocumentValidation(
         authenticity = DocumentValidation.Authenticity.INVALID,
         reason = "Document expired",
-        documentVerified = false,
+        memberVerified = false,
         referenceOnFile = true,
         patientResolved = true,
     )

@@ -14,7 +14,7 @@ import javax.inject.Inject
 /**
  * Turns an on-device-read document into a verified-or-rejected outcome (FR-007, FR-008, FR-011a).
  * A document is marked document-verified ONLY when it is locally not-expired AND the back office
- * returns VALID + documentVerified. Any rejection surfaces a specific reason.
+ * returns VALID + memberVerified. Any rejection surfaces a specific reason.
  */
 class VerifyDocumentUseCase @Inject constructor(
     private val documentRepository: DocumentRepository,
@@ -37,7 +37,7 @@ class VerifyDocumentUseCase @Inject constructor(
             return AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
         }
         val verified = validation.authenticity == DocumentValidation.Authenticity.VALID &&
-            validation.documentVerified
+            validation.memberVerified
         if (!verified) {
             return AppResult.BusinessRejection(
                 AppError.Business(BusinessCode.DOCUMENT_INVALID, serverReason = validation.reason),
@@ -45,7 +45,7 @@ class VerifyDocumentUseCase @Inject constructor(
         }
         // A fresh scan resets the composite for this patient; face verification comes next (FR-032).
         sessionManager.updateVerifiedIdentity {
-            VerifiedIdentity(documentNumber = read.documentNumber, documentVerified = true)
+            VerifiedIdentity(memberNumber = read.memberNumber, memberVerified = true)
         }
         return AppResult.Success(validation)
     }

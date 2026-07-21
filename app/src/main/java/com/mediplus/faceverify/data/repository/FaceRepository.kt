@@ -24,7 +24,7 @@ import javax.inject.Inject
  * call aborts — nothing biometric is ever persisted (FR-017).
  */
 interface FaceRepository {
-    suspend fun verify(documentNumber: String, frame: TransientFrame): AppResult<FaceDecision>
+    suspend fun verify(memberNumber: String, frame: TransientFrame): AppResult<FaceDecision>
 }
 
 class FaceRepositoryImpl @Inject constructor(
@@ -32,13 +32,13 @@ class FaceRepositoryImpl @Inject constructor(
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : FaceRepository {
 
-    override suspend fun verify(documentNumber: String, frame: TransientFrame): AppResult<FaceDecision> {
+    override suspend fun verify(memberNumber: String, frame: TransientFrame): AppResult<FaceDecision> {
         try {
             val image = frame.asBase64()
                 ?: return AppResult.TransientFailure(AppError.Transient(TransientKind.UNKNOWN))
             return apiCall(
                 dispatcher,
-                { api.verify(FaceVerifyRequest(documentNumber, image, CaptureMetaDto(hasLivenessChallengeResponse = true))) },
+                { api.verify(FaceVerifyRequest(memberNumber, image, CaptureMetaDto(hasLivenessChallengeResponse = true))) },
             ) { response ->
                 val body = response.body()
                 when {

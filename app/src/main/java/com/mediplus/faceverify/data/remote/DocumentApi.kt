@@ -17,7 +17,7 @@ interface DocumentApi {
 
 @Serializable
 data class ValidateDocumentRequest(
-    val documentNumber: String,
+    val memberNumber: String,
     val identityFields: IdentityFieldsDto,
     val securityObject: String? = null,
     val dataGroupHashes: Map<String, String> = emptyMap(),
@@ -39,7 +39,7 @@ data class IdentityFieldsDto(
 data class ValidateDocumentResponse(
     val authenticity: String,
     val reason: String? = null,
-    val documentVerified: Boolean = false,
+    val memberVerified: Boolean = false,
     val referenceOnFile: Boolean = false,
     val patientResolved: Boolean = false,
 )

@@ -43,7 +43,7 @@ class NfcScanViewModelTest {
     private fun buildVm() = NfcScanViewModel(nfcReader, verifyDocument, DefaultErrorMapper())
 
     private fun readDocument() = ReadDocument(
-        documentNumber = "P1234567",
+        memberNumber = "P1234567",
         identity = DocumentIdentity(
             "P1234567", "DOE", "JANE", "900101", "UTO", "F", LocalDate.of(2030, 1, 1), "UTO",
         ),

@@ -41,7 +41,7 @@ class VerifyFaceUseCaseTest {
     @Before
     fun setUp() {
         sessionManager = InMemorySessionManager()
-        sessionManager.updateVerifiedIdentity { VerifiedIdentity("P1", documentVerified = true) }
+        sessionManager.updateVerifiedIdentity { VerifiedIdentity("P1", memberVerified = true) }
         useCase = VerifyFaceUseCase(faceRepository, sessionManager, TimeProvider { now })
     }
 
