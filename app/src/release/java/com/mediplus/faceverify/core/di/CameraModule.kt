@@ -9,8 +9,8 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Binds the real CameraX camera factory for every variant. Task 5 moves this into the release and
- * debug source sets (like NfcModule) once debug has an emulated camera to substitute.
+ * Release: binds the real CameraX camera factory. Lives in the variant source set (like NfcModule)
+ * because debug substitutes a switchable emulated camera.
  */
 @Module
 @InstallIn(SingletonComponent::class)
