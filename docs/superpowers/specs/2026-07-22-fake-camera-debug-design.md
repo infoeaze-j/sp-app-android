@@ -122,7 +122,7 @@ editing.
 | main | `core/camera/CameraController.kt` | deleted |
 | main | `ui/facecheck/FaceCheckScreen.kt` | resolve the factory; `AndroidView(factory = { camera.createPreviewView(it) })`; render the new halt; surface capture failure |
 | main | `ui/facecheck/FaceCheckViewModel.kt` | `+ FacePhase.CameraUnavailableHalt`, `+ onCameraUnavailable()`, `+ onCaptureFailed()`. Constructor unchanged |
-| main | `res/values/strings.xml` | `face_camera_unavailable_title/_body`, `face_capture_failed_title/_body` |
+| main | `res/values/strings.xml` | `face_camera_unavailable_title/_body` |
 | release | `core/di/CameraModule.kt` | new — binds `RealFaceCameraFactory` |
 | debug | `core/di/CameraModule.kt` | new — binds `SwitchingFaceCameraFactory` |
 | debug | `dev/camera/FakeFaceCamera.kt` | new |
@@ -163,9 +163,12 @@ ViewModel phase is needed for the resolving window.
 `CameraUnavailableHalt` renders through the existing `TerminalMessage`
 composable, with its assertive live region, alongside the consent-withheld and
 discrepancy halts. `onCaptureFailed()` produces
-`FacePhase.Failed(UiMessage(face_capture_failed_title, face_capture_failed_body), lockout, canRetry = true)`,
-closing the silent dead-end at `FaceCheckScreen.kt:210`, where a failed capture
-is currently dropped with no user-visible result.
+`FacePhase.Failed(errorMapper.toUserMessage(AppError.Transient(TransientKind.UNKNOWN)), lockout, canRetry = true)`,
+routing a failed capture through the existing `ErrorMapper` rather than new
+strings — no `ViewModel` in this codebase imports `R`, and a capture failure is
+just another transient error from the ViewModel's point of view. This closes
+the silent dead-end at `FaceCheckScreen.kt:210`, where a failed capture is
+currently dropped with no user-visible result.
 
 ## Scenario behaviour
 
