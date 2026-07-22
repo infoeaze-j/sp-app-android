@@ -14,6 +14,7 @@ import com.mediplus.faceverify.domain.model.EnrollmentStatus
 import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.usecase.AddServiceUseCase
+import com.mediplus.faceverify.domain.usecase.EndPatientVisitUseCase
 import com.mediplus.faceverify.domain.usecase.EvaluateVerifiedIdentityUseCase
 import com.mediplus.faceverify.domain.usecase.ListEligibleServicesUseCase
 import com.mediplus.faceverify.domain.usecase.Outstanding
@@ -78,6 +79,7 @@ class AddServiceViewModel @Inject constructor(
     private val listServices: ListEligibleServicesUseCase,
     private val addService: AddServiceUseCase,
     private val evaluate: EvaluateVerifiedIdentityUseCase,
+    private val endPatientVisit: EndPatientVisitUseCase,
     private val errorMapper: ErrorMapper,
 ) : ViewModel() {
 
@@ -208,6 +210,16 @@ class AddServiceViewModel @Inject constructor(
                 reduceSubmit(result, errorMapper) { evaluate().outstanding },
             )
         }
+    }
+
+    /**
+     * The operator is done with this patient. Discards the verified composite so the card step they
+     * are about to land on starts clean; guarded on [AddServicePhase.Confirmed] so only a recorded
+     * service — never an abandoned or still-uncertain one — can end the visit.
+     */
+    fun finishVisit() {
+        if (_uiState.value.phase !is AddServicePhase.Confirmed) return
+        endPatientVisit()
     }
 
     /** Resolve an uncertain outcome without risking a duplicate (FR-022). */

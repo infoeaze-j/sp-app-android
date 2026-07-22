@@ -66,7 +66,12 @@ fun AddServiceRoute(
         onConfirmAmount = viewModel::confirmAmount,
         onRetry = viewModel::retry,
         onRecheck = viewModel::recheck,
-        onDone = onDone,
+        // End the visit before navigating: the patient must be discarded while this screen still
+        // owns the decision, not left for whatever comes next to remember to clean up.
+        onDone = {
+            viewModel.finishVisit()
+            onDone()
+        },
     )
     AddServiceScreen(state = state, actions = actions, modifier = modifier)
 }

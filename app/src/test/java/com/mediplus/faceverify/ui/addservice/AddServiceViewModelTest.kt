@@ -12,6 +12,7 @@ import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.ServiceCatalog
 import com.mediplus.faceverify.domain.usecase.AddServiceUseCase
+import com.mediplus.faceverify.domain.usecase.EndPatientVisitUseCase
 import com.mediplus.faceverify.domain.usecase.EvaluateVerifiedIdentityUseCase
 import com.mediplus.faceverify.domain.usecase.ListEligibleServicesUseCase
 import com.mediplus.faceverify.domain.usecase.Outstanding
@@ -21,6 +22,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.assertEquals
@@ -41,12 +43,14 @@ class AddServiceViewModelTest {
     private val listServices = mockk<ListEligibleServicesUseCase>()
     private val addService = mockk<AddServiceUseCase>()
     private val evaluate = mockk<EvaluateVerifiedIdentityUseCase>()
+    private val endVisit = mockk<EndPatientVisitUseCase>(relaxed = true)
 
     private val services = listOf(Service("s1", "Consultation", eligibleForPatient = true, alreadySelected = false))
     private val currencies = listOf(Currency("ZAR", "Rand (R)"), Currency("USD", "US Dollar ($)"))
     private val catalog = ServiceCatalog(services, currencies)
 
-    private fun buildVm() = AddServiceViewModel(listServices, addService, evaluate, DefaultErrorMapper())
+    private fun buildVm() =
+        AddServiceViewModel(listServices, addService, evaluate, endVisit, DefaultErrorMapper())
 
     /**
      * The common arrange steps for tests that only care about reaching a submitted state — not
@@ -296,5 +300,34 @@ class AddServiceViewModelTest {
         vm.confirmAmount()
 
         coVerify { addService("s1", "USD", Money(9_950), any()) }
+    }
+
+    /**
+     * Done means "this patient is finished". The composite has to go before the operator lands back
+     * on the card step, or the next patient's scan begins with the previous one still verified.
+     */
+    @Test
+    fun `finishing a confirmed visit discards the verified patient`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
+        val vm = buildVm()
+        vm.enterAmount()
+
+        vm.finishVisit()
+
+        verify(exactly = 1) { endVisit() }
+    }
+
+    /** Nothing was ever confirmed, so there is no visit to end — the operator is still mid-patient. */
+    @Test
+    fun `finishing before anything is confirmed keeps the patient`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        val vm = buildVm()
+
+        vm.finishVisit()
+
+        verify(exactly = 0) { endVisit() }
     }
 }
