@@ -34,8 +34,7 @@ Pure refactor. `CameraController` becomes `CameraXFaceCamera` behind an interfac
 - Create: `app/src/main/java/com/mediplus/faceverify/core/camera/FaceCamera.kt`
 - Create: `app/src/main/java/com/mediplus/faceverify/core/camera/CameraXFaceCamera.kt`
 - Delete: `app/src/main/java/com/mediplus/faceverify/core/camera/CameraController.kt`
-- Create: `app/src/release/java/com/mediplus/faceverify/core/di/CameraModule.kt`
-- Create: `app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt`
+- Create: `app/src/main/java/com/mediplus/faceverify/core/di/CameraModule.kt`
 - Modify: `app/src/main/java/com/mediplus/faceverify/ui/facecheck/FaceCheckScreen.kt:168-216`
 
 **Interfaces:**
@@ -256,9 +255,13 @@ private fun ImageProxy.toBytes(): ByteArray {
 Remove-Item app\src\main\java\com\mediplus\faceverify\core\camera\CameraController.kt
 ```
 
-- [ ] **Step 4: Add the two variant DI modules**
+- [ ] **Step 4: Add the DI module**
 
-Create `app/src/release/java/com/mediplus/faceverify/core/di/CameraModule.kt`:
+One module in `src/main`, used by both variants. Task 5 replaces it with the
+per-variant pair once there is something to vary — until then a variant split
+would mean two byte-identical files.
+
+Create `app/src/main/java/com/mediplus/faceverify/core/di/CameraModule.kt`:
 
 ```kotlin
 package com.mediplus.faceverify.core.di
@@ -272,33 +275,9 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Release: binds the real CameraX camera factory. Lives in the variant source set (like NfcModule)
- * because debug substitutes a switchable emulated camera.
+ * Binds the real CameraX camera factory for every variant. Task 5 moves this into the release and
+ * debug source sets (like NfcModule) once debug has an emulated camera to substitute.
  */
-@Module
-@InstallIn(SingletonComponent::class)
-abstract class CameraModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindFaceCameraFactory(impl: RealFaceCameraFactory): FaceCameraFactory
-}
-```
-
-Create `app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt` with **identical content for now** — the switching factory arrives in Task 5:
-
-```kotlin
-package com.mediplus.faceverify.core.di
-
-import com.mediplus.faceverify.core.camera.FaceCameraFactory
-import com.mediplus.faceverify.core.camera.RealFaceCameraFactory
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
-import javax.inject.Singleton
-
-/** Debug: binds the real camera factory. Task 5 swaps this for the switching factory. */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class CameraModule {
@@ -423,7 +402,7 @@ Expected: `BUILD SUCCESSFUL`, 154 tests, 0 failures. Nothing should have changed
 - [ ] **Step 9: Commit**
 
 ```powershell
-git add app/src/main/java/com/mediplus/faceverify/core/camera/ app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt app/src/release/java/com/mediplus/faceverify/core/di/CameraModule.kt app/src/main/java/com/mediplus/faceverify/ui/facecheck/FaceCheckScreen.kt
+git add app/src/main/java/com/mediplus/faceverify/core/camera/ app/src/main/java/com/mediplus/faceverify/core/di/CameraModule.kt app/src/main/java/com/mediplus/faceverify/ui/facecheck/FaceCheckScreen.kt
 git commit -m "refactor: put the face camera behind a FaceCamera seam"
 ```
 
@@ -1023,7 +1002,9 @@ git commit -m "feat(dev): add FakeFaceCamera"
 
 **Files:**
 - Create: `app/src/debug/java/com/mediplus/faceverify/dev/camera/SwitchingFaceCameraFactory.kt`
-- Modify: `app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt`
+- Delete: `app/src/main/java/com/mediplus/faceverify/core/di/CameraModule.kt`
+- Create: `app/src/release/java/com/mediplus/faceverify/core/di/CameraModule.kt`
+- Create: `app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt`
 
 **Interfaces:**
 - Consumes: `FaceCameraFactory`, `RealFaceCameraFactory` (Task 1); `FakeFaceCamera` (Task 4); `DevSettingsStore` (Task 3).
@@ -1063,9 +1044,42 @@ class SwitchingFaceCameraFactory @Inject constructor(
 
 `Provider<FakeFaceCamera>` rather than a direct injection: `create()` must hand back a fresh instance per screen entry, matching what `RealFaceCameraFactory` does.
 
-- [ ] **Step 2: Point the debug module at it**
+- [ ] **Step 2: Split the DI module per variant**
 
-Replace the body of `app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt`:
+Delete the single shared module — the two variants now bind different factories:
+
+```powershell
+Remove-Item app\src\main\java\com\mediplus\faceverify\core\di\CameraModule.kt
+```
+
+Create `app/src/release/java/com/mediplus/faceverify/core/di/CameraModule.kt`:
+
+```kotlin
+package com.mediplus.faceverify.core.di
+
+import com.mediplus.faceverify.core.camera.FaceCameraFactory
+import com.mediplus.faceverify.core.camera.RealFaceCameraFactory
+import dagger.Binds
+import dagger.Module
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+/**
+ * Release: binds the real CameraX camera factory. Lives in the variant source set (like NfcModule)
+ * because debug substitutes a switchable emulated camera.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class CameraModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindFaceCameraFactory(impl: RealFaceCameraFactory): FaceCameraFactory
+}
+```
+
+Create `app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt`:
 
 ```kotlin
 package com.mediplus.faceverify.core.di
@@ -1109,7 +1123,7 @@ Expected: no match (`False` or empty). A match means a `dev/` class leaked into 
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add app/src/debug/java/com/mediplus/faceverify/dev/camera/SwitchingFaceCameraFactory.kt app/src/debug/java/com/mediplus/faceverify/core/di/CameraModule.kt
+git add -A app/src/debug/java/com/mediplus/faceverify/dev/camera/ app/src/debug/java/com/mediplus/faceverify/core/di/ app/src/release/java/com/mediplus/faceverify/core/di/ app/src/main/java/com/mediplus/faceverify/core/di/
 git commit -m "feat(dev): route the face camera through the switching factory"
 ```
 
