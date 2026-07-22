@@ -6,7 +6,7 @@ import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.session.SessionManager
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.domain.model.Enrollment
-import com.mediplus.faceverify.domain.model.Service
+import com.mediplus.faceverify.domain.model.ServiceCatalog
 import javax.inject.Inject
 
 /** Lists services eligible for the currently-resolved patient (FR-019, FR-023). */
@@ -14,7 +14,7 @@ class ListEligibleServicesUseCase @Inject constructor(
     private val enrollmentRepository: EnrollmentRepository,
     private val sessionManager: SessionManager,
 ) {
-    suspend operator fun invoke(): AppResult<List<Service>> {
+    suspend operator fun invoke(): AppResult<ServiceCatalog> {
         val memberNumber = sessionManager.verifiedIdentity.value?.memberNumber
             ?: return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
         return enrollmentRepository.listServices(memberNumber)

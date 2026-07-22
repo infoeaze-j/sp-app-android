@@ -1,5 +1,6 @@
 package com.mediplus.faceverify.dev
 
+import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.FaceDecision
 import com.mediplus.faceverify.domain.model.FaceLockoutState
 import com.mediplus.faceverify.domain.model.LivenessResult
@@ -61,6 +62,11 @@ object FakeData {
         Service("svc-blood", "Blood test", eligibleForPatient = true, alreadySelected = false),
         Service("svc-xray", "X-ray", eligibleForPatient = true, alreadySelected = false),
         Service("svc-vaccine", "Vaccination", eligibleForPatient = true, alreadySelected = false),
+    )
+
+    val currencies: List<Currency> = listOf(
+        Currency("ZAR", "Rand (R)"),
+        Currency("USD", "US Dollar ($)"),
     )
 
     val faceDecisionPass: FaceDecision = FaceDecision(

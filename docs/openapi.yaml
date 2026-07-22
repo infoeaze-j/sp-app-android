@@ -421,6 +421,28 @@ components:
           items:
             $ref: '#/components/schemas/Service'
           default: []
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Currency'
+          default: []
+          description: >
+            Currencies the back office accepts for an enrollment. An empty list
+            halts the add-service step client-side with an explanatory message —
+            no enrollment is ever submitted without a currency.
+
+    Currency:
+      type: object
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          description: Transmitted verbatim as `currency` on EnrollRequest.
+          example: ZAR
+        label:
+          type: string
+          description: Display only. Never parsed or transmitted by the app.
+          example: Rand (R)
 
     Service:
       type: object

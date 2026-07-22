@@ -12,6 +12,7 @@ import com.mediplus.faceverify.dev.ServicesScenario
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
 import com.mediplus.faceverify.domain.model.Service
+import com.mediplus.faceverify.domain.model.ServiceCatalog
 import kotlinx.coroutines.delay
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -33,12 +34,12 @@ class FakeEnrollmentRepository @Inject constructor(
 
     private val landed = ConcurrentHashMap<String, Enrollment>()
 
-    override suspend fun listServices(memberNumber: String): AppResult<List<Service>> {
+    override suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog> {
         val settings = store.current()
         delay(settings.latencyMillis)
         return when (settings.services) {
-            ServicesScenario.SUCCESS -> AppResult.Success(FakeData.services)
-            ServicesScenario.EMPTY -> AppResult.Success(emptyList())
+            ServicesScenario.SUCCESS -> AppResult.Success(ServiceCatalog(FakeData.services, FakeData.currencies))
+            ServicesScenario.EMPTY -> AppResult.Success(ServiceCatalog(emptyList(), FakeData.currencies))
             ServicesScenario.PATIENT_NOT_FOUND ->
                 AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
             ServicesScenario.SERVER_ERROR ->

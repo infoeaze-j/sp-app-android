@@ -15,7 +15,7 @@ import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.FaceDecision
 import com.mediplus.faceverify.domain.model.MemberNumber
 import com.mediplus.faceverify.domain.model.MemberVerification
-import com.mediplus.faceverify.domain.model.Service
+import com.mediplus.faceverify.domain.model.ServiceCatalog
 import com.mediplus.faceverify.domain.model.Session
 import com.mediplus.faceverify.domain.model.SessionState
 import kotlinx.coroutines.flow.StateFlow
@@ -70,7 +70,7 @@ class SwitchingEnrollmentRepository @Inject constructor(
     private val fake: FakeEnrollmentRepository,
     private val store: DevSettingsStore,
 ) : EnrollmentRepository {
-    override suspend fun listServices(memberNumber: String): AppResult<List<Service>> =
+    override suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog> =
         pick().listServices(memberNumber)
 
     override suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment> =

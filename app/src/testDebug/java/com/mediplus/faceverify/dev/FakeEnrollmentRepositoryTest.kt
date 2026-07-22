@@ -18,7 +18,7 @@ class FakeEnrollmentRepositoryTest {
 
         val result = FakeEnrollmentRepository(store).listServices("X123")
 
-        assertEquals(FakeData.services, (result as AppResult.Success).data)
+        assertEquals(FakeData.services, (result as AppResult.Success).data.services)
     }
 
     @Test

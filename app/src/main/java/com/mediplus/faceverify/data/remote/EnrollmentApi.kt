@@ -31,7 +31,13 @@ interface EnrollmentApi {
 }
 
 @Serializable
-data class ServicesResponse(val services: List<ServiceDto> = emptyList())
+data class ServicesResponse(
+    val services: List<ServiceDto> = emptyList(),
+    val currencies: List<CurrencyDto> = emptyList(),
+)
+
+@Serializable
+data class CurrencyDto(val value: String, val label: String)
 
 @Serializable
 data class ServiceDto(

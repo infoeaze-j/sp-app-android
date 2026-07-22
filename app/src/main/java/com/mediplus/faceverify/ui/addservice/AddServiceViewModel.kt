@@ -65,7 +65,7 @@ class AddServiceViewModel @Inject constructor(
         _uiState.value = AddServiceUiState(AddServicePhase.LoadingServices)
         viewModelScope.launch {
             _uiState.value = when (val result = listServices()) {
-                is AppResult.Success -> AddServiceUiState(AddServicePhase.Ready(result.data))
+                is AppResult.Success -> AddServiceUiState(AddServicePhase.Ready(result.data.services))
                 else -> AddServiceUiState(AddServicePhase.Failed(map(result), canRetry = true))
             }
         }

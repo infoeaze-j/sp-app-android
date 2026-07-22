@@ -4,9 +4,11 @@ import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.DefaultErrorMapper
+import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
 import com.mediplus.faceverify.domain.model.Service
+import com.mediplus.faceverify.domain.model.ServiceCatalog
 import com.mediplus.faceverify.domain.usecase.AddServiceUseCase
 import com.mediplus.faceverify.domain.usecase.EvaluateVerifiedIdentityUseCase
 import com.mediplus.faceverify.domain.usecase.ListEligibleServicesUseCase
@@ -38,6 +40,8 @@ class AddServiceViewModelTest {
     private val evaluate = mockk<EvaluateVerifiedIdentityUseCase>()
 
     private val services = listOf(Service("s1", "Consultation", eligibleForPatient = true, alreadySelected = false))
+    private val currencies = listOf(Currency("ZAR", "Rand (R)"), Currency("USD", "US Dollar ($)"))
+    private val catalog = ServiceCatalog(services, currencies)
 
     private fun buildVm() = AddServiceViewModel(listServices, addService, evaluate, DefaultErrorMapper())
 
@@ -53,7 +57,7 @@ class AddServiceViewModelTest {
     @Test
     fun `verified identity loads the service list`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
-        coEvery { listServices() } returns AppResult.Success(services)
+        coEvery { listServices() } returns AppResult.Success(catalog)
 
         val vm = buildVm()
 
@@ -76,7 +80,7 @@ class AddServiceViewModelTest {
     @Test
     fun `a confirmed submission reaches the confirmed state`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
-        coEvery { listServices() } returns AppResult.Success(services)
+        coEvery { listServices() } returns AppResult.Success(catalog)
         coEvery { addService(any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
 
@@ -88,7 +92,7 @@ class AddServiceViewModelTest {
     @Test
     fun `a duplicate is a non-retryable failure`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
-        coEvery { listServices() } returns AppResult.Success(services)
+        coEvery { listServices() } returns AppResult.Success(catalog)
         coEvery { addService(any(), any()) } returns
             AppResult.BusinessRejection(AppError.Business(BusinessCode.DUPLICATE_SERVICE))
         val vm = buildVm()
@@ -103,7 +107,7 @@ class AddServiceViewModelTest {
     @Test
     fun `a timeout is uncertain, never confirmed`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
-        coEvery { listServices() } returns AppResult.Success(services)
+        coEvery { listServices() } returns AppResult.Success(catalog)
         coEvery { addService(any(), any()) } returns AppResult.Timeout
         val vm = buildVm()
 

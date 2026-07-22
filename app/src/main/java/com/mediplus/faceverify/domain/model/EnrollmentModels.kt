@@ -11,6 +11,21 @@ data class Service(
     val alreadySelected: Boolean,
 )
 
+/**
+ * A currency the back office will accept for an enrollment. Like [Service], the app enumerates what
+ * the server reports and invents none. [value] is what goes on the wire; [label] is display-only.
+ */
+data class Currency(val value: String, val label: String)
+
+/**
+ * What one services call returns: what can be added, and in which currencies. The two travel
+ * together so they can never drift apart in the UI state.
+ */
+data class ServiceCatalog(
+    val services: List<Service>,
+    val currencies: List<Currency>,
+)
+
 /** Outcome of an enrollment submission (FR-020, FR-022). */
 sealed interface EnrollmentStatus {
     /** Confirmed by the back office — the only success signal (FR-020). */

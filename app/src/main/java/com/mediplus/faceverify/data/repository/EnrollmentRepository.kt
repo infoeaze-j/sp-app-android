@@ -6,13 +6,16 @@ import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.TransientKind
+import com.mediplus.faceverify.data.remote.CurrencyDto
 import com.mediplus.faceverify.data.remote.EnrollRequest
 import com.mediplus.faceverify.data.remote.EnrollmentApi
 import com.mediplus.faceverify.data.remote.EnrollmentResponse
 import com.mediplus.faceverify.data.remote.ServiceDto
+import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
 import com.mediplus.faceverify.domain.model.Service
+import com.mediplus.faceverify.domain.model.ServiceCatalog
 import kotlinx.coroutines.CoroutineDispatcher
 import java.net.HttpURLConnection
 import java.time.Instant
@@ -24,7 +27,7 @@ import javax.inject.Inject
  * on explicit confirmation; timeouts surface as [AppResult.Timeout] (uncertain, never success).
  */
 interface EnrollmentRepository {
-    suspend fun listServices(memberNumber: String): AppResult<List<Service>>
+    suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog>
     suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment>
     suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?>
 }
@@ -34,11 +37,16 @@ class EnrollmentRepositoryImpl @Inject constructor(
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : EnrollmentRepository {
 
-    override suspend fun listServices(memberNumber: String): AppResult<List<Service>> =
+    override suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog> =
         apiCall(dispatcher, { api.listServices(memberNumber) }) { response ->
             val body = response.body()
             when {
-                response.isSuccessful && body != null -> AppResult.Success(body.services.map(ServiceDto::toDomain))
+                response.isSuccessful && body != null -> AppResult.Success(
+                    ServiceCatalog(
+                        services = body.services.map(ServiceDto::toDomain),
+                        currencies = body.currencies.map(CurrencyDto::toDomain),
+                    ),
+                )
                 response.code() == HttpURLConnection.HTTP_NOT_FOUND ->
                     AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
                 response.code() in SERVER_ERROR_RANGE ->
@@ -89,6 +97,8 @@ class EnrollmentRepositoryImpl @Inject constructor(
 }
 
 private fun ServiceDto.toDomain() = Service(serviceId, description, eligibleForPatient, alreadySelected)
+
+private fun CurrencyDto.toDomain() = Currency(value, label)
 
 private fun EnrollmentResponse.isConfirmed(): Boolean = status.equals("CONFIRMED", ignoreCase = true)
 

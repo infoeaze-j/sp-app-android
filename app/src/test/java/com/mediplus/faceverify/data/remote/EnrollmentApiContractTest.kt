@@ -50,7 +50,25 @@ class EnrollmentApiContractTest {
     fun tearDown() = server.shutdown()
 
     @Test
-    fun `lists eligible services`() = runTest {
+    fun `lists eligible services with their currencies`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"services":[{"serviceId":"s1","description":"Consultation","eligibleForPatient":true,"alreadySelected":false}],"currencies":[{"value":"ZAR","label":"Rand (R)"}]}""",
+            ),
+        )
+
+        val result = repository.listServices("P1")
+
+        val catalog = (result as AppResult.Success).data
+        assertEquals(1, catalog.services.size)
+        assertEquals("Consultation", catalog.services.first().description)
+        assertEquals(1, catalog.currencies.size)
+        assertEquals("ZAR", catalog.currencies.first().value)
+        assertEquals("Rand (R)", catalog.currencies.first().label)
+    }
+
+    @Test
+    fun `a services response with no currencies key parses to an empty list`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
                 """{"services":[{"serviceId":"s1","description":"Consultation","eligibleForPatient":true,"alreadySelected":false}]}""",
@@ -59,9 +77,7 @@ class EnrollmentApiContractTest {
 
         val result = repository.listServices("P1")
 
-        val services = (result as AppResult.Success).data
-        assertEquals(1, services.size)
-        assertEquals("Consultation", services.first().description)
+        assertTrue((result as AppResult.Success).data.currencies.isEmpty())
     }
 
     @Test
