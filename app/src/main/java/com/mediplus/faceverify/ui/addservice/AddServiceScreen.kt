@@ -149,7 +149,7 @@ private fun ServiceRow(service: Service, onSelect: (String) -> Unit) {
                 onClick = { onSelect(service.serviceId) },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth().padding(top = spacing.sm).heightIn(min = spacing.minTouchTarget),
-            ) { Text(stringResource(R.string.action_confirm)) }
+            ) { Text(stringResource(R.string.addservice_enter_amount)) }
         }
     }
 }
@@ -215,6 +215,12 @@ private fun AmountDialog(
                     onValueChange = onAmountChange,
                     label = { Text(stringResource(R.string.addservice_amount_label)) },
                     singleLine = true,
+                    isError = phase.amountText.isNotEmpty() && Money.parse(phase.amountText) == null,
+                    supportingText = {
+                        if (phase.amountText.isNotEmpty() && Money.parse(phase.amountText) == null) {
+                            Text(stringResource(R.string.addservice_amount_invalid))
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
                 )

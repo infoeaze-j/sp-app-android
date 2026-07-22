@@ -133,7 +133,9 @@ class AddServiceViewModel @Inject constructor(
 
     fun amountChanged(text: String) {
         val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
-        _uiState.value = AddServiceUiState(phase.copy(amountText = text))
+        // The Decimal IME renders the device locale's separator, which is a comma in en-ZA and much
+        // of Europe. Normalize here so the parser can stay strict and locale-independent.
+        _uiState.value = AddServiceUiState(phase.copy(amountText = text.replace(',', '.')))
     }
 
     fun currencySelected(currency: Currency) {

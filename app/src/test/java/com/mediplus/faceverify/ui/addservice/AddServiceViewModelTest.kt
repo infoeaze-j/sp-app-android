@@ -244,4 +244,28 @@ class AddServiceViewModelTest {
         coVerify(exactly = 2) { addService("s1", "ZAR", Money(15_000), capture(keys)) }
         assertEquals(keys[0], keys[1])
     }
+
+    /**
+     * Covers two review findings at once: (Important 3) the currency actually submitted is the one
+     * the operator picked, not `currencies.first()`; and (Important 2) a comma decimal separator —
+     * what the Decimal IME renders in en-ZA and much of Europe — is normalized to a dot both in what
+     * the field displays and in what reaches the wire.
+     */
+    @Test
+    fun `the chosen currency and a comma amount are what gets submitted`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
+        val vm = buildVm()
+        vm.selectService("s1")
+        vm.currencySelected(Currency("USD", "US Dollar ($)"))
+
+        vm.amountChanged("99,50")
+        val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
+        assertEquals("99.50", phase.amountText)
+
+        vm.confirmAmount()
+
+        coVerify { addService("s1", "USD", Money(9_950), any()) }
+    }
 }

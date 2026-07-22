@@ -96,7 +96,9 @@
     <string name="addservice_unavailable_title">Can\'t add services</string>
     <string name="addservice_unavailable_no_currency">No currency is set up for this site, so a service can\'t be added right now. Please contact the back office.</string>
     <string name="addservice_amount_label">Amount</string>
+    <string name="addservice_amount_invalid">Enter an amount greater than zero, with at most two decimals.</string>
     <string name="addservice_currency_label">Currency</string>
+    <string name="addservice_enter_amount">Enter amount</string>
     <string name="addservice_start_over">Start over</string>
 
     <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->
