@@ -8,7 +8,6 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,14 +42,15 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.faceverify.R
-import com.mediplus.faceverify.core.camera.CameraController
-import com.mediplus.faceverify.core.camera.FaceFramingAnalyzer
+import com.mediplus.faceverify.core.camera.FaceCamera
+import com.mediplus.faceverify.core.camera.FaceCameraEntryPoint
 import com.mediplus.faceverify.core.camera.FramingGuidance
 import com.mediplus.faceverify.core.ui.components.ErrorState
 import com.mediplus.faceverify.core.ui.components.LoadingState
 import com.mediplus.faceverify.core.ui.components.PermissionDeniedState
 import com.mediplus.faceverify.core.ui.theme.LocalSpacing
-import java.util.concurrent.Executors
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.launch
 
 /**
  * US3 face-check destination. Gates on patient consent, then captures a live frame with on-device
@@ -175,13 +177,27 @@ private fun CameraCapture(
     val spacing = LocalSpacing.current
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val controller = remember { CameraController(context) }
-    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
-    val previewView = remember { PreviewView(context) }
+    val scope = rememberCoroutineScope()
 
-    DisposableEffect(Unit) {
-        controller.bind(lifecycleOwner, previewView, FaceFramingAnalyzer(onGuidance), analysisExecutor)
-        onDispose { analysisExecutor.shutdown() }
+    val factory = remember(context) {
+        EntryPointAccessors
+            .fromApplication(context.applicationContext, FaceCameraEntryPoint::class.java)
+            .faceCameraFactory()
+    }
+    val camera = produceState<FaceCamera?>(initialValue = null, factory) {
+        value = factory.create()
+    }.value
+
+    if (camera == null) {
+        LoadingState(modifier = modifier)
+        return
+    }
+
+    val previewView = remember(camera) { camera.createPreviewView(context) }
+
+    DisposableEffect(camera, previewView) {
+        camera.bind(lifecycleOwner, previewView, onGuidance)
+        onDispose { camera.release() }
     }
 
     Column(modifier = modifier.fillMaxSize().padding(spacing.md)) {
@@ -204,11 +220,7 @@ private fun CameraCapture(
                 .semantics { liveRegion = LiveRegionMode.Polite },
         )
         Button(
-            onClick = {
-                controller.capture(ContextCompat.getMainExecutor(context)) { frame ->
-                    if (frame != null) onCapture(frame)
-                }
-            },
+            onClick = { scope.launch { camera.capture()?.let(onCapture) } },
             enabled = phase.canCapture,
             modifier = Modifier.fillMaxWidth().heightIn(min = spacing.minTouchTarget),
         ) { Text(stringResource(R.string.face_capture_button)) }
