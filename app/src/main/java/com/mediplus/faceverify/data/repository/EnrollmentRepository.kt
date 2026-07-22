@@ -74,7 +74,15 @@ class EnrollmentRepositoryImpl @Inject constructor(
             val body = response.body()
             when {
                 response.isSuccessful && body != null && body.isConfirmed() ->
-                    AppResult.Success(body.toEnrollment(memberNumber, serviceId, idempotencyKey, currency, amount))
+                    AppResult.Success(
+                        body.toEnrollment(
+                            memberNumber = memberNumber,
+                            serviceId = serviceId,
+                            idempotencyKey = idempotencyKey,
+                            currency = currency,
+                            amount = amount,
+                        ),
+                    )
                 response.code() == HttpURLConnection.HTTP_CONFLICT ->
                     AppResult.BusinessRejection(AppError.Business(BusinessCode.DUPLICATE_SERVICE, body?.reason))
                 response.code() == UNPROCESSABLE_ENTITY ->

@@ -8,6 +8,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -92,7 +94,10 @@ class EnrollmentApiContractTest {
         val result = repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
 
         assertTrue(result is AppResult.Success)
-        assertEquals("E1", (result as AppResult.Success).data.enrollmentId)
+        val data = (result as AppResult.Success).data
+        assertEquals("E1", data.enrollmentId)
+        assertEquals("ZAR", data.currency)
+        assertEquals(Money(15_000), data.amount)
     }
 
     @Test
@@ -106,8 +111,9 @@ class EnrollmentApiContractTest {
         repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
 
         val body = server.takeRequest().body.readUtf8()
-        assertTrue("currency missing from $body", body.contains(""""currency":"ZAR""""))
-        assertTrue("amountCents missing from $body", body.contains(""""amountCents":15000"""))
+        val json = Json.parseToJsonElement(body).jsonObject
+        assertEquals("ZAR", json.getValue("currency").jsonPrimitive.content)
+        assertEquals(15_000L, json.getValue("amountCents").jsonPrimitive.content.toLong())
     }
 
     @Test
@@ -145,5 +151,22 @@ class EnrollmentApiContractTest {
 
         assertTrue(result is AppResult.Success)
         assertNull((result as AppResult.Success).data)
+    }
+
+    @Test
+    fun `recheck finding a confirmed enrollment carries no currency or amount`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"enrollmentId":"E1","status":"CONFIRMED","timestamp":"2026-07-20T12:40:00Z"}""",
+            ),
+        )
+
+        val result = repository.recheck("P1", "key1")
+
+        assertTrue(result is AppResult.Success)
+        val enrollment = (result as AppResult.Success).data
+        assertTrue(enrollment != null)
+        assertNull(enrollment?.currency)
+        assertNull(enrollment?.amount)
     }
 }

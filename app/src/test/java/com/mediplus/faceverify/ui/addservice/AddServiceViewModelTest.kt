@@ -240,6 +240,8 @@ class AddServiceViewModelTest {
 
         vm.retry()
 
-        coVerify(exactly = 2) { addService("s1", "ZAR", Money(15_000), any()) }
+        val keys = mutableListOf<String>()
+        coVerify(exactly = 2) { addService("s1", "ZAR", Money(15_000), capture(keys)) }
+        assertEquals(keys[0], keys[1])
     }
 }
