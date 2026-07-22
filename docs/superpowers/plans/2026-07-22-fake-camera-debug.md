@@ -1144,14 +1144,17 @@ This is the deliverable's real acceptance check — the unit tests cover the fak
 
 ## Notes for the implementer
 
-- **One deliberate deviation from the spec.** The spec lists new strings
-  `face_capture_failed_title` / `_body` for the capture-failure message. This plan
-  drops them: `onCaptureFailed()` maps through the existing `ErrorMapper` as
-  `AppError.Transient(TransientKind.UNKNOWN)`, which already yields
+- **Capture-failure messaging routes through `ErrorMapper`.** `onCaptureFailed()`
+  maps `AppError.Transient(TransientKind.UNKNOWN)`, which already yields
   `err_generic_title` / `err_generic_body` with a Retry action. No `ViewModel` in
   this codebase imports `R`, and routing the message through `ErrorMapper` keeps
   that invariant while matching how every other failure on this screen is
   produced. Only the two `face_camera_unavailable_*` strings are new.
+
+  *(Historical note: this began as a deviation — the spec originally called for
+  `face_capture_failed_title` / `_body`. The spec was amended to match the shipped
+  code in commit `856e872`, so the two documents now agree and there is no
+  outstanding deviation.)*
 - **Where the seam differs from NFC, and why.** `SwitchingMemberCardReader` is a decorator that re-reads the toggle on every call, because all its methods are `suspend`. `FaceCamera` has synchronous methods, so the equivalent is a factory that decides once. Do not try to make it a decorator.
 - **`FaceCheckViewModel`'s constructor must not change.** If a task tempts you to inject the camera into it, the design deliberately avoided that — the screen owns the camera's lifecycle, and an unchanged constructor is why no existing test needed editing.
 - **Test counts** in the expected output assume the suite is at 154 before Task 1. If your baseline differs, the deltas are +2 (Task 2), +1 (Task 3), +5 (Task 4).

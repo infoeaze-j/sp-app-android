@@ -36,11 +36,19 @@ class CameraXFaceCamera @Inject constructor(
     private var imageCapture: ImageCapture? = null
     private var analysisExecutor: ExecutorService? = null
 
-    // Guards the async provider-resolution listener in bind() against a release() that runs
-    // before the listener fires (e.g. the screen is torn down mid-resolve). Set true by
-    // release(), cleared at the start of bind(); the listener checks it right before binding so
-    // a stale bind can never land after (or race) a release. @Volatile because release() may run
-    // on a different thread than the main-executor listener that reads it.
+    // Guards the async provider-resolution listener in bind() against a release() that runs before
+    // the listener fires (e.g. the screen is torn down mid-resolve). Set true by release(), cleared
+    // at the start of bind(); the listener checks it first, so a release() that lands between the
+    // two never leaves a binding nothing will tear down.
+    //
+    // This is a single flag, not a per-bind generation, so it does NOT make a stale listener safe
+    // across bind() -> release() -> bind() while the first future is still pending: the second
+    // bind() clears the flag and the first listener would proceed. Callers bind once per instance
+    // (the screen takes a fresh camera from the factory on each entry), so that sequence does not
+    // arise; add a generation counter if that ever changes.
+    //
+    // @Volatile for visibility only. Both callers run on the main thread today, and CameraX's own
+    // unbind() asserts that, so this closes an ordering hazard rather than a threading one.
     @Volatile
     private var released = true
 
