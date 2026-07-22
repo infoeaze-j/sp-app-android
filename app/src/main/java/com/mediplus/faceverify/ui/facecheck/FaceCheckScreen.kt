@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -42,6 +43,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.faceverify.R
+import com.mediplus.faceverify.core.camera.CameraAvailability
 import com.mediplus.faceverify.core.camera.FaceCamera
 import com.mediplus.faceverify.core.camera.FaceCameraEntryPoint
 import com.mediplus.faceverify.core.camera.FramingGuidance
@@ -75,6 +77,8 @@ fun FaceCheckRoute(
         onGuidance = viewModel::onGuidance,
         onCapture = viewModel::onFrameCaptured,
         onRetry = viewModel::retry,
+        onCaptureFailed = viewModel::onCaptureFailed,
+        onCameraUnavailable = viewModel::onCameraUnavailable,
         modifier = modifier,
     )
 }
@@ -86,6 +90,8 @@ fun FaceCheckScreen(
     onGuidance: (FramingGuidance) -> Unit,
     onCapture: (com.mediplus.faceverify.core.camera.TransientFrame) -> Unit,
     onRetry: () -> Unit,
+    onCaptureFailed: () -> Unit,
+    onCameraUnavailable: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (val phase = state.phase) {
@@ -100,7 +106,12 @@ fun FaceCheckScreen(
             R.string.face_discrepancy_body,
             modifier,
         )
-        is FacePhase.Capturing -> CaptureContent(phase, onGuidance, onCapture, modifier)
+        FacePhase.CameraUnavailableHalt -> TerminalMessage(
+            R.string.face_camera_unavailable_title,
+            R.string.face_camera_unavailable_body,
+            modifier,
+        )
+        is FacePhase.Capturing -> CaptureContent(phase, onGuidance, onCapture, onCaptureFailed, onCameraUnavailable, modifier)
         FacePhase.Submitting -> LoadingState(messageRes = R.string.face_submitting, modifier = modifier)
         FacePhase.Verified -> LoadingState(modifier = modifier)
         is FacePhase.Failed -> ErrorState(
@@ -142,6 +153,8 @@ private fun CaptureContent(
     phase: FacePhase.Capturing,
     onGuidance: (FramingGuidance) -> Unit,
     onCapture: (com.mediplus.faceverify.core.camera.TransientFrame) -> Unit,
+    onCaptureFailed: () -> Unit,
+    onCameraUnavailable: () -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -164,7 +177,7 @@ private fun CaptureContent(
         return
     }
 
-    CameraCapture(phase, onGuidance, onCapture, modifier)
+    CameraCapture(phase, onGuidance, onCapture, onCaptureFailed, onCameraUnavailable, modifier)
 }
 
 @Composable
@@ -172,6 +185,8 @@ private fun CameraCapture(
     phase: FacePhase.Capturing,
     onGuidance: (FramingGuidance) -> Unit,
     onCapture: (com.mediplus.faceverify.core.camera.TransientFrame) -> Unit,
+    onCaptureFailed: () -> Unit,
+    onCameraUnavailable: () -> Unit,
     modifier: Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -184,11 +199,24 @@ private fun CameraCapture(
             .fromApplication(context.applicationContext, FaceCameraEntryPoint::class.java)
             .faceCameraFactory()
     }
-    val camera = produceState<FaceCamera?>(initialValue = null, factory) {
-        value = factory.create()
+    val session = produceState<Pair<FaceCamera, CameraAvailability>?>(initialValue = null, factory) {
+        val created = factory.create()
+        value = created to created.isAvailable()
     }.value
 
-    if (camera == null) {
+    if (session == null) {
+        LoadingState(modifier = modifier)
+        return
+    }
+
+    val (camera, availability) = session
+
+    DisposableEffect(camera) {
+        onDispose { camera.release() }
+    }
+
+    if (availability == CameraAvailability.NO_CAMERA) {
+        LaunchedEffect(camera) { onCameraUnavailable() }
         LoadingState(modifier = modifier)
         return
     }
@@ -197,7 +225,7 @@ private fun CameraCapture(
 
     DisposableEffect(camera, previewView) {
         camera.bind(lifecycleOwner, previewView, onGuidance)
-        onDispose { camera.release() }
+        onDispose { }
     }
 
     Column(modifier = modifier.fillMaxSize().padding(spacing.md)) {
@@ -220,7 +248,12 @@ private fun CameraCapture(
                 .semantics { liveRegion = LiveRegionMode.Polite },
         )
         Button(
-            onClick = { scope.launch { camera.capture()?.let(onCapture) } },
+            onClick = {
+                scope.launch {
+                    val frame = camera.capture()
+                    if (frame != null) onCapture(frame) else onCaptureFailed()
+                }
+            },
             enabled = phase.canCapture,
             modifier = Modifier.fillMaxWidth().heightIn(min = spacing.minTouchTarget),
         ) { Text(stringResource(R.string.face_capture_button)) }

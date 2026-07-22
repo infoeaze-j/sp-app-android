@@ -99,4 +99,19 @@ class FaceCheckViewModelTest {
         val phase = vm.uiState.value.phase as FacePhase.Failed
         assertTrue(phase.canRetry)
     }
+
+    @Test
+    fun `an unavailable camera halts the step`() {
+        vm.onConsent(true)
+        vm.onCameraUnavailable()
+        assertEquals(FacePhase.CameraUnavailableHalt, vm.uiState.value.phase)
+    }
+
+    @Test
+    fun `a failed capture is surfaced and retryable`() {
+        vm.onConsent(true)
+        vm.onCaptureFailed()
+        val phase = vm.uiState.value.phase as FacePhase.Failed
+        assertTrue(phase.canRetry)
+    }
 }

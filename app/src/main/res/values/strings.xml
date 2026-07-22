@@ -75,6 +75,8 @@
     <string name="face_discrepancy_body">The person does not match the document. The process has stopped.</string>
     <string name="camera_permission_rationale">The camera is needed to take a live photo for the face check.</string>
     <string name="face_camera_preview_desc">Live camera preview for the face check</string>
+    <string name="face_camera_unavailable_title">No camera found</string>
+    <string name="face_camera_unavailable_body">This device has no usable camera, so the face check cannot be completed.</string>
 
     <!-- ===== Add a service (US4) ===== -->
     <string name="addservice_title">Add a service</string>

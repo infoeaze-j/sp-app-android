@@ -7,6 +7,7 @@ import com.mediplus.faceverify.core.camera.TransientFrame
 import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.ErrorMapper
+import com.mediplus.faceverify.core.result.TransientKind
 import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.domain.model.ConsentStatus
 import com.mediplus.faceverify.domain.model.FaceLockoutState
@@ -29,6 +30,7 @@ sealed interface FacePhase {
     data object Submitting : FacePhase
     data class Failed(val message: UiMessage, val lockout: FaceLockoutState?, val canRetry: Boolean) : FacePhase
     data object DiscrepancyHalt : FacePhase
+    data object CameraUnavailableHalt : FacePhase
     data object Verified : FacePhase
 }
 
@@ -70,6 +72,25 @@ class FaceCheckViewModel @Inject constructor(
                 FacePhase.Capturing(guidance, canCapture = guidance == FramingGuidance.GOOD),
             )
         }
+    }
+
+    /** No usable camera on this device. Terminal: unlike the card scan, there is no fallback. */
+    fun onCameraUnavailable() {
+        _uiState.value = FaceCheckUiState(FacePhase.CameraUnavailableHalt)
+    }
+
+    /**
+     * The capture itself failed before anything was submitted. Mapped as a transient device failure
+     * so the operator sees the generic retryable message rather than a dead button.
+     */
+    fun onCaptureFailed() {
+        _uiState.value = FaceCheckUiState(
+            FacePhase.Failed(
+                message = errorMapper.toUserMessage(AppError.Transient(TransientKind.UNKNOWN)),
+                lockout = lockout,
+                canRetry = true,
+            ),
+        )
     }
 
     /** A frame was captured; submit it for the authoritative decision (FR-013). */
