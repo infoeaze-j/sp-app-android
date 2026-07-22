@@ -8,18 +8,31 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,6 +41,8 @@ import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.core.ui.components.ErrorState
 import com.mediplus.faceverify.core.ui.components.LoadingState
 import com.mediplus.faceverify.core.ui.theme.LocalSpacing
+import com.mediplus.faceverify.domain.model.Currency
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.usecase.Outstanding
 
@@ -46,6 +61,10 @@ fun AddServiceRoute(
     AddServiceScreen(
         state = state,
         onSelect = viewModel::selectService,
+        onAmountChange = viewModel::amountChanged,
+        onCurrencyChange = viewModel::currencySelected,
+        onCancelAmount = viewModel::cancelAmount,
+        onConfirmAmount = viewModel::confirmAmount,
         onRetry = viewModel::retry,
         onRecheck = viewModel::recheck,
         onDone = onDone,
@@ -57,6 +76,10 @@ fun AddServiceRoute(
 fun AddServiceScreen(
     state: AddServiceUiState,
     onSelect: (String) -> Unit,
+    onAmountChange: (String) -> Unit,
+    onCurrencyChange: (Currency) -> Unit,
+    onCancelAmount: () -> Unit,
+    onConfirmAmount: () -> Unit,
     onRetry: () -> Unit,
     onRecheck: () -> Unit,
     onDone: () -> Unit,
@@ -65,7 +88,10 @@ fun AddServiceScreen(
     when (val phase = state.phase) {
         AddServicePhase.LoadingServices, AddServicePhase.Submitting -> LoadingState(modifier = modifier)
         is AddServicePhase.Ready -> ServiceList(phase.services, onSelect, modifier)
-        is AddServicePhase.EnteringAmount -> ServiceList(phase.services, onSelect, modifier)
+        is AddServicePhase.EnteringAmount -> {
+            ServiceList(phase.services, onSelect, modifier)
+            AmountDialog(phase, onAmountChange, onCurrencyChange, onCancelAmount, onConfirmAmount)
+        }
         is AddServicePhase.Blocked -> BlockedContent(phase.outstanding, modifier)
         is AddServicePhase.Unavailable -> UnavailableContent(phase.reason, modifier)
         is AddServicePhase.Confirmed -> ConfirmedContent(onDone, modifier)
@@ -126,6 +152,83 @@ private fun ServiceRow(service: Service, onSelect: (String) -> Unit) {
             ) { Text(stringResource(R.string.action_confirm)) }
         }
     }
+}
+
+/**
+ * Amount + currency entry over the service list. Confirm is disabled until the text parses, so an
+ * invalid amount can never be submitted rather than being rejected afterwards.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AmountDialog(
+    phase: AddServicePhase.EnteringAmount,
+    onAmountChange: (String) -> Unit,
+    onCurrencyChange: (Currency) -> Unit,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val spacing = LocalSpacing.current
+    var expanded by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(phase.selected.description) },
+        text = {
+            Column {
+                if (phase.currencies.size == 1) {
+                    // A one-option picker is a decision the operator cannot make; showing it as a
+                    // control would invite a tap that does nothing.
+                    Text(
+                        text = phase.selectedCurrency.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded },
+                    ) {
+                        OutlinedTextField(
+                            value = phase.selectedCurrency.label,
+                            onValueChange = {},
+                            readOnly = true,
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.addservice_currency_label)) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth(),
+                        )
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            phase.currencies.forEach { currency ->
+                                DropdownMenuItem(
+                                    text = { Text(currency.label) },
+                                    onClick = {
+                                        onCurrencyChange(currency)
+                                        expanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = phase.amountText,
+                    onValueChange = onAmountChange,
+                    label = { Text(stringResource(R.string.addservice_amount_label)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = Money.parse(phase.amountText) != null) {
+                Text(stringResource(R.string.action_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Composable
