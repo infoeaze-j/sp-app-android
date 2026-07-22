@@ -45,7 +45,7 @@ fun AddServiceRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     AddServiceScreen(
         state = state,
-        onSelect = viewModel::submit,
+        onSelect = viewModel::selectService,
         onRetry = viewModel::retry,
         onRecheck = viewModel::recheck,
         onDone = onDone,
@@ -65,6 +65,7 @@ fun AddServiceScreen(
     when (val phase = state.phase) {
         AddServicePhase.LoadingServices, AddServicePhase.Submitting -> LoadingState(modifier = modifier)
         is AddServicePhase.Ready -> ServiceList(phase.services, onSelect, modifier)
+        is AddServicePhase.EnteringAmount -> ServiceList(phase.services, onSelect, modifier)
         is AddServicePhase.Blocked -> BlockedContent(phase.outstanding, modifier)
         is AddServicePhase.Unavailable -> UnavailableContent(phase.reason, modifier)
         is AddServicePhase.Confirmed -> ConfirmedContent(onDone, modifier)

@@ -8,7 +8,9 @@ import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.ErrorMapper
 import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.core.result.appErrorOrNull
+import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.usecase.AddServiceUseCase
 import com.mediplus.faceverify.domain.usecase.EvaluateVerifiedIdentityUseCase
@@ -30,6 +32,20 @@ sealed interface AddServicePhase {
     data object LoadingServices : AddServicePhase
     data class Blocked(val outstanding: Outstanding) : AddServicePhase
     data class Ready(val services: List<Service>) : AddServicePhase
+
+    /**
+     * Amount and currency entry for [selected], rendered as a dialog over [services].
+     * [selectedCurrency] is non-null: a currency is guaranteed present by the time this phase can
+     * exist, so "no currency at submit time" is unrepresentable rather than defensively handled.
+     */
+    data class EnteringAmount(
+        val services: List<Service>,
+        val currencies: List<Currency>,
+        val selected: Service,
+        val selectedCurrency: Currency,
+        val amountText: String,
+    ) : AddServicePhase
+
     data object Submitting : AddServicePhase
     data class Confirmed(val enrollmentId: String) : AddServicePhase
     data class Failed(val message: UiMessage, val canRetry: Boolean) : AddServicePhase
@@ -60,6 +76,14 @@ class AddServiceViewModel @Inject constructor(
 
     private var pendingServiceId: String? = null
     private var idempotencyKey: String? = null
+    private var pendingAmount: Money? = null
+    private var pendingCurrency: Currency? = null
+
+    /**
+     * Load-scoped configuration, not per-screen state: the Ready UI has no use for it, and the
+     * ViewModel outlives rotation, so this is as durable as holding it in the phase would be.
+     */
+    private var currencies: List<Currency> = emptyList()
 
     init {
         start()
@@ -82,6 +106,7 @@ class AddServiceViewModel @Inject constructor(
                     if (catalog.currencies.isEmpty()) {
                         AddServiceUiState(AddServicePhase.Unavailable(UnavailableReason.NO_CURRENCY))
                     } else {
+                        currencies = catalog.currencies
                         AddServiceUiState(AddServicePhase.Ready(catalog.services))
                     }
                 }
@@ -90,9 +115,47 @@ class AddServiceViewModel @Inject constructor(
         }
     }
 
-    /** Submit an enrollment for [serviceId] with a fresh idempotency key. */
-    fun submit(serviceId: String) {
-        pendingServiceId = serviceId
+    /** Open amount entry for [serviceId]. Nothing is submitted until [confirmAmount]. */
+    fun selectService(serviceId: String) {
+        val ready = _uiState.value.phase as? AddServicePhase.Ready ?: return
+        val service = ready.services.firstOrNull { it.serviceId == serviceId } ?: return
+        val currency = currencies.firstOrNull() ?: return
+        _uiState.value = AddServiceUiState(
+            AddServicePhase.EnteringAmount(
+                services = ready.services,
+                currencies = currencies,
+                selected = service,
+                selectedCurrency = currency,
+                amountText = "",
+            ),
+        )
+    }
+
+    fun amountChanged(text: String) {
+        val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
+        _uiState.value = AddServiceUiState(phase.copy(amountText = text))
+    }
+
+    fun currencySelected(currency: Currency) {
+        val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
+        _uiState.value = AddServiceUiState(phase.copy(selectedCurrency = currency))
+    }
+
+    fun cancelAmount() {
+        val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
+        _uiState.value = AddServiceUiState(AddServicePhase.Ready(phase.services))
+    }
+
+    /**
+     * Submit with a fresh idempotency key — but only once the text parses, so an invalid amount is
+     * unrepresentable at submit time rather than rejected after the fact.
+     */
+    fun confirmAmount() {
+        val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
+        val amount = Money.parse(phase.amountText) ?: return
+        pendingServiceId = phase.selected.serviceId
+        pendingCurrency = phase.selectedCurrency
+        pendingAmount = amount
         idempotencyKey = UUID.randomUUID().toString()
         runSubmit()
     }
