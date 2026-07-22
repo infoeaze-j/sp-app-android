@@ -16,3 +16,9 @@ enum class MemberScenario { SUCCESS, INVALID, PATIENT_NOT_FOUND, SERVER_ERROR }
  * back-office response, so it also covers the two no-hardware states the scan screen can show.
  */
 enum class CardScenario { SUCCESS, UNREADABLE, TIMEOUT, NFC_DISABLED, NO_NFC_HARDWARE }
+
+/**
+ * The emulated camera. Like [CardScenario] and unlike the back-office scenarios, this fakes *device
+ * hardware* rather than a server response, so it also covers the no-hardware state.
+ */
+enum class CameraScenario { SUCCESS, NEVER_GOOD, CAPTURE_ERROR, NO_CAMERA_HARDWARE }

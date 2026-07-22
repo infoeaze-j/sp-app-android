@@ -45,4 +45,15 @@ class DevSettingsViewModelTest {
 
         assertEquals(SessionState.Expired, session.sessionState.value)
     }
+
+    @Test
+    fun `setCamera persists to the store`() = runTest {
+        val store = TestDevSettingsStore()
+        val vm = DevSettingsViewModel(store, InMemorySessionManager())
+
+        vm.setCamera(CameraScenario.NO_CAMERA_HARDWARE)
+        advanceUntilIdle()
+
+        assertEquals(CameraScenario.NO_CAMERA_HARDWARE, store.current().camera)
+    }
 }

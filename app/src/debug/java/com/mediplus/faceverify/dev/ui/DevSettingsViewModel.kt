@@ -6,6 +6,7 @@ import com.mediplus.faceverify.core.session.SessionManager
 import com.mediplus.faceverify.dev.AuthScenario
 import com.mediplus.faceverify.dev.DevSettings
 import com.mediplus.faceverify.dev.CardScenario
+import com.mediplus.faceverify.dev.CameraScenario
 import com.mediplus.faceverify.dev.DevSettingsStore
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
@@ -30,6 +31,7 @@ class DevSettingsViewModel @Inject constructor(
     fun setFakeEnabled(enabled: Boolean) = launchEdit { store.setFakeEnabled(enabled) }
     fun setAuth(scenario: AuthScenario) = launchEdit { store.setAuth(scenario) }
     fun setCard(scenario: CardScenario) = launchEdit { store.setCard(scenario) }
+    fun setCamera(scenario: CameraScenario) = launchEdit { store.setCamera(scenario) }
     fun setMember(scenario: MemberScenario) = launchEdit { store.setMember(scenario) }
     fun setFace(scenario: FaceScenario) = launchEdit { store.setFace(scenario) }
     fun setServices(scenario: ServicesScenario) = launchEdit { store.setServices(scenario) }

@@ -10,6 +10,7 @@ data class DevSettings(
     val fakeEnabled: Boolean = true,
     val auth: AuthScenario = AuthScenario.SUCCESS,
     val card: CardScenario = CardScenario.SUCCESS,
+    val camera: CameraScenario = CameraScenario.SUCCESS,
     val member: MemberScenario = MemberScenario.SUCCESS,
     val face: FaceScenario = FaceScenario.PASS,
     val services: ServicesScenario = ServicesScenario.SUCCESS,
@@ -23,6 +24,7 @@ object DevPrefKeys {
     val FAKE_ENABLED = booleanPreferencesKey("dev_fake_enabled")
     val AUTH = stringPreferencesKey("dev_scenario_auth")
     val CARD = stringPreferencesKey("dev_scenario_card")
+    val CAMERA = stringPreferencesKey("dev_scenario_camera")
     val MEMBER = stringPreferencesKey("dev_scenario_member")
     val FACE = stringPreferencesKey("dev_scenario_face")
     val SERVICES = stringPreferencesKey("dev_scenario_services")
@@ -41,6 +43,7 @@ fun Preferences.toDevSettings(): DevSettings {
         fakeEnabled = this[DevPrefKeys.FAKE_ENABLED] ?: defaults.fakeEnabled,
         auth = this[DevPrefKeys.AUTH].toEnumOr(defaults.auth),
         card = this[DevPrefKeys.CARD].toEnumOr(defaults.card),
+        camera = this[DevPrefKeys.CAMERA].toEnumOr(defaults.camera),
         member = this[DevPrefKeys.MEMBER].toEnumOr(defaults.member),
         face = this[DevPrefKeys.FACE].toEnumOr(defaults.face),
         services = this[DevPrefKeys.SERVICES].toEnumOr(defaults.services),

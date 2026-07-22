@@ -19,6 +19,7 @@ interface DevSettingsStore {
     suspend fun setFakeEnabled(enabled: Boolean)
     suspend fun setAuth(scenario: AuthScenario)
     suspend fun setCard(scenario: CardScenario)
+    suspend fun setCamera(scenario: CameraScenario)
     suspend fun setMember(scenario: MemberScenario)
     suspend fun setFace(scenario: FaceScenario)
     suspend fun setServices(scenario: ServicesScenario)
@@ -46,6 +47,9 @@ class DataStoreDevSettingsStore @Inject constructor(
 
     override suspend fun setCard(scenario: CardScenario) =
         edit { it[DevPrefKeys.CARD] = scenario.name }
+
+    override suspend fun setCamera(scenario: CameraScenario) =
+        edit { it[DevPrefKeys.CAMERA] = scenario.name }
 
     override suspend fun setMember(scenario: MemberScenario) =
         edit { it[DevPrefKeys.MEMBER] = scenario.name }

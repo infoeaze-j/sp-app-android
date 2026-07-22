@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mediplus.faceverify.dev.AuthScenario
 import com.mediplus.faceverify.dev.CardScenario
+import com.mediplus.faceverify.dev.CameraScenario
 import com.mediplus.faceverify.dev.DevSettings
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
@@ -38,6 +39,7 @@ fun DevSettingsScreen(
     onFakeEnabled: (Boolean) -> Unit,
     onAuth: (AuthScenario) -> Unit,
     onCard: (CardScenario) -> Unit,
+    onCamera: (CameraScenario) -> Unit,
     onMember: (MemberScenario) -> Unit,
     onFace: (FaceScenario) -> Unit,
     onServices: (ServicesScenario) -> Unit,
@@ -63,6 +65,7 @@ fun DevSettingsScreen(
 
         ScenarioPicker("Auth (login)", AuthScenario.entries, settings.auth, onAuth)
         ScenarioPicker("Card tap (emulated NFC)", CardScenario.entries, settings.card, onCard)
+        ScenarioPicker("Camera (emulated)", CameraScenario.entries, settings.camera, onCamera)
         ScenarioPicker("Member verify", MemberScenario.entries, settings.member, onMember)
         ScenarioPicker("Face verify", FaceScenario.entries, settings.face, onFace)
         ScenarioPicker("Services list", ServicesScenario.entries, settings.services, onServices)

@@ -15,6 +15,7 @@ class TestDevSettingsStore(initial: DevSettings = DevSettings(latencyMillis = 0L
     override suspend fun setFakeEnabled(enabled: Boolean) { state.value = state.value.copy(fakeEnabled = enabled) }
     override suspend fun setAuth(scenario: AuthScenario) { state.value = state.value.copy(auth = scenario) }
     override suspend fun setCard(scenario: CardScenario) { state.value = state.value.copy(card = scenario) }
+    override suspend fun setCamera(scenario: CameraScenario) { state.value = state.value.copy(camera = scenario) }
     override suspend fun setMember(scenario: MemberScenario) { state.value = state.value.copy(member = scenario) }
     override suspend fun setFace(scenario: FaceScenario) { state.value = state.value.copy(face = scenario) }
     override suspend fun setServices(scenario: ServicesScenario) { state.value = state.value.copy(services = scenario) }

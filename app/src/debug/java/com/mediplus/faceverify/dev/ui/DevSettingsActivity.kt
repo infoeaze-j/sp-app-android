@@ -27,6 +27,7 @@ class DevSettingsActivity : ComponentActivity() {
                         onFakeEnabled = vm::setFakeEnabled,
                         onAuth = vm::setAuth,
                         onCard = vm::setCard,
+                        onCamera = vm::setCamera,
                         onMember = vm::setMember,
                         onFace = vm::setFace,
                         onServices = vm::setServices,
