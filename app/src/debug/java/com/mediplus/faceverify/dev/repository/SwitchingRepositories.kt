@@ -15,6 +15,7 @@ import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.FaceDecision
 import com.mediplus.faceverify.domain.model.MemberNumber
 import com.mediplus.faceverify.domain.model.MemberVerification
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.ServiceCatalog
 import com.mediplus.faceverify.domain.model.Session
 import com.mediplus.faceverify.domain.model.SessionState
@@ -73,8 +74,13 @@ class SwitchingEnrollmentRepository @Inject constructor(
     override suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog> =
         pick().listServices(memberNumber)
 
-    override suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment> =
-        pick().enroll(memberNumber, serviceId, idempotencyKey)
+    override suspend fun enroll(
+        memberNumber: String,
+        serviceId: String,
+        currency: String,
+        amount: Money,
+        idempotencyKey: String,
+    ): AppResult<Enrollment> = pick().enroll(memberNumber, serviceId, currency, amount, idempotencyKey)
 
     override suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
         pick().recheck(memberNumber, idempotencyKey)

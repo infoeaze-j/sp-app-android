@@ -160,17 +160,26 @@ class AddServiceViewModel @Inject constructor(
         runSubmit()
     }
 
-    /** Retry the last submission, REUSING the idempotency key so no duplicate is created (FR-022). */
+    /**
+     * Retry the last submission, REUSING the idempotency key, amount, and currency so no duplicate
+     * is created and nothing disagrees with what the back office already recorded (FR-022).
+     */
     fun retry() {
-        if (pendingServiceId != null && idempotencyKey != null) runSubmit() else start()
+        if (pendingServiceId != null && pendingCurrency != null && pendingAmount != null && idempotencyKey != null) {
+            runSubmit()
+        } else {
+            start()
+        }
     }
 
     private fun runSubmit() {
         val serviceId = pendingServiceId ?: return
+        val currency = pendingCurrency ?: return
+        val amount = pendingAmount ?: return
         val key = idempotencyKey ?: return
         _uiState.value = AddServiceUiState(AddServicePhase.Submitting)
         viewModelScope.launch {
-            _uiState.value = AddServiceUiState(reduceSubmit(addService(serviceId, key)))
+            _uiState.value = AddServiceUiState(reduceSubmit(addService(serviceId, currency.value, amount, key)))
         }
     }
 

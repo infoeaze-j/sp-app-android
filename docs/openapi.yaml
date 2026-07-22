@@ -462,7 +462,7 @@ components:
 
     EnrollRequest:
       type: object
-      required: [serviceId, idempotencyKey]
+      required: [serviceId, idempotencyKey, currency, amountCents]
       properties:
         serviceId:
           type: string
@@ -470,6 +470,21 @@ components:
           type: string
           format: uuid
           description: Per-transaction key; retries reuse the same key (FR-022).
+        currency:
+          type: string
+          description: >
+            The `value` of a Currency returned by the services endpoint. Retries
+            reuse the same currency, so a landed key never disagrees with what was
+            recorded.
+          example: ZAR
+        amountCents:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >
+            Amount in minor units. The client assumes 2 decimal places for every
+            currency and never sends a zero or negative amount.
+          example: 15000
 
     EnrollmentResponse:
       type: object

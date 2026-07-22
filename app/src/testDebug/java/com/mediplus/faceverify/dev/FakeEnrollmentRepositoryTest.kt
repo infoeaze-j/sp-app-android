@@ -4,6 +4,7 @@ import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.dev.repository.FakeEnrollmentRepository
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.Money
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -25,7 +26,7 @@ class FakeEnrollmentRepositoryTest {
     fun `enroll confirmed yields a Confirmed status`() = runTest {
         val store = TestDevSettingsStore(DevSettings(enroll = EnrollScenario.CONFIRMED, latencyMillis = 0L))
 
-        val result = FakeEnrollmentRepository(store).enroll("X123", "svc-blood", "key-1")
+        val result = FakeEnrollmentRepository(store).enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1")
 
         val enrollment = (result as AppResult.Success).data
         assertTrue(enrollment.status is EnrollmentStatus.Confirmed)
@@ -35,7 +36,7 @@ class FakeEnrollmentRepositoryTest {
     fun `enroll duplicate is a business rejection`() = runTest {
         val store = TestDevSettingsStore(DevSettings(enroll = EnrollScenario.DUPLICATE, latencyMillis = 0L))
 
-        val result = FakeEnrollmentRepository(store).enroll("X123", "svc-blood", "key-1")
+        val result = FakeEnrollmentRepository(store).enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1")
 
         assertEquals(BusinessCode.DUPLICATE_SERVICE, (result as AppResult.BusinessRejection).error.code)
     }
@@ -45,7 +46,7 @@ class FakeEnrollmentRepositoryTest {
         val store = TestDevSettingsStore(DevSettings(enroll = EnrollScenario.TIMEOUT, latencyMillis = 0L))
         val repo = FakeEnrollmentRepository(store)
 
-        val enrollResult = repo.enroll("X123", "svc-blood", "key-42")
+        val enrollResult = repo.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-42")
         assertTrue(enrollResult is AppResult.Timeout)
 
         val recheck = repo.recheck("X123", "key-42")
@@ -57,14 +58,27 @@ class FakeEnrollmentRepositoryTest {
         val store = TestDevSettingsStore(DevSettings(enroll = EnrollScenario.TIMEOUT, latencyMillis = 0L))
         val repo = FakeEnrollmentRepository(store)
 
-        val first = repo.enroll("X123", "svc-blood", "key-42")
+        val first = repo.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-42")
         assertTrue(first is AppResult.Timeout)
 
-        val retry = repo.enroll("X123", "svc-blood", "key-42")
+        val retry = repo.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-42")
 
         val enrollment = (retry as AppResult.Success).data
         assertEquals("enr-key-42", enrollment.enrollmentId)
         assertTrue(enrollment.status is EnrollmentStatus.Confirmed)
+    }
+
+    @Test
+    fun `a replayed key returns the originally submitted amount and currency`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(enroll = EnrollScenario.TIMEOUT, latencyMillis = 0L))
+        val repo = FakeEnrollmentRepository(store)
+        repo.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-42")
+
+        val retry = repo.enroll("X123", "svc-blood", "USD", Money(9_900), "key-42")
+
+        val enrollment = (retry as AppResult.Success).data
+        assertEquals("ZAR", enrollment.currency)
+        assertEquals(Money(15_000), enrollment.amount)
     }
 
     @Test

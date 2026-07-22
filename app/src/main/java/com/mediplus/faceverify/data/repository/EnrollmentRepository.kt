@@ -14,6 +14,7 @@ import com.mediplus.faceverify.data.remote.ServiceDto
 import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.ServiceCatalog
 import kotlinx.coroutines.CoroutineDispatcher
@@ -28,7 +29,13 @@ import javax.inject.Inject
  */
 interface EnrollmentRepository {
     suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog>
-    suspend fun enroll(memberNumber: String, serviceId: String, idempotencyKey: String): AppResult<Enrollment>
+    suspend fun enroll(
+        memberNumber: String,
+        serviceId: String,
+        currency: String,
+        amount: Money,
+        idempotencyKey: String,
+    ): AppResult<Enrollment>
     suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?>
 }
 
@@ -58,13 +65,16 @@ class EnrollmentRepositoryImpl @Inject constructor(
     override suspend fun enroll(
         memberNumber: String,
         serviceId: String,
+        currency: String,
+        amount: Money,
         idempotencyKey: String,
-    ): AppResult<Enrollment> =
-        apiCall(dispatcher, { api.enroll(memberNumber, EnrollRequest(serviceId, idempotencyKey)) }) { response ->
+    ): AppResult<Enrollment> {
+        val request = EnrollRequest(serviceId, idempotencyKey, currency, amount.cents)
+        return apiCall(dispatcher, { api.enroll(memberNumber, request) }) { response ->
             val body = response.body()
             when {
                 response.isSuccessful && body != null && body.isConfirmed() ->
-                    AppResult.Success(body.toEnrollment(memberNumber, serviceId, idempotencyKey))
+                    AppResult.Success(body.toEnrollment(memberNumber, serviceId, idempotencyKey, currency, amount))
                 response.code() == HttpURLConnection.HTTP_CONFLICT ->
                     AppResult.BusinessRejection(AppError.Business(BusinessCode.DUPLICATE_SERVICE, body?.reason))
                 response.code() == UNPROCESSABLE_ENTITY ->
@@ -74,13 +84,16 @@ class EnrollmentRepositoryImpl @Inject constructor(
                 else -> AppResult.BusinessRejection(AppError.Business(BusinessCode.GENERIC, body?.reason))
             }
         }
+    }
 
     override suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
         apiCall(dispatcher, { api.recheck(memberNumber, idempotencyKey) }) { response ->
             val body = response.body()
             when {
                 response.isSuccessful && body != null && body.isConfirmed() ->
-                    AppResult.Success(body.toEnrollment(memberNumber, serviceId = "", idempotencyKey))
+                    AppResult.Success(
+                        body.toEnrollment(memberNumber, serviceId = "", idempotencyKey, currency = null, amount = null),
+                    )
                 // 200-without-body / 204 / 404 → the enrollment was never created; safe to retry.
                 response.isSuccessful || response.code() == HttpURLConnection.HTTP_NOT_FOUND ->
                     AppResult.Success(null)
@@ -106,6 +119,8 @@ private fun EnrollmentResponse.toEnrollment(
     memberNumber: String,
     serviceId: String,
     idempotencyKey: String,
+    currency: String?,
+    amount: Money?,
 ) = Enrollment(
     enrollmentId = enrollmentId,
     memberNumber = memberNumber,
@@ -113,4 +128,6 @@ private fun EnrollmentResponse.toEnrollment(
     idempotencyKey = idempotencyKey,
     status = EnrollmentStatus.Confirmed(enrollmentId ?: ""),
     timestampMillis = timestamp?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() },
+    currency = currency,
+    amount = amount,
 )

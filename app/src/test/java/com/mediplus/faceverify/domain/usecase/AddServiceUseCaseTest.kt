@@ -7,6 +7,7 @@ import com.mediplus.faceverify.core.time.TimeProvider
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.VerifiedIdentity
 import io.mockk.Called
@@ -57,7 +58,7 @@ class AddServiceUseCaseTest {
     @Test
     fun `unverified identity is blocked and never submitted`() = runTest {
         // not verified (no identity)
-        val result = useCase("svc", "key1")
+        val result = useCase("svc", "ZAR", Money(15_000), "key1")
 
         assertEquals(BusinessCode.NOT_CURRENTLY_VERIFIED, (result as AppResult.BusinessRejection).error.code)
         verify { repository wasNot Called }
@@ -66,30 +67,34 @@ class AddServiceUseCaseTest {
     @Test
     fun `verified identity submits and confirms`() = runTest {
         markVerified()
-        coEvery { repository.enroll("P1", "svc", "key1") } returns AppResult.Success(confirmed("key1"))
+        coEvery {
+            repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1")
+        } returns AppResult.Success(confirmed("key1"))
 
-        val result = useCase("svc", "key1")
+        val result = useCase("svc", "ZAR", Money(15_000), "key1")
 
         assertTrue(result is AppResult.Success)
     }
 
     @Test
-    fun `retry reuses the idempotency key so no duplicate is created`() = runTest {
+    fun `retry reuses the key, amount, and currency so no duplicate is created`() = runTest {
         markVerified()
-        coEvery { repository.enroll("P1", "svc", "key1") } returns AppResult.Success(confirmed("key1"))
+        coEvery {
+            repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1")
+        } returns AppResult.Success(confirmed("key1"))
 
-        useCase("svc", "key1")
-        useCase("svc", "key1") // retry with the SAME key
+        useCase("svc", "ZAR", Money(15_000), "key1")
+        useCase("svc", "ZAR", Money(15_000), "key1") // retry, identical in every argument
 
-        coVerify(exactly = 2) { repository.enroll("P1", "svc", "key1") }
+        coVerify(exactly = 2) { repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1") }
     }
 
     @Test
     fun `timeout is never reported as success`() = runTest {
         markVerified()
-        coEvery { repository.enroll(any(), any(), any()) } returns AppResult.Timeout
+        coEvery { repository.enroll(any(), any(), any(), any(), any()) } returns AppResult.Timeout
 
-        val result = useCase("svc", "key1")
+        val result = useCase("svc", "ZAR", Money(15_000), "key1")
 
         assertEquals(AppResult.Timeout, result)
     }

@@ -51,6 +51,10 @@ data class ServiceDto(
 data class EnrollRequest(
     val serviceId: String,
     val idempotencyKey: String,
+    /** The currency's `value`, never its display label. */
+    val currency: String,
+    /** Minor units, so no floating-point rounding can reach the wire. */
+    val amountCents: Long,
 )
 
 @Serializable

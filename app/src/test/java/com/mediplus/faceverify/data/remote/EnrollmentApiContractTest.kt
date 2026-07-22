@@ -3,6 +3,7 @@ package com.mediplus.faceverify.data.remote
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.data.repository.EnrollmentRepositoryImpl
+import com.mediplus.faceverify.domain.model.Money
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -88,17 +89,32 @@ class EnrollmentApiContractTest {
             ),
         )
 
-        val result = repository.enroll("P1", "s1", "key1")
+        val result = repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
 
         assertTrue(result is AppResult.Success)
         assertEquals("E1", (result as AppResult.Success).data.enrollmentId)
     }
 
     @Test
+    fun `the enroll body carries the currency and the amount in cents`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(201).setBody(
+                """{"enrollmentId":"E1","status":"CONFIRMED","timestamp":"2026-07-20T12:40:00Z"}""",
+            ),
+        )
+
+        repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
+
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue("currency missing from $body", body.contains(""""currency":"ZAR""""))
+        assertTrue("amountCents missing from $body", body.contains(""""amountCents":15000"""))
+    }
+
+    @Test
     fun `duplicate is prevented`() = runTest {
         server.enqueue(MockResponse().setResponseCode(409).setBody("""{"status":"DUPLICATE"}"""))
 
-        val result = repository.enroll("P1", "s1", "key1")
+        val result = repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
 
         assertEquals(BusinessCode.DUPLICATE_SERVICE, (result as AppResult.BusinessRejection).error.code)
     }
@@ -107,7 +123,7 @@ class EnrollmentApiContractTest {
     fun `ineligible is a specific rejection`() = runTest {
         server.enqueue(MockResponse().setResponseCode(422).setBody("""{"status":"REJECTED","reason":"ineligible"}"""))
 
-        val result = repository.enroll("P1", "s1", "key1")
+        val result = repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
 
         assertEquals(BusinessCode.SERVICE_INELIGIBLE, (result as AppResult.BusinessRejection).error.code)
     }
@@ -116,7 +132,7 @@ class EnrollmentApiContractTest {
     fun `timeout mid-submit is uncertain, never success`() = runTest {
         server.enqueue(MockResponse().setBodyDelay(3, TimeUnit.SECONDS).setBody("{}"))
 
-        val result = repository.enroll("P1", "s1", "key1")
+        val result = repository.enroll("P1", "s1", "ZAR", Money(15_000), "key1")
 
         assertEquals(AppResult.Timeout, result)
     }

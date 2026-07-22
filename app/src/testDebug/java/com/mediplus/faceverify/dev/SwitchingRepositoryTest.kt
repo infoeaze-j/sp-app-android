@@ -16,6 +16,7 @@ import com.mediplus.faceverify.dev.repository.SwitchingEnrollmentRepository
 import com.mediplus.faceverify.dev.repository.SwitchingFaceRepository
 import com.mediplus.faceverify.dev.repository.SwitchingMemberRepository
 import com.mediplus.faceverify.domain.model.MemberVerification
+import com.mediplus.faceverify.domain.model.Money
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -176,10 +177,10 @@ class SwitchingRepositoryTest {
         val fake = spyk(FakeEnrollmentRepository(store))
         val switching = SwitchingEnrollmentRepository(real, fake, store)
 
-        switching.enroll("X123", "svc-blood", "key-1")
+        switching.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1")
 
-        coVerify(exactly = 1) { fake.enroll("X123", "svc-blood", "key-1") }
-        coVerify(exactly = 0) { real.enroll(any(), any(), any()) }
+        coVerify(exactly = 1) { fake.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1") }
+        coVerify(exactly = 0) { real.enroll(any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -189,10 +190,10 @@ class SwitchingRepositoryTest {
         val fake = spyk(FakeEnrollmentRepository(store))
         val switching = SwitchingEnrollmentRepository(real, fake, store)
 
-        switching.enroll("X123", "svc-blood", "key-1")
+        switching.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1")
 
-        coVerify(exactly = 1) { real.enroll("X123", "svc-blood", "key-1") }
-        coVerify(exactly = 0) { fake.enroll(any(), any(), any()) }
+        coVerify(exactly = 1) { real.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1") }
+        coVerify(exactly = 0) { fake.enroll(any(), any(), any(), any(), any()) }
     }
 
     @Test

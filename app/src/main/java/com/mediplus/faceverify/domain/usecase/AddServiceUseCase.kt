@@ -6,6 +6,7 @@ import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.session.SessionManager
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.domain.model.Enrollment
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.ServiceCatalog
 import javax.inject.Inject
 
@@ -32,13 +33,18 @@ class AddServiceUseCase @Inject constructor(
     private val sessionManager: SessionManager,
     private val evaluate: EvaluateVerifiedIdentityUseCase,
 ) {
-    suspend operator fun invoke(serviceId: String, idempotencyKey: String): AppResult<Enrollment> {
+    suspend operator fun invoke(
+        serviceId: String,
+        currency: String,
+        amount: Money,
+        idempotencyKey: String,
+    ): AppResult<Enrollment> {
         if (!evaluate().isCurrentlyVerified) {
             return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
         }
         val memberNumber = sessionManager.verifiedIdentity.value?.memberNumber
             ?: return AppResult.BusinessRejection(AppError.Business(BusinessCode.NOT_CURRENTLY_VERIFIED))
-        return enrollmentRepository.enroll(memberNumber, serviceId, idempotencyKey)
+        return enrollmentRepository.enroll(memberNumber, serviceId, currency, amount, idempotencyKey)
     }
 
     /** Resolve an uncertain outcome safely, reusing the same [idempotencyKey] (FR-022). */

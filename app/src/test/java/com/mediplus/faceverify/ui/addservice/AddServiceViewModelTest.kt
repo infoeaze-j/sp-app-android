@@ -83,7 +83,7 @@ class AddServiceViewModelTest {
     fun `a confirmed submission reaches the confirmed state`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(catalog)
-        coEvery { addService(any(), any()) } returns AppResult.Success(confirmed())
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
 
         vm.selectService("s1")
@@ -97,7 +97,7 @@ class AddServiceViewModelTest {
     fun `a duplicate is a non-retryable failure`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(catalog)
-        coEvery { addService(any(), any()) } returns
+        coEvery { addService(any(), any(), any(), any()) } returns
             AppResult.BusinessRejection(AppError.Business(BusinessCode.DUPLICATE_SERVICE))
         val vm = buildVm()
 
@@ -114,7 +114,7 @@ class AddServiceViewModelTest {
     fun `a timeout is uncertain, never confirmed`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(catalog)
-        coEvery { addService(any(), any()) } returns AppResult.Timeout
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Timeout
         val vm = buildVm()
 
         vm.selectService("s1")
@@ -184,7 +184,7 @@ class AddServiceViewModelTest {
         vm.confirmAmount()
 
         assertTrue(vm.uiState.value.phase is AddServicePhase.EnteringAmount)
-        coVerify(exactly = 0) { addService(any(), any()) }
+        coVerify(exactly = 0) { addService(any(), any(), any(), any()) }
     }
 
     @Test
@@ -205,7 +205,7 @@ class AddServiceViewModelTest {
     fun `a valid amount submits and confirms`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(catalog)
-        coEvery { addService(any(), any()) } returns AppResult.Success(confirmed())
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
         vm.selectService("s1")
 
@@ -226,5 +226,20 @@ class AddServiceViewModelTest {
 
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
         assertEquals("USD", phase.selectedCurrency.value)
+    }
+
+    @Test
+    fun `retry resubmits the same key, amount, and currency`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Timeout
+        val vm = buildVm()
+        vm.selectService("s1")
+        vm.amountChanged("150.00")
+        vm.confirmAmount()
+
+        vm.retry()
+
+        coVerify(exactly = 2) { addService("s1", "ZAR", Money(15_000), any()) }
     }
 }

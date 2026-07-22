@@ -11,6 +11,7 @@ import com.mediplus.faceverify.dev.FakeData
 import com.mediplus.faceverify.dev.ServicesScenario
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.ServiceCatalog
 import kotlinx.coroutines.delay
@@ -50,12 +51,14 @@ class FakeEnrollmentRepository @Inject constructor(
     override suspend fun enroll(
         memberNumber: String,
         serviceId: String,
+        currency: String,
+        amount: Money,
         idempotencyKey: String,
     ): AppResult<Enrollment> {
         val settings = store.current()
         delay(settings.latencyMillis)
         landed[idempotencyKey]?.let { return AppResult.Success(it) }
-        val confirmed = confirmedEnrollment(memberNumber, serviceId, idempotencyKey)
+        val confirmed = confirmedEnrollment(memberNumber, serviceId, currency, amount, idempotencyKey)
         return when (settings.enroll) {
             EnrollScenario.CONFIRMED -> {
                 landed[idempotencyKey] = confirmed
@@ -79,7 +82,13 @@ class FakeEnrollmentRepository @Inject constructor(
         return AppResult.Success(landed[idempotencyKey])
     }
 
-    private fun confirmedEnrollment(memberNumber: String, serviceId: String, idempotencyKey: String): Enrollment {
+    private fun confirmedEnrollment(
+        memberNumber: String,
+        serviceId: String,
+        currency: String,
+        amount: Money,
+        idempotencyKey: String,
+    ): Enrollment {
         val id = "enr-$idempotencyKey"
         val service = FakeData.services.firstOrNull { it.serviceId == serviceId }
             ?: Service(serviceId, "", eligibleForPatient = true, alreadySelected = false)
@@ -90,6 +99,8 @@ class FakeEnrollmentRepository @Inject constructor(
             idempotencyKey = idempotencyKey,
             status = EnrollmentStatus.Confirmed(id),
             timestampMillis = null,
+            currency = currency,
+            amount = amount,
         )
     }
 }

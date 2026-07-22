@@ -53,4 +53,12 @@ data class Enrollment(
     val idempotencyKey: String,
     val status: EnrollmentStatus,
     val timestampMillis: Long?,
+    /**
+     * What was charged. Null on the re-check path only: re-check identifies an enrollment by
+     * idempotency key alone and the response carries no amount, so the repository has nothing to
+     * populate these with there — the same reason [enrollmentId] and [Service.description] are
+     * already empty on that path.
+     */
+    val currency: String? = null,
+    val amount: Money? = null,
 )
