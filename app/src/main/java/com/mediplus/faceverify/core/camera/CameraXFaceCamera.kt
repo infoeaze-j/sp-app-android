@@ -13,6 +13,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -29,13 +30,28 @@ class CameraXFaceCamera @Inject constructor(
     @param:ApplicationContext private val context: Context,
 ) : FaceCamera {
 
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var preview: Preview? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var imageCapture: ImageCapture? = null
     private var analysisExecutor: ExecutorService? = null
 
-    override suspend fun isAvailable(): CameraAvailability =
-        runCatching { cameraProvider().hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) }
-            .getOrDefault(false)
-            .let { if (it) CameraAvailability.AVAILABLE else CameraAvailability.NO_CAMERA }
+    // Guards the async provider-resolution listener in bind() against a release() that runs
+    // before the listener fires (e.g. the screen is torn down mid-resolve). Set true by
+    // release(), cleared at the start of bind(); the listener checks it right before binding so
+    // a stale bind can never land after (or race) a release. @Volatile because release() may run
+    // on a different thread than the main-executor listener that reads it.
+    @Volatile
+    private var released = true
+
+    override suspend fun isAvailable(): CameraAvailability = try {
+        val hasCamera = cameraProvider().hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+        if (hasCamera) CameraAvailability.AVAILABLE else CameraAvailability.NO_CAMERA
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        CameraAvailability.NO_CAMERA
+    }
 
     override fun createPreviewView(context: Context): View = PreviewView(context)
 
@@ -44,12 +60,21 @@ class CameraXFaceCamera @Inject constructor(
         previewView: View,
         onGuidance: (FramingGuidance) -> Unit,
     ) {
+        // Re-entrant-safe (Fix E): release any prior binding before starting a new one, matching
+        // FakeFaceCamera's guarantee that a second bind() cannot leak the first one's resources.
+        release()
+        released = false
+
         val surface = previewView as PreviewView
         val executor = Executors.newSingleThreadExecutor().also { analysisExecutor = it }
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
+            // release() may have already run by the time this fires; don't establish a binding
+            // that nothing will ever tear down.
+            if (released) return@addListener
+
             val provider = providerFuture.get()
-            val preview = Preview.Builder().build().apply {
+            val previewUseCase = Preview.Builder().build().apply {
                 setSurfaceProvider(surface.surfaceProvider)
             }
             val analysis = ImageAnalysis.Builder()
@@ -57,16 +82,20 @@ class CameraXFaceCamera @Inject constructor(
                 .build()
                 .apply { setAnalyzer(executor, FaceFramingAnalyzer(onGuidance)) }
             val capture = ImageCapture.Builder().build()
-            imageCapture = capture
 
             provider.unbindAll()
             provider.bindToLifecycle(
                 lifecycleOwner,
                 CameraSelector.DEFAULT_FRONT_CAMERA,
-                preview,
+                previewUseCase,
                 analysis,
                 capture,
             )
+
+            cameraProvider = provider
+            preview = previewUseCase
+            imageAnalysis = analysis
+            imageCapture = capture
         }, ContextCompat.getMainExecutor(context))
     }
 
@@ -79,7 +108,11 @@ class CameraXFaceCamera @Inject constructor(
                     override fun onCaptureSuccess(image: ImageProxy) {
                         val bytes = image.toBytes()
                         image.close()
-                        cont.resume(TransientFrame(bytes))
+                        // The coroutine may already be cancelled (e.g. the caller left
+                        // composition mid-capture). When the frame can't be delivered to a
+                        // consumer, onCancellation still zeroes it (FR-017).
+                        val frame = TransientFrame(bytes)
+                        cont.resume(frame) { _, _, _ -> frame.clear() }
                     }
 
                     override fun onError(exception: ImageCaptureException) {
@@ -91,8 +124,18 @@ class CameraXFaceCamera @Inject constructor(
     }
 
     override fun release() {
+        released = true
+        val provider = cameraProvider
+        val analysis = imageAnalysis
+        if (provider != null) {
+            analysis?.clearAnalyzer()
+            provider.unbind(preview, analysis, imageCapture)
+        }
         analysisExecutor?.shutdown()
         analysisExecutor = null
+        cameraProvider = null
+        preview = null
+        imageAnalysis = null
         imageCapture = null
     }
 
