@@ -90,14 +90,18 @@ This mirrors the rule already in force for services (`Service` doc comment:
 
 ```kotlin
 // domain/model/Money.kt  (src/main)
-@JvmInline
-value class Money(val cents: Long) {
+data class Money(val cents: Long) {
     companion object {
         /** Null for anything not a positive amount with at most 2 decimal places. */
         fun parse(text: String): Money?
     }
 }
 ```
+
+A plain `data class`, not a `@JvmInline value class`: value-class parameters are
+name-mangled by the Kotlin compiler, which makes MockK's `coEvery` stubs across
+the repository seam unreliable. The allocation is not worth defending against
+here.
 
 No Android, no Compose, no coroutines — a straight JVM unit-test target.
 Parsing is **locale-independent**: `.` is the only decimal separator and only
