@@ -89,4 +89,31 @@ class FakeEnrollmentRepositoryTest {
 
         assertNull((recheck as AppResult.Success).data)
     }
+
+    @Test
+    fun `the MULTIPLE currency scenario returns every canned currency`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(currency = CurrencyScenario.MULTIPLE, latencyMillis = 0L))
+
+        val result = FakeEnrollmentRepository(store).listServices("X123")
+
+        assertEquals(FakeData.currencies, (result as AppResult.Success).data.currencies)
+    }
+
+    @Test
+    fun `the SINGLE currency scenario returns exactly one`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(currency = CurrencyScenario.SINGLE, latencyMillis = 0L))
+
+        val result = FakeEnrollmentRepository(store).listServices("X123")
+
+        assertEquals(listOf(FakeData.currencies.first()), (result as AppResult.Success).data.currencies)
+    }
+
+    @Test
+    fun `the NONE currency scenario returns none, so the step halts`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(currency = CurrencyScenario.NONE, latencyMillis = 0L))
+
+        val result = FakeEnrollmentRepository(store).listServices("X123")
+
+        assertTrue((result as AppResult.Success).data.currencies.isEmpty())
+    }
 }

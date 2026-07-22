@@ -14,6 +14,7 @@ data class DevSettings(
     val member: MemberScenario = MemberScenario.SUCCESS,
     val face: FaceScenario = FaceScenario.PASS,
     val services: ServicesScenario = ServicesScenario.SUCCESS,
+    val currency: CurrencyScenario = CurrencyScenario.MULTIPLE,
     val enroll: EnrollScenario = EnrollScenario.CONFIRMED,
     val latencyMillis: Long = 500L,
     val verificationWindowSeconds: Long = 300L,
@@ -28,6 +29,7 @@ object DevPrefKeys {
     val MEMBER = stringPreferencesKey("dev_scenario_member")
     val FACE = stringPreferencesKey("dev_scenario_face")
     val SERVICES = stringPreferencesKey("dev_scenario_services")
+    val CURRENCY = stringPreferencesKey("dev_scenario_currency")
     val ENROLL = stringPreferencesKey("dev_scenario_enroll")
     val LATENCY_MS = longPreferencesKey("dev_latency_ms")
     val WINDOW_SECONDS = longPreferencesKey("dev_verification_window_seconds")
@@ -47,6 +49,7 @@ fun Preferences.toDevSettings(): DevSettings {
         member = this[DevPrefKeys.MEMBER].toEnumOr(defaults.member),
         face = this[DevPrefKeys.FACE].toEnumOr(defaults.face),
         services = this[DevPrefKeys.SERVICES].toEnumOr(defaults.services),
+        currency = this[DevPrefKeys.CURRENCY].toEnumOr(defaults.currency),
         enroll = this[DevPrefKeys.ENROLL].toEnumOr(defaults.enroll),
         latencyMillis = this[DevPrefKeys.LATENCY_MS] ?: defaults.latencyMillis,
         verificationWindowSeconds = this[DevPrefKeys.WINDOW_SECONDS] ?: defaults.verificationWindowSeconds,

@@ -9,6 +9,9 @@ enum class ServicesScenario { SUCCESS, EMPTY, PATIENT_NOT_FOUND, SERVER_ERROR }
 
 enum class EnrollScenario { CONFIRMED, DUPLICATE, INELIGIBLE, TIMEOUT, SERVER_ERROR }
 
+/** How many currencies the faked services endpoint reports. NONE halts the add-service step. */
+enum class CurrencyScenario { MULTIPLE, SINGLE, NONE }
+
 enum class MemberScenario { SUCCESS, INVALID, PATIENT_NOT_FOUND, SERVER_ERROR }
 
 /**

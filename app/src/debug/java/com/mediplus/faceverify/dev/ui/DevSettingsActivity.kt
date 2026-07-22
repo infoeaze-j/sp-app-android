@@ -31,6 +31,7 @@ class DevSettingsActivity : ComponentActivity() {
                         onMember = vm::setMember,
                         onFace = vm::setFace,
                         onServices = vm::setServices,
+                        onCurrency = vm::setCurrency,
                         onEnroll = vm::setEnroll,
                         onLatency = vm::setLatencyMillis,
                         onForceExpire = vm::forceSessionExpired,

@@ -23,6 +23,7 @@ interface DevSettingsStore {
     suspend fun setMember(scenario: MemberScenario)
     suspend fun setFace(scenario: FaceScenario)
     suspend fun setServices(scenario: ServicesScenario)
+    suspend fun setCurrency(scenario: CurrencyScenario)
     suspend fun setEnroll(scenario: EnrollScenario)
     suspend fun setLatencyMillis(millis: Long)
     suspend fun setVerificationWindowSeconds(seconds: Long)
@@ -59,6 +60,9 @@ class DataStoreDevSettingsStore @Inject constructor(
 
     override suspend fun setServices(scenario: ServicesScenario) =
         edit { it[DevPrefKeys.SERVICES] = scenario.name }
+
+    override suspend fun setCurrency(scenario: CurrencyScenario) =
+        edit { it[DevPrefKeys.CURRENCY] = scenario.name }
 
     override suspend fun setEnroll(scenario: EnrollScenario) =
         edit { it[DevPrefKeys.ENROLL] = scenario.name }

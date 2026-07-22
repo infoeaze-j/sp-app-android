@@ -5,10 +5,12 @@ import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.TransientKind
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
+import com.mediplus.faceverify.dev.CurrencyScenario
 import com.mediplus.faceverify.dev.DevSettingsStore
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FakeData
 import com.mediplus.faceverify.dev.ServicesScenario
+import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
 import com.mediplus.faceverify.domain.model.Money
@@ -38,14 +40,21 @@ class FakeEnrollmentRepository @Inject constructor(
     override suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog> {
         val settings = store.current()
         delay(settings.latencyMillis)
+        val currencies = currenciesFor(settings.currency)
         return when (settings.services) {
-            ServicesScenario.SUCCESS -> AppResult.Success(ServiceCatalog(FakeData.services, FakeData.currencies))
-            ServicesScenario.EMPTY -> AppResult.Success(ServiceCatalog(emptyList(), FakeData.currencies))
+            ServicesScenario.SUCCESS -> AppResult.Success(ServiceCatalog(FakeData.services, currencies))
+            ServicesScenario.EMPTY -> AppResult.Success(ServiceCatalog(emptyList(), currencies))
             ServicesScenario.PATIENT_NOT_FOUND ->
                 AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
             ServicesScenario.SERVER_ERROR ->
                 AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
         }
+    }
+
+    private fun currenciesFor(scenario: CurrencyScenario): List<Currency> = when (scenario) {
+        CurrencyScenario.MULTIPLE -> FakeData.currencies
+        CurrencyScenario.SINGLE -> FakeData.currencies.take(1)
+        CurrencyScenario.NONE -> emptyList()
     }
 
     override suspend fun enroll(

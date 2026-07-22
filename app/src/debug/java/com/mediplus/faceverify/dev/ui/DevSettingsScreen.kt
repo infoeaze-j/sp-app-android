@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.mediplus.faceverify.dev.AuthScenario
 import com.mediplus.faceverify.dev.CardScenario
 import com.mediplus.faceverify.dev.CameraScenario
+import com.mediplus.faceverify.dev.CurrencyScenario
 import com.mediplus.faceverify.dev.DevSettings
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
@@ -43,6 +44,7 @@ fun DevSettingsScreen(
     onMember: (MemberScenario) -> Unit,
     onFace: (FaceScenario) -> Unit,
     onServices: (ServicesScenario) -> Unit,
+    onCurrency: (CurrencyScenario) -> Unit,
     onEnroll: (EnrollScenario) -> Unit,
     onLatency: (Long) -> Unit,
     onForceExpire: () -> Unit,
@@ -69,6 +71,7 @@ fun DevSettingsScreen(
         ScenarioPicker("Member verify", MemberScenario.entries, settings.member, onMember)
         ScenarioPicker("Face verify", FaceScenario.entries, settings.face, onFace)
         ScenarioPicker("Services list", ServicesScenario.entries, settings.services, onServices)
+        ScenarioPicker("Currencies", CurrencyScenario.entries, settings.currency, onCurrency)
         ScenarioPicker("Enrollment", EnrollScenario.entries, settings.enroll, onEnroll)
 
         HorizontalDivider()

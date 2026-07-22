@@ -7,6 +7,7 @@ import com.mediplus.faceverify.dev.AuthScenario
 import com.mediplus.faceverify.dev.DevSettings
 import com.mediplus.faceverify.dev.CardScenario
 import com.mediplus.faceverify.dev.CameraScenario
+import com.mediplus.faceverify.dev.CurrencyScenario
 import com.mediplus.faceverify.dev.DevSettingsStore
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
@@ -35,6 +36,7 @@ class DevSettingsViewModel @Inject constructor(
     fun setMember(scenario: MemberScenario) = launchEdit { store.setMember(scenario) }
     fun setFace(scenario: FaceScenario) = launchEdit { store.setFace(scenario) }
     fun setServices(scenario: ServicesScenario) = launchEdit { store.setServices(scenario) }
+    fun setCurrency(scenario: CurrencyScenario) = launchEdit { store.setCurrency(scenario) }
     fun setEnroll(scenario: EnrollScenario) = launchEdit { store.setEnroll(scenario) }
     fun setLatencyMillis(millis: Long) = launchEdit { store.setLatencyMillis(millis) }
 
