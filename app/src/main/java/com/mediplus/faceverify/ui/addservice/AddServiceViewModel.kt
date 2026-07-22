@@ -27,6 +27,15 @@ import javax.inject.Inject
 /** Why the add-service step cannot proceed at all — not fixable by retrying. */
 enum class UnavailableReason { NO_CURRENCY }
 
+/** What the Retry action on a [AddServicePhase.Failed] should actually do. */
+enum class RetryAction {
+    /** The service list never loaded — retry means load it again. */
+    RELOAD,
+
+    /** A submission failed — retry means resubmit it, reusing the same idempotency key. */
+    RESUBMIT,
+}
+
 /** Every state of the add-service step (Principle III). */
 sealed interface AddServicePhase {
     data object LoadingServices : AddServicePhase
@@ -48,7 +57,7 @@ sealed interface AddServicePhase {
 
     data object Submitting : AddServicePhase
     data class Confirmed(val enrollmentId: String) : AddServicePhase
-    data class Failed(val message: UiMessage, val canRetry: Boolean) : AddServicePhase
+    data class Failed(val message: UiMessage, val canRetry: Boolean, val retryAction: RetryAction) : AddServicePhase
 
     /** Timeout/uncertain — never shown as success; offers a safe re-check (FR-022). */
     data class Uncertain(val message: UiMessage) : AddServicePhase
@@ -113,7 +122,9 @@ class AddServiceViewModel @Inject constructor(
                 }
                 else -> {
                     currencies = emptyList()
-                    AddServiceUiState(AddServicePhase.Failed(map(result), canRetry = true))
+                    AddServiceUiState(
+                        AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RELOAD),
+                    )
                 }
             }
         }
@@ -167,14 +178,16 @@ class AddServiceViewModel @Inject constructor(
     }
 
     /**
-     * Retry the last submission, REUSING the idempotency key, amount, and currency so no duplicate
-     * is created and nothing disagrees with what the back office already recorded (FR-022).
+     * Retry does whatever the current [AddServicePhase.Failed] says it should: reload the list if
+     * that's what never finished, or resubmit — REUSING the idempotency key, amount, and currency so
+     * no duplicate is created and nothing disagrees with what the back office already recorded
+     * (FR-022) — if a submission is what failed. Any other phase falls back to [start].
      */
     fun retry() {
-        if (pendingServiceId != null && pendingCurrency != null && pendingAmount != null && idempotencyKey != null) {
-            runSubmit()
-        } else {
-            start()
+        val phase = _uiState.value.phase as? AddServicePhase.Failed ?: return start()
+        when (phase.retryAction) {
+            RetryAction.RELOAD -> start()
+            RetryAction.RESUBMIT -> runSubmit()
         }
     }
 
@@ -202,10 +215,18 @@ class AddServiceViewModel @Inject constructor(
                         AddServiceUiState(AddServicePhase.Confirmed(confirmed.enrollmentId))
                     } else {
                         // Never created — safe to retry the original submission with the same key.
-                        AddServiceUiState(AddServicePhase.Failed(map(AppResult.Timeout), canRetry = true))
+                        AddServiceUiState(
+                            AddServicePhase.Failed(
+                                map(AppResult.Timeout),
+                                canRetry = true,
+                                retryAction = RetryAction.RESUBMIT,
+                            ),
+                        )
                     }
                 }
-                else -> AddServiceUiState(AddServicePhase.Failed(map(result), canRetry = true))
+                else -> AddServiceUiState(
+                    AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RESUBMIT),
+                )
             }
         }
     }
@@ -217,11 +238,12 @@ class AddServiceViewModel @Inject constructor(
                 if (status is EnrollmentStatus.Confirmed) {
                     AddServicePhase.Confirmed(status.enrollmentId)
                 } else {
-                    AddServicePhase.Failed(map(result), canRetry = true)
+                    AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RESUBMIT)
                 }
             }
             is AppResult.BusinessRejection -> reduceRejection(result)
-            is AppResult.TransientFailure -> AddServicePhase.Failed(map(result), canRetry = true)
+            is AppResult.TransientFailure ->
+                AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RESUBMIT)
             AppResult.Timeout -> AddServicePhase.Uncertain(map(AppResult.Timeout))
         }
 
@@ -231,7 +253,11 @@ class AddServiceViewModel @Inject constructor(
             AddServicePhase.Blocked(evaluate().outstanding)
         } else {
             // Duplicate / ineligible are definitive — not retryable.
-            AddServicePhase.Failed(errorMapper.toUserMessage(rejection.error), canRetry = false)
+            AddServicePhase.Failed(
+                errorMapper.toUserMessage(rejection.error),
+                canRetry = false,
+                retryAction = RetryAction.RESUBMIT,
+            )
         }
     }
 

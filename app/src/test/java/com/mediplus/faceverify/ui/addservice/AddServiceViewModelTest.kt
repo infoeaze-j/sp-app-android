@@ -4,6 +4,7 @@ import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.DefaultErrorMapper
+import com.mediplus.faceverify.core.result.TransientKind
 import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
@@ -132,6 +133,25 @@ class AddServiceViewModelTest {
     }
 
     @Test
+    fun `a listServices failure retries by reloading, not resubmitting`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns
+            AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
+        val vm = buildVm()
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is AddServicePhase.Failed)
+        assertEquals(RetryAction.RELOAD, (phase as AddServicePhase.Failed).retryAction)
+
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        vm.retry()
+
+        assertTrue(vm.uiState.value.phase is AddServicePhase.Ready)
+        coVerify(exactly = 2) { listServices() }
+        coVerify(exactly = 0) { addService(any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `no currencies halts the step instead of listing services`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(ServiceCatalog(services, emptyList()))
@@ -234,18 +254,24 @@ class AddServiceViewModelTest {
     }
 
     @Test
-    fun `retry resubmits the same key, amount, and currency`() {
+    fun `a submission failure retries by resubmitting the same key, amount, and currency`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(catalog)
-        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Timeout
+        coEvery { addService(any(), any(), any(), any()) } returns
+            AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
         val vm = buildVm()
         vm.enterAmount()
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is AddServicePhase.Failed)
+        assertEquals(RetryAction.RESUBMIT, (phase as AddServicePhase.Failed).retryAction)
 
         vm.retry()
 
         val keys = mutableListOf<String>()
         coVerify(exactly = 2) { addService("s1", "ZAR", Money(15_000), capture(keys)) }
         assertEquals(keys[0], keys[1])
+        coVerify(exactly = 1) { listServices() }
     }
 
     /**
