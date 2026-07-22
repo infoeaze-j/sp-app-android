@@ -9,6 +9,7 @@ import com.mediplus.faceverify.core.result.ErrorMapper
 import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.core.result.appErrorOrNull
 import com.mediplus.faceverify.domain.model.Currency
+import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
 import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
@@ -123,7 +124,11 @@ class AddServiceViewModel @Inject constructor(
                 else -> {
                     currencies = emptyList()
                     AddServiceUiState(
-                        AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RELOAD),
+                        AddServicePhase.Failed(
+                            mapToUserMessage(result, errorMapper),
+                            canRetry = true,
+                            retryAction = RetryAction.RELOAD,
+                        ),
                     )
                 }
             }
@@ -198,7 +203,10 @@ class AddServiceViewModel @Inject constructor(
         val key = idempotencyKey ?: return
         _uiState.value = AddServiceUiState(AddServicePhase.Submitting)
         viewModelScope.launch {
-            _uiState.value = AddServiceUiState(reduceSubmit(addService(serviceId, currency.value, amount, key)))
+            val result = addService(serviceId, currency.value, amount, key)
+            _uiState.value = AddServiceUiState(
+                reduceSubmit(result, errorMapper) { evaluate().outstanding },
+            )
         }
     }
 
@@ -217,7 +225,7 @@ class AddServiceViewModel @Inject constructor(
                         // Never created — safe to retry the original submission with the same key.
                         AddServiceUiState(
                             AddServicePhase.Failed(
-                                map(AppResult.Timeout),
+                                mapToUserMessage(AppResult.Timeout, errorMapper),
                                 canRetry = true,
                                 retryAction = RetryAction.RESUBMIT,
                             ),
@@ -225,42 +233,67 @@ class AddServiceViewModel @Inject constructor(
                     }
                 }
                 else -> AddServiceUiState(
-                    AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RESUBMIT),
+                    AddServicePhase.Failed(
+                        mapToUserMessage(result, errorMapper),
+                        canRetry = true,
+                        retryAction = RetryAction.RESUBMIT,
+                    ),
                 )
             }
         }
     }
+}
 
-    private fun reduceSubmit(result: AppResult<com.mediplus.faceverify.domain.model.Enrollment>): AddServicePhase =
-        when (result) {
-            is AppResult.Success -> {
-                val status = result.data.status
-                if (status is EnrollmentStatus.Confirmed) {
-                    AddServicePhase.Confirmed(status.enrollmentId)
-                } else {
-                    AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RESUBMIT)
-                }
+/**
+ * Pure mapping from a submission outcome to the resulting phase. Pulled out of the ViewModel
+ * (Finding 3): this touches no ViewModel state beyond [errorMapper] and [outstanding], both passed
+ * in explicitly, so it can live beside the states it produces instead of inside the class.
+ */
+private fun reduceSubmit(
+    result: AppResult<Enrollment>,
+    errorMapper: ErrorMapper,
+    outstanding: () -> Outstanding,
+): AddServicePhase =
+    when (result) {
+        is AppResult.Success -> {
+            val status = result.data.status
+            if (status is EnrollmentStatus.Confirmed) {
+                AddServicePhase.Confirmed(status.enrollmentId)
+            } else {
+                AddServicePhase.Failed(
+                    mapToUserMessage(result, errorMapper),
+                    canRetry = true,
+                    retryAction = RetryAction.RESUBMIT,
+                )
             }
-            is AppResult.BusinessRejection -> reduceRejection(result)
-            is AppResult.TransientFailure ->
-                AddServicePhase.Failed(map(result), canRetry = true, retryAction = RetryAction.RESUBMIT)
-            AppResult.Timeout -> AddServicePhase.Uncertain(map(AppResult.Timeout))
         }
-
-    private fun reduceRejection(rejection: AppResult.BusinessRejection): AddServicePhase {
-        val code = rejection.error.code
-        return if (code == BusinessCode.NOT_CURRENTLY_VERIFIED) {
-            AddServicePhase.Blocked(evaluate().outstanding)
-        } else {
-            // Duplicate / ineligible are definitive — not retryable.
+        is AppResult.BusinessRejection -> reduceRejection(result, errorMapper, outstanding)
+        is AppResult.TransientFailure ->
             AddServicePhase.Failed(
-                errorMapper.toUserMessage(rejection.error),
-                canRetry = false,
+                mapToUserMessage(result, errorMapper),
+                canRetry = true,
                 retryAction = RetryAction.RESUBMIT,
             )
-        }
+        AppResult.Timeout -> AddServicePhase.Uncertain(mapToUserMessage(AppResult.Timeout, errorMapper))
     }
 
-    private fun map(result: AppResult<*>): UiMessage =
-        errorMapper.toUserMessage(result.appErrorOrNull() ?: AppError.Business(BusinessCode.GENERIC))
+private fun reduceRejection(
+    rejection: AppResult.BusinessRejection,
+    errorMapper: ErrorMapper,
+    outstanding: () -> Outstanding,
+): AddServicePhase {
+    val code = rejection.error.code
+    return if (code == BusinessCode.NOT_CURRENTLY_VERIFIED) {
+        AddServicePhase.Blocked(outstanding())
+    } else {
+        // Duplicate / ineligible are definitive — not retryable.
+        AddServicePhase.Failed(
+            errorMapper.toUserMessage(rejection.error),
+            canRetry = false,
+            retryAction = RetryAction.RESUBMIT,
+        )
+    }
 }
+
+private fun mapToUserMessage(result: AppResult<*>, errorMapper: ErrorMapper): UiMessage =
+    errorMapper.toUserMessage(result.appErrorOrNull() ?: AppError.Business(BusinessCode.GENERIC))

@@ -58,8 +58,7 @@ fun AddServiceRoute(
     viewModel: AddServiceViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    AddServiceScreen(
-        state = state,
+    val actions = AddServiceActions(
         onSelect = viewModel::selectService,
         onAmountChange = viewModel::amountChanged,
         onCurrencyChange = viewModel::currencySelected,
@@ -68,39 +67,38 @@ fun AddServiceRoute(
         onRetry = viewModel::retry,
         onRecheck = viewModel::recheck,
         onDone = onDone,
-        modifier = modifier,
     )
+    AddServiceScreen(state = state, actions = actions, modifier = modifier)
 }
 
 @Composable
 fun AddServiceScreen(
     state: AddServiceUiState,
-    onSelect: (String) -> Unit,
-    onAmountChange: (String) -> Unit,
-    onCurrencyChange: (Currency) -> Unit,
-    onCancelAmount: () -> Unit,
-    onConfirmAmount: () -> Unit,
-    onRetry: () -> Unit,
-    onRecheck: () -> Unit,
-    onDone: () -> Unit,
+    actions: AddServiceActions,
     modifier: Modifier = Modifier,
 ) {
     when (val phase = state.phase) {
         AddServicePhase.LoadingServices, AddServicePhase.Submitting -> LoadingState(modifier = modifier)
-        is AddServicePhase.Ready -> ServiceList(phase.services, onSelect, modifier)
+        is AddServicePhase.Ready -> ServiceList(phase.services, actions.onSelect, modifier)
         is AddServicePhase.EnteringAmount -> {
-            ServiceList(phase.services, onSelect, modifier)
-            AmountDialog(phase, onAmountChange, onCurrencyChange, onCancelAmount, onConfirmAmount)
+            ServiceList(phase.services, actions.onSelect, modifier)
+            AmountDialog(
+                phase = phase,
+                onAmountChange = actions.onAmountChange,
+                onCurrencyChange = actions.onCurrencyChange,
+                onCancel = actions.onCancelAmount,
+                onConfirm = actions.onConfirmAmount,
+            )
         }
         is AddServicePhase.Blocked -> BlockedContent(phase.outstanding, modifier)
         is AddServicePhase.Unavailable -> UnavailableContent(phase.reason, modifier)
-        is AddServicePhase.Confirmed -> ConfirmedContent(onDone, modifier)
+        is AddServicePhase.Confirmed -> ConfirmedContent(actions.onDone, modifier)
         is AddServicePhase.Failed -> ErrorState(
             message = phase.message,
-            onAction = if (phase.canRetry) onRetry else null,
+            onAction = if (phase.canRetry) actions.onRetry else null,
             modifier = modifier,
         )
-        is AddServicePhase.Uncertain -> UncertainContent(phase.message, onRecheck, modifier)
+        is AddServicePhase.Uncertain -> UncertainContent(phase.message, actions.onRecheck, modifier)
     }
 }
 
@@ -108,7 +106,17 @@ fun AddServiceScreen(
 private fun ServiceList(services: List<Service>, onSelect: (String) -> Unit, modifier: Modifier) {
     val spacing = LocalSpacing.current
     if (services.isEmpty()) {
-        CenteredMessage(R.string.addservice_no_services, modifier)
+        Column(
+            modifier = modifier.fillMaxSize().padding(spacing.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.addservice_no_services),
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+            )
+        }
         return
     }
     Column(modifier = modifier.fillMaxSize().padding(spacing.md)) {
@@ -158,7 +166,6 @@ private fun ServiceRow(service: Service, onSelect: (String) -> Unit) {
  * Amount + currency entry over the service list. Confirm is disabled until the text parses, so an
  * invalid amount can never be submitted rather than being rejected afterwards.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AmountDialog(
     phase: AddServicePhase.EnteringAmount,
@@ -168,53 +175,12 @@ private fun AmountDialog(
     onConfirm: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    var expanded by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text(phase.selected.description) },
         text = {
             Column {
-                if (phase.currencies.size == 1) {
-                    // A one-option picker is a decision the operator cannot make; showing it as a
-                    // control would invite a tap that does nothing. Still labelled like the
-                    // dropdown branch so TalkBack announces what the value below it is.
-                    Text(
-                        text = stringResource(R.string.addservice_currency_label),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    Text(
-                        text = phase.selectedCurrency.label,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                } else {
-                    ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded },
-                    ) {
-                        OutlinedTextField(
-                            value = phase.selectedCurrency.label,
-                            onValueChange = {},
-                            readOnly = true,
-                            singleLine = true,
-                            label = { Text(stringResource(R.string.addservice_currency_label)) },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                            modifier = Modifier
-                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                                .fillMaxWidth(),
-                        )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            phase.currencies.forEach { currency ->
-                                DropdownMenuItem(
-                                    text = { Text(currency.label) },
-                                    onClick = {
-                                        onCurrencyChange(currency)
-                                        expanded = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
+                CurrencySelector(phase, onCurrencyChange)
                 OutlinedTextField(
                     value = phase.amountText,
                     onValueChange = onAmountChange,
@@ -240,6 +206,57 @@ private fun AmountDialog(
             TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
         },
     )
+}
+
+/**
+ * The currency portion of [AmountDialog], extracted to keep that composable under the LongMethod
+ * threshold (Finding 2). A one-option picker is a decision the operator cannot make; showing it as
+ * a control would invite a tap that does nothing, so a single currency renders as a labelled
+ * static value instead of the dropdown.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrencySelector(phase: AddServicePhase.EnteringAmount, onCurrencyChange: (Currency) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    if (phase.currencies.size == 1) {
+        // Still labelled like the dropdown branch so TalkBack announces what the value below it is.
+        Text(
+            text = stringResource(R.string.addservice_currency_label),
+            style = MaterialTheme.typography.labelSmall,
+        )
+        Text(
+            text = phase.selectedCurrency.label,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    } else {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+        ) {
+            OutlinedTextField(
+                value = phase.selectedCurrency.label,
+                onValueChange = {},
+                readOnly = true,
+                singleLine = true,
+                label = { Text(stringResource(R.string.addservice_currency_label)) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                phase.currencies.forEach { currency ->
+                    DropdownMenuItem(
+                        text = { Text(currency.label) },
+                        onClick = {
+                            onCurrencyChange(currency)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -327,21 +344,5 @@ private fun UncertainContent(message: UiMessage, onRecheck: () -> Unit, modifier
             onClick = onRecheck,
             modifier = Modifier.padding(top = spacing.lg).fillMaxWidth().heightIn(min = spacing.minTouchTarget),
         ) { Text(stringResource(R.string.action_recheck)) }
-    }
-}
-
-@Composable
-private fun CenteredMessage(messageRes: Int, modifier: Modifier) {
-    val spacing = LocalSpacing.current
-    Column(
-        modifier = modifier.fillMaxSize().padding(spacing.lg),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = stringResource(messageRes),
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-        )
     }
 }
