@@ -6,10 +6,13 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -46,7 +49,7 @@ import com.mediplus.faceverify.domain.model.NfcAvailability
 /**
  * US2 member card destination. Handles NFC-unavailable/disabled messaging, the live card read (via
  * NFC reader mode), manual number entry when the card is unreadable, and the member-confirmation
- * step. On confirmation it advances.
+ * step. On confirmation, it advances.
  */
 @Composable
 fun MemberScanRoute(
@@ -220,7 +223,14 @@ private fun ConfirmContent(
 ) {
     val spacing = LocalSpacing.current
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(spacing.lg),
+        // This is the only top-aligned phase, so it carries the inset padding itself; the extra top
+        // spacing keeps the title off the status bar under edge-to-edge.
+        modifier = modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
+            .padding(spacing.lg)
+            .padding(top = spacing.xl),
     ) {
         Text(stringResource(R.string.card_confirm_title), style = MaterialTheme.typography.headlineSmall)
         Text(
