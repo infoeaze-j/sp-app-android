@@ -53,6 +53,8 @@ class AddServiceUseCaseTest {
         idempotencyKey = key,
         status = EnrollmentStatus.Confirmed("E1"),
         timestampMillis = null,
+        currency = null,
+        amount = null,
     )
 
     @Test
@@ -77,7 +79,7 @@ class AddServiceUseCaseTest {
     }
 
     @Test
-    fun `retry reuses the key, amount, and currency so no duplicate is created`() = runTest {
+    fun `submits every argument through to the repository unchanged`() = runTest {
         markVerified()
         coEvery {
             repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1")

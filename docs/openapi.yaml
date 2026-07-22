@@ -437,7 +437,11 @@ components:
       properties:
         value:
           type: string
-          description: Transmitted verbatim as `currency` on EnrollRequest.
+          description: >
+            Transmitted verbatim as `currency` on EnrollRequest. Must be a
+            2-decimal currency: the client scales the entered amount by 100
+            unconditionally for every currency, with no per-currency exponent
+            table. See `EnrollRequest.amountCents`.
           example: ZAR
         label:
           type: string

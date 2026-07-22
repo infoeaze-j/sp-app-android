@@ -176,7 +176,12 @@ private fun AmountDialog(
             Column {
                 if (phase.currencies.size == 1) {
                     // A one-option picker is a decision the operator cannot make; showing it as a
-                    // control would invite a tap that does nothing.
+                    // control would invite a tap that does nothing. Still labelled like the
+                    // dropdown branch so TalkBack announces what the value below it is.
+                    Text(
+                        text = stringResource(R.string.addservice_currency_label),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                     Text(
                         text = phase.selectedCurrency.label,
                         style = MaterialTheme.typography.bodyMedium,

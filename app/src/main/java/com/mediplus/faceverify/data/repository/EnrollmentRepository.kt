@@ -100,7 +100,13 @@ class EnrollmentRepositoryImpl @Inject constructor(
             when {
                 response.isSuccessful && body != null && body.isConfirmed() ->
                     AppResult.Success(
-                        body.toEnrollment(memberNumber, serviceId = "", idempotencyKey, currency = null, amount = null),
+                        body.toEnrollment(
+                            memberNumber = memberNumber,
+                            serviceId = "",
+                            idempotencyKey = idempotencyKey,
+                            currency = null,
+                            amount = null,
+                        ),
                     )
                 // 200-without-body / 204 / 404 → the enrollment was never created; safe to retry.
                 response.isSuccessful || response.code() == HttpURLConnection.HTTP_NOT_FOUND ->

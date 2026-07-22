@@ -59,6 +59,6 @@ data class Enrollment(
      * populate these with there — the same reason [enrollmentId] and [Service.description] are
      * already empty on that path.
      */
-    val currency: String? = null,
-    val amount: Money? = null,
+    val currency: String?,
+    val amount: Money?,
 )

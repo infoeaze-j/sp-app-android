@@ -104,13 +104,17 @@ class AddServiceViewModel @Inject constructor(
                     // Checked before Ready is ever emitted: the list must not render if nothing on
                     // it could be submitted (FR-023a).
                     if (catalog.currencies.isEmpty()) {
+                        currencies = emptyList()
                         AddServiceUiState(AddServicePhase.Unavailable(UnavailableReason.NO_CURRENCY))
                     } else {
                         currencies = catalog.currencies
                         AddServiceUiState(AddServicePhase.Ready(catalog.services))
                     }
                 }
-                else -> AddServiceUiState(AddServicePhase.Failed(map(result), canRetry = true))
+                else -> {
+                    currencies = emptyList()
+                    AddServiceUiState(AddServicePhase.Failed(map(result), canRetry = true))
+                }
             }
         }
     }

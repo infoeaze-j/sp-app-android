@@ -47,6 +47,17 @@ class AddServiceViewModelTest {
 
     private fun buildVm() = AddServiceViewModel(listServices, addService, evaluate, DefaultErrorMapper())
 
+    /**
+     * The common arrange steps for tests that only care about reaching a submitted state — not
+     * about which currency or amount got there. Tests where the currency or the amount IS the
+     * point keep their explicit steps instead of using this.
+     */
+    private fun AddServiceViewModel.enterAmount(serviceId: String = "s1", amount: String = "150.00") {
+        selectService(serviceId)
+        amountChanged(amount)
+        confirmAmount()
+    }
+
     private fun confirmed() = Enrollment(
         enrollmentId = "E1",
         memberNumber = "P1",
@@ -54,6 +65,8 @@ class AddServiceViewModelTest {
         idempotencyKey = "k",
         status = EnrollmentStatus.Confirmed("E1"),
         timestampMillis = null,
+        currency = null,
+        amount = null,
     )
 
     @Test
@@ -86,9 +99,7 @@ class AddServiceViewModelTest {
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
 
-        vm.selectService("s1")
-        vm.amountChanged("150.00")
-        vm.confirmAmount()
+        vm.enterAmount()
 
         assertEquals(AddServicePhase.Confirmed("E1"), vm.uiState.value.phase)
     }
@@ -101,9 +112,7 @@ class AddServiceViewModelTest {
             AppResult.BusinessRejection(AppError.Business(BusinessCode.DUPLICATE_SERVICE))
         val vm = buildVm()
 
-        vm.selectService("s1")
-        vm.amountChanged("150.00")
-        vm.confirmAmount()
+        vm.enterAmount()
 
         val phase = vm.uiState.value.phase
         assertTrue(phase is AddServicePhase.Failed)
@@ -117,9 +126,7 @@ class AddServiceViewModelTest {
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Timeout
         val vm = buildVm()
 
-        vm.selectService("s1")
-        vm.amountChanged("150.00")
-        vm.confirmAmount()
+        vm.enterAmount()
 
         assertTrue(vm.uiState.value.phase is AddServicePhase.Uncertain)
     }
@@ -207,10 +214,8 @@ class AddServiceViewModelTest {
         coEvery { listServices() } returns AppResult.Success(catalog)
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
-        vm.selectService("s1")
 
-        vm.amountChanged("150.00")
-        vm.confirmAmount()
+        vm.enterAmount()
 
         assertEquals(AddServicePhase.Confirmed("E1"), vm.uiState.value.phase)
     }
@@ -234,9 +239,7 @@ class AddServiceViewModelTest {
         coEvery { listServices() } returns AppResult.Success(catalog)
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Timeout
         val vm = buildVm()
-        vm.selectService("s1")
-        vm.amountChanged("150.00")
-        vm.confirmAmount()
+        vm.enterAmount()
 
         vm.retry()
 
