@@ -115,4 +115,26 @@ class AddServiceViewModelTest {
 
         assertTrue(vm.uiState.value.phase is AddServicePhase.Uncertain)
     }
+
+    @Test
+    fun `no currencies halts the step instead of listing services`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(ServiceCatalog(services, emptyList()))
+
+        val vm = buildVm()
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is AddServicePhase.Unavailable)
+        assertEquals(UnavailableReason.NO_CURRENCY, (phase as AddServicePhase.Unavailable).reason)
+    }
+
+    @Test
+    fun `services with currencies still reach the ready state`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+
+        val vm = buildVm()
+
+        assertTrue(vm.uiState.value.phase is AddServicePhase.Ready)
+    }
 }

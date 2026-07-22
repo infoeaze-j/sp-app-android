@@ -93,6 +93,8 @@
     <string name="addservice_blocked_document">The document still needs to be verified before adding a service.</string>
     <string name="addservice_blocked_face">The face check still needs to pass before adding a service.</string>
     <string name="addservice_blocked_stale">Verification has expired. Please verify this person again.</string>
+    <string name="addservice_unavailable_title">Can\'t add services</string>
+    <string name="addservice_unavailable_no_currency">No currency is set up for this site, so a service can\'t be added right now. Please contact the back office.</string>
     <string name="addservice_start_over">Start over</string>
 
     <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->

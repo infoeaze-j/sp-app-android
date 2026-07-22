@@ -66,6 +66,7 @@ fun AddServiceScreen(
         AddServicePhase.LoadingServices, AddServicePhase.Submitting -> LoadingState(modifier = modifier)
         is AddServicePhase.Ready -> ServiceList(phase.services, onSelect, modifier)
         is AddServicePhase.Blocked -> BlockedContent(phase.outstanding, modifier)
+        is AddServicePhase.Unavailable -> UnavailableContent(phase.reason, modifier)
         is AddServicePhase.Confirmed -> ConfirmedContent(onDone, modifier)
         is AddServicePhase.Failed -> ErrorState(
             message = phase.message,
@@ -140,6 +141,27 @@ private fun BlockedContent(outstanding: Outstanding, modifier: Modifier) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(stringResource(R.string.addservice_blocked_title), style = MaterialTheme.typography.headlineSmall)
+        Text(
+            text = stringResource(bodyRes),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = spacing.sm),
+        )
+    }
+}
+
+@Composable
+private fun UnavailableContent(reason: UnavailableReason, modifier: Modifier) {
+    val bodyRes = when (reason) {
+        UnavailableReason.NO_CURRENCY -> R.string.addservice_unavailable_no_currency
+    }
+    val spacing = LocalSpacing.current
+    Column(
+        modifier = modifier.fillMaxSize().padding(spacing.lg).semantics { liveRegion = LiveRegionMode.Polite },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(stringResource(R.string.addservice_unavailable_title), style = MaterialTheme.typography.headlineSmall)
         Text(
             text = stringResource(bodyRes),
             style = MaterialTheme.typography.bodyLarge,

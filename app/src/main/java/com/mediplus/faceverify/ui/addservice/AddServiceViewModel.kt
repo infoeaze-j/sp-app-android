@@ -22,6 +22,9 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
+/** Why the add-service step cannot proceed at all — not fixable by retrying. */
+enum class UnavailableReason { NO_CURRENCY }
+
 /** Every state of the add-service step (Principle III). */
 sealed interface AddServicePhase {
     data object LoadingServices : AddServicePhase
@@ -33,6 +36,13 @@ sealed interface AddServicePhase {
 
     /** Timeout/uncertain — never shown as success; offers a safe re-check (FR-022). */
     data class Uncertain(val message: UiMessage) : AddServicePhase
+
+    /**
+     * A terminal halt distinct from [Blocked]: the identity is fine, but the back office reported
+     * no usable currency, so no enrollment could ever be submitted. Kept separate because [Blocked]
+     * tells the operator to re-verify the patient, which is the wrong remedy here.
+     */
+    data class Unavailable(val reason: UnavailableReason) : AddServicePhase
 }
 
 data class AddServiceUiState(val phase: AddServicePhase = AddServicePhase.LoadingServices)
@@ -65,7 +75,16 @@ class AddServiceViewModel @Inject constructor(
         _uiState.value = AddServiceUiState(AddServicePhase.LoadingServices)
         viewModelScope.launch {
             _uiState.value = when (val result = listServices()) {
-                is AppResult.Success -> AddServiceUiState(AddServicePhase.Ready(result.data.services))
+                is AppResult.Success -> {
+                    val catalog = result.data
+                    // Checked before Ready is ever emitted: the list must not render if nothing on
+                    // it could be submitted (FR-023a).
+                    if (catalog.currencies.isEmpty()) {
+                        AddServiceUiState(AddServicePhase.Unavailable(UnavailableReason.NO_CURRENCY))
+                    } else {
+                        AddServiceUiState(AddServicePhase.Ready(catalog.services))
+                    }
+                }
                 else -> AddServiceUiState(AddServicePhase.Failed(map(result), canRetry = true))
             }
         }
