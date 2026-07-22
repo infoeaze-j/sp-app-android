@@ -14,6 +14,12 @@
     <string name="action_continue">Continue</string>
     <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
+    <string name="action_log_out">Log out</string>
+
+    <!-- ===== App bar ===== -->
+    <string name="appbar_title">FaceVerify</string>
+    <string name="logout_confirm_title">Log out?</string>
+    <string name="logout_confirm_body">You\'ll be returned to sign in. Any in-progress patient verification will be discarded.</string>
 
     <!-- ===== Shared states ===== -->
     <string name="state_loading">Working…</string>

@@ -6,13 +6,10 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -223,14 +220,10 @@ private fun ConfirmContent(
 ) {
     val spacing = LocalSpacing.current
     Column(
-        // This is the only top-aligned phase, so it carries the inset padding itself; the extra top
-        // spacing keeps the title off the status bar under edge-to-edge.
         modifier = modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
-            .padding(spacing.lg)
-            .padding(top = spacing.xl),
+            .padding(spacing.lg),
     ) {
         Text(stringResource(R.string.card_confirm_title), style = MaterialTheme.typography.headlineSmall)
         Text(
