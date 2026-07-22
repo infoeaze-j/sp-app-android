@@ -16,12 +16,19 @@ limitation was lifted by the member-card work. This lifts the camera half.
 ## Scope
 
 - **In scope:** a `FaceCamera` seam, a debug `FakeFaceCamera` covering four
-  scenarios, a dedicated dev toggle and scenario picker, and the two missing UI
-  states the fake makes reachable (no camera, capture failure).
-- **Out of scope:** faking the camera **permission** grant (an OS-level decision
-  the fake cannot intercept without a second seam — `PermissionDeniedState`
-  still requires denying the real prompt); changes to `FaceFramingAnalyzer`
-  thresholds; per-subsystem override toggles for NFC or the back office.
+  scenarios, a dev scenario picker, and the two missing UI states the fake makes
+  reachable (no camera, capture failure).
+- **Out of scope:**
+  - Faking the camera **permission** grant — an OS-level decision the fake
+    cannot intercept without a second seam. `PermissionDeniedState` still
+    requires denying the real prompt.
+  - **Reordering the consent gate.** Checking camera availability *before* the
+    consent prompt would arguably be better (don't ask a patient to consent to a
+    check the device cannot perform), but it changes release behaviour and
+    existing test expectations for no dev-tooling benefit. `ConsentPrompt`
+    remains the initial phase; availability is checked when the capture step is
+    entered.
+  - Changes to `FaceFramingAnalyzer` thresholds.
 - **Release builds:** contain none of this code and behave exactly as today.
 
 ## Decisions (locked during brainstorming)
@@ -33,16 +40,15 @@ limitation was lifted by the member-card work. This lifts the camera half.
    can delegate per call because every `MemberCardReader` method is `suspend`, so
    it reads `DevSettingsStore.current()` inside each one. `FaceCamera` cannot:
    `createPreviewView` and `bind` are synchronous. The choice is therefore made
-   once, at screen entry, by a `suspend FaceCameraFactory.create()`.
+   once, when the capture step is entered, by a `suspend FaceCameraFactory.create()`.
 3. **A View-factory interface**, so `core/camera` gains no Compose dependency and
    the ViewModel holds no `View` references (this screen is LeakCanary-watched).
-4. **A dedicated `fakeCameraEnabled` toggle**, independent of the master
-   `fakeEnabled`. This is a deliberate divergence from the NFC fake: the camera
-   has never been exercised on a physical device, and the back-office contracts
-   are still placeholders, so *real camera + fake back office* must be reachable.
-5. **Default ON**, matching `DevSettings.fakeEnabled` — a fresh debug install
-   runs the whole journey on a bare emulator.
-6. **No camera is a terminal halt.** Unlike the card scan, which falls back to
+4. **Follows the existing master `fakeEnabled` toggle**, exactly like
+   `SwitchingMemberCardReader`. No dedicated camera switch: the camera fake and
+   the back-office fakes will almost always be used together. A per-subsystem
+   override can be introduced later if *real camera + fake back office* turns out
+   to be needed on a physical device — the factory is the natural place for it.
+5. **No camera is a terminal halt.** Unlike the card scan, which falls back to
    manual entry, the face check has no fallback: it *is* the verification.
 
 ## Architecture
@@ -76,7 +82,7 @@ mid-capture, and each entry gets a fresh instance, so the real implementation's
 ```
 FaceCheckScreen → FaceCameraFactory
                         │
-       debug: SwitchingFaceCameraFactory ──► FakeFaceCamera     (fakeCameraEnabled ON)
+       debug: SwitchingFaceCameraFactory ──► FakeFaceCamera     (fakeEnabled ON)
                         │                └──► CameraXFaceCamera  (OFF → real CameraX)
        release:                              CameraXFaceCamera
 ```
@@ -89,31 +95,42 @@ reason (Hilt forbids two `@Binds` for one interface):
 - **Add** `src/release/.../core/di/CameraModule.kt` — binds `RealFaceCameraFactory`.
 - **Add** `src/debug/.../core/di/CameraModule.kt` — binds `SwitchingFaceCameraFactory`.
 
-`FaceCameraFactory` is injected into `FaceCheckViewModel` and exposed as a plain
-property the screen reads. The project uses no `@EntryPoint` anywhere today —
-only `@AndroidEntryPoint` on the two activities — and introducing that pattern
-for a single dependency is not worth it. The ViewModel never touches a `View`:
-it holds the *factory*, and the screen owns the `FaceCamera` instance in a
-`remember` / `DisposableEffect` that calls `release()` on dispose.
+The camera is a **purely UI-layer concern**: the screen creates it, binds it to
+its own lifecycle, releases it on dispose, and reports outcomes to the ViewModel
+through callbacks. The ViewModel never calls it. So `FaceCameraFactory` is
+resolved in the composable via a Hilt `@EntryPoint`:
+
+```kotlin
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface FaceCameraEntryPoint { fun faceCameraFactory(): FaceCameraFactory }
+```
+
+retrieved with `EntryPointAccessors.fromApplication(context)`. This is a new
+pattern for the codebase — which uses only `@AndroidEntryPoint` on its two
+activities today — but it is Hilt's sanctioned mechanism for a
+non-ViewModel-scoped dependency, it is about ten lines in one file, and it
+leaves `FaceCheckViewModel`'s constructor unchanged, so no existing test needs
+editing.
 
 ### Components
 
 | Source set | File | Change |
 |---|---|---|
-| main | `core/camera/FaceCamera.kt` | new — interface, `CameraAvailability`, factory |
-| main | `core/camera/CameraXFaceCamera.kt` | new — `CameraController` folded in; `@Inject constructor(@ApplicationContext)`; owns the `PreviewView`, `FaceFramingAnalyzer`, and analysis executor. Also holds `RealFaceCameraFactory`, the one-line factory that returns a fresh `CameraXFaceCamera` |
+| main | `core/camera/FaceCamera.kt` | new — interface, `CameraAvailability`, factory interface, `@EntryPoint` accessor |
+| main | `core/camera/CameraXFaceCamera.kt` | new — `CameraController` folded in; `@Inject constructor(@ApplicationContext)`; owns the `PreviewView`, `FaceFramingAnalyzer`, and analysis executor. Also holds `RealFaceCameraFactory`, the one-line factory returning a fresh `CameraXFaceCamera` |
 | main | `core/camera/CameraController.kt` | deleted |
 | main | `ui/facecheck/FaceCheckScreen.kt` | resolve the factory; `AndroidView(factory = { camera.createPreviewView(it) })`; render the new halt; surface capture failure |
-| main | `ui/facecheck/FaceCheckViewModel.kt` | `+ FacePhase.CheckingCamera`, `+ FacePhase.CameraUnavailableHalt`, `+ onCameraAvailability()`, `+ onCaptureFailed()` |
+| main | `ui/facecheck/FaceCheckViewModel.kt` | `+ FacePhase.CameraUnavailableHalt`, `+ onCameraUnavailable()`, `+ onCaptureFailed()`. Constructor unchanged |
 | main | `res/values/strings.xml` | `face_camera_unavailable_title/_body`, `face_capture_failed_title/_body` |
 | release | `core/di/CameraModule.kt` | new — binds `RealFaceCameraFactory` |
 | debug | `core/di/CameraModule.kt` | new — binds `SwitchingFaceCameraFactory` |
 | debug | `dev/camera/FakeFaceCamera.kt` | new |
 | debug | `dev/camera/SwitchingFaceCameraFactory.kt` | new |
 | debug | `dev/DevScenarios.kt` | `+ enum CameraScenario` |
-| debug | `dev/DevSettings.kt` | `+ fakeCameraEnabled = true`, `+ camera = SUCCESS`, 2 `DevPrefKeys` |
-| debug | `dev/DevSettingsStore.kt` | `+ setFakeCameraEnabled`, `+ setCamera` |
-| debug | `dev/ui/DevSettingsScreen.kt`, `DevSettingsViewModel.kt` | new switch + `ScenarioPicker` |
+| debug | `dev/DevSettings.kt` | `+ camera = SUCCESS`, 1 `DevPrefKeys` entry |
+| debug | `dev/DevSettingsStore.kt` | `+ setCamera` |
+| debug | `dev/ui/DevSettingsScreen.kt`, `DevSettingsViewModel.kt` | one new `ScenarioPicker` |
 | debug | `dev/FakeData.kt` | `+ faceFrameBytes` |
 
 `CameraScenario` mirrors `CardScenario` in intent: like it, and unlike the
@@ -126,17 +143,22 @@ enum class CameraScenario { SUCCESS, NEVER_GOOD, CAPTURE_ERROR, NO_CAMERA_HARDWA
 
 ## State machine
 
-`FacePhase` gains two states, and the initial state changes from `ConsentPrompt`
-to `CheckingCamera`, so an operator is never asked to take patient consent for a
-check the device cannot perform.
+`FacePhase` gains exactly one state, `CameraUnavailableHalt`. The initial phase
+stays `ConsentPrompt`.
 
 ```
-CheckingCamera ──AVAILABLE──> ConsentPrompt ──> Capturing ──> Submitting ──> Verified
-      │                             │                │
-      │                             │                └──capture()==null──> Failed(canRetry=true)
-      │                             └──declined──> ConsentWithheldHalt
-      └──NO_CAMERA──> CameraUnavailableHalt
+ConsentPrompt ──granted──> Capturing ──> Submitting ──> Verified
+      │                        │
+      │                        ├──isAvailable()==NO_CAMERA──> CameraUnavailableHalt
+      │                        └──capture()==null──────────> Failed(canRetry = true)
+      └──declined──> ConsentWithheldHalt
 ```
+
+Availability resolves inside the capture step, screen-locally: the composable
+holds `produceState<FaceCamera?>(null) { value = factory.create() }` and renders
+the existing `LoadingState` until it resolves, then calls
+`viewModel.onCameraUnavailable()` if the camera reports `NO_CAMERA`. No extra
+ViewModel phase is needed for the resolving window.
 
 `CameraUnavailableHalt` renders through the existing `TerminalMessage`
 composable, with its assertive live region, alongside the consent-withheld and
@@ -163,17 +185,13 @@ and the existing `face_camera_preview_desc` content description. It needs no
 text of its own: the screen already renders the live guidance string directly
 beneath the preview (`FaceCheckScreen.kt:197`).
 
-## Traps
+## Trap
 
-1. **`TransientFrame.clear()` zeroes its backing array in place**
-   (`TransientFrame.kt:23`). If the fake hands out `FakeData.faceFrameBytes`
-   directly, the first capture zeroes the shared constant and every later capture
-   in the process returns all-zero bytes — a retry would silently differ from the
-   first attempt. The fake must return `FakeData.faceFrameBytes.copyOf()`.
-2. **Fake camera ON with fake back office OFF** sends synthetic bytes to the real
-   `/face/verify`. That combination is legitimate for exercising transport and
-   error mapping, but the decision it returns is meaningless. Document it on the
-   toggle; do not guard against it.
+**`TransientFrame.clear()` zeroes its backing array in place**
+(`TransientFrame.kt:23`). If the fake hands out `FakeData.faceFrameBytes`
+directly, the first capture zeroes the shared constant and every later capture in
+the process returns all-zero bytes — a retry would silently differ from the first
+attempt. The fake must return `FakeData.faceFrameBytes.copyOf()`.
 
 ## Error handling & isolation
 
@@ -183,21 +201,24 @@ the screen already handles. The two genuinely new UI states
 camera can also reach on device; the fake is what makes them testable. Every dev
 artefact is `src/debug`-only, plus the `src/release` `CameraModule`.
 
+Because the camera fake follows the master `fakeEnabled` toggle, the fake camera
+and the fake back office are always on or off together — synthetic frame bytes
+can never reach a real `/face/verify`.
+
 ## Testing
 
 All JVM-unit, no device required.
 
 - **`FakeFaceCameraTest`** (`testDebug`) — one test per scenario over
   `isAvailable()` and `capture()`, plus an explicit test that two successive
-  `capture()` calls return equal, non-zero bytes (trap 1).
-- **`FaceCheckViewModelTest`** (`test`) — `CheckingCamera` is the initial phase;
-  `NO_CAMERA` reaches `CameraUnavailableHalt`; `onCaptureFailed()` yields a
-  retryable `Failed`. Existing tests need a 4th constructor argument
-  (`mockk<FaceCameraFactory>()`), and those that assume `ConsentPrompt` is
-  initial need an `onCameraAvailability(AVAILABLE)` call first.
+  `capture()` calls return equal, non-zero bytes (see Trap).
+- **`FaceCheckViewModelTest`** (`test`) — two new tests: `onCameraUnavailable()`
+  reaches `CameraUnavailableHalt`, and `onCaptureFailed()` yields a retryable
+  `Failed`. Existing tests are untouched: the constructor and the initial phase
+  both stay as they are.
 - **`DataStoreDevSettingsStoreTest` / `DevSettingsViewModelTest`** (`testDebug`)
-  — round-trip the two new settings, including the unknown-enum-name fallback
-  `toEnumOr` already provides.
+  — round-trip the new `camera` setting, including the unknown-enum-name
+  fallback `toEnumOr` already provides.
 - **Build gate:** the source-set `CameraModule` split must not break Hilt
   resolution. Verify `assembleDebug`, `assembleRelease`, and the full JVM unit
   suite (154 tests green today) before building the dev UI.
