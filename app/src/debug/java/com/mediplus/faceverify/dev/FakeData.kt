@@ -24,6 +24,13 @@ object FakeData {
     /** The card number the emulated tap returns. */
     val memberNumber: MemberNumber = MemberNumber.parse("1234567")!!
 
+    /**
+     * The bytes the emulated capture returns. Content is irrelevant — [FakeFaceRepository] never
+     * inspects it — but it must be non-empty and non-zero so a cleared frame is distinguishable.
+     * Hand out `.copyOf()`: TransientFrame.clear() zeroes its array in place.
+     */
+    val faceFrameBytes: ByteArray = ByteArray(64) { (it + 1).toByte() }
+
     val memberDetails: MemberDetails = MemberDetails(
         memberNumber = "1234567",
         fullName = "Jane Doe",
