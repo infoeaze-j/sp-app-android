@@ -110,8 +110,10 @@ class UpdateViewModel @Inject constructor(
 
     fun onReturnedFromSettings() {
         val phase = _phase.value as? UpdatePhase.PermissionNeeded ?: return
-        if (installer.canRequestInstalls()) {
-            viewModelScope.launch { download(phase.info, phase.forced) }
+        viewModelScope.launch {
+            if (installer.canRequestInstalls()) {
+                download(phase.info, phase.forced)
+            }
         }
     }
 
@@ -126,10 +128,12 @@ class UpdateViewModel @Inject constructor(
     }
 
     private fun proceedFrom(info: UpdateInfo, forced: Boolean) {
-        if (installer.canRequestInstalls()) {
-            viewModelScope.launch { download(info, forced) }
-        } else {
-            _phase.value = UpdatePhase.PermissionNeeded(info, forced)
+        viewModelScope.launch {
+            if (installer.canRequestInstalls()) {
+                download(info, forced)
+            } else {
+                _phase.value = UpdatePhase.PermissionNeeded(info, forced)
+            }
         }
     }
 

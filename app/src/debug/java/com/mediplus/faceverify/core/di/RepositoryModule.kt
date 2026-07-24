@@ -5,11 +5,11 @@ import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.data.repository.FaceRepository
 import com.mediplus.faceverify.data.repository.MemberRepository
 import com.mediplus.faceverify.data.repository.UpdateRepository
-import com.mediplus.faceverify.data.repository.UpdateRepositoryImpl
 import com.mediplus.faceverify.dev.repository.SwitchingAuthRepository
 import com.mediplus.faceverify.dev.repository.SwitchingEnrollmentRepository
 import com.mediplus.faceverify.dev.repository.SwitchingFaceRepository
 import com.mediplus.faceverify.dev.repository.SwitchingMemberRepository
+import com.mediplus.faceverify.dev.repository.SwitchingUpdateRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -37,8 +37,7 @@ abstract class RepositoryModule {
     @Singleton
     abstract fun bindEnrollmentRepository(impl: SwitchingEnrollmentRepository): EnrollmentRepository
 
-    // Real for now; becomes SwitchingUpdateRepository when the update fake stack lands.
     @Binds
     @Singleton
-    abstract fun bindUpdateRepository(impl: UpdateRepositoryImpl): UpdateRepository
+    abstract fun bindUpdateRepository(impl: SwitchingUpdateRepository): UpdateRepository
 }

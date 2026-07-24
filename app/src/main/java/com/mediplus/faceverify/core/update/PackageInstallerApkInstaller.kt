@@ -33,7 +33,7 @@ class PackageInstallerApkInstaller @Inject constructor(
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ApkInstaller {
 
-    override fun canRequestInstalls(): Boolean =
+    override suspend fun canRequestInstalls(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.packageManager.canRequestPackageInstalls()
         } else {

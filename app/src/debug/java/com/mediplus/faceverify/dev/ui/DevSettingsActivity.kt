@@ -33,6 +33,7 @@ class DevSettingsActivity : ComponentActivity() {
                         onServices = vm::setServices,
                         onCurrency = vm::setCurrency,
                         onEnroll = vm::setEnroll,
+                        onUpdate = vm::setUpdate,
                         onLatency = vm::setLatencyMillis,
                         onForceExpire = vm::forceSessionExpired,
                     )

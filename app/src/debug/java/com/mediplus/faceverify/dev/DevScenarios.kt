@@ -25,3 +25,18 @@ enum class CardScenario { SUCCESS, UNREADABLE, TIMEOUT, NFC_DISABLED, NO_NFC_HAR
  * hardware* rather than a server response, so it also covers the no-hardware state.
  */
 enum class CameraScenario { SUCCESS, NEVER_GOOD, CAPTURE_ERROR, NO_CAMERA_HARDWARE }
+
+/**
+ * The emulated self-update journey. The failure scenarios each land at a different stage:
+ * CHECK_FAILS at the version check, DOWNLOAD_FAILS mid-stream, HASH_MISMATCH after a complete
+ * download, INSTALL_FAILS at the (faked) installer.
+ */
+enum class UpdateScenario {
+    UP_TO_DATE,
+    OPTIONAL_UPDATE,
+    FORCED_UPDATE,
+    CHECK_FAILS,
+    DOWNLOAD_FAILS,
+    HASH_MISMATCH,
+    INSTALL_FAILS,
+}

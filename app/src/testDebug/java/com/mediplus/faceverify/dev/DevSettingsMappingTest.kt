@@ -45,4 +45,19 @@ class DevSettingsMappingTest {
 
         assertEquals(FaceScenario.PASS, prefs.toDevSettings().face)
     }
+
+    @Test
+    fun `the update scenario round-trips and defaults to up to date`() {
+        assertEquals(UpdateScenario.UP_TO_DATE, mutablePreferencesOf().toDevSettings().update)
+
+        val prefs = mutablePreferencesOf().toMutablePreferences().apply {
+            set(DevPrefKeys.UPDATE, UpdateScenario.FORCED_UPDATE.name)
+        }
+        assertEquals(UpdateScenario.FORCED_UPDATE, prefs.toDevSettings().update)
+
+        val invalid = mutablePreferencesOf().toMutablePreferences().apply {
+            set(DevPrefKeys.UPDATE, "NOT_A_REAL_SCENARIO")
+        }
+        assertEquals(UpdateScenario.UP_TO_DATE, invalid.toDevSettings().update)
+    }
 }

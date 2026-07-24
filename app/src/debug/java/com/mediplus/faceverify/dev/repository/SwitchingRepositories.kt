@@ -10,7 +10,11 @@ import com.mediplus.faceverify.data.repository.FaceRepository
 import com.mediplus.faceverify.data.repository.FaceRepositoryImpl
 import com.mediplus.faceverify.data.repository.MemberRepository
 import com.mediplus.faceverify.data.repository.MemberRepositoryImpl
+import com.mediplus.faceverify.data.repository.UpdateRepository
+import com.mediplus.faceverify.data.repository.UpdateRepositoryImpl
 import com.mediplus.faceverify.dev.DevSettingsStore
+import com.mediplus.faceverify.domain.model.DownloadedApk
+import com.mediplus.faceverify.domain.model.UpdateInfo
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.FaceDecision
 import com.mediplus.faceverify.domain.model.MemberNumber
@@ -86,4 +90,21 @@ class SwitchingEnrollmentRepository @Inject constructor(
         pick().recheck(memberNumber, idempotencyKey)
 
     private suspend fun pick(): EnrollmentRepository = if (store.current().fakeEnabled) fake else real
+}
+
+class SwitchingUpdateRepository @Inject constructor(
+    private val real: UpdateRepositoryImpl,
+    private val fake: FakeUpdateRepository,
+    private val store: DevSettingsStore,
+) : UpdateRepository {
+    override suspend fun fetchVersionInfo(): AppResult<UpdateInfo?> = pick().fetchVersionInfo()
+
+    override suspend fun downloadAndVerify(
+        info: UpdateInfo,
+        onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
+    ): AppResult<DownloadedApk> = pick().downloadAndVerify(info, onProgress)
+
+    override suspend fun clearDownloads() = pick().clearDownloads()
+
+    private suspend fun pick(): UpdateRepository = if (store.current().fakeEnabled) fake else real
 }

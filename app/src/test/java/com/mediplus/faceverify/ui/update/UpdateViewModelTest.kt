@@ -59,7 +59,7 @@ class UpdateViewModelTest {
         coJustRun { repository.clearDownloads() }
         coJustRun { installer.abandonStaleSessions() }
         coJustRun { backupStore.pruneStaleBackups(any()) }
-        every { installer.canRequestInstalls() } returns true
+        coEvery { installer.canRequestInstalls() } returns true
         every { backupStore.needsLegacyWritePermission() } returns false
     }
 
@@ -190,7 +190,7 @@ class UpdateViewModelTest {
     @Test
     fun `accepting without install permission routes through settings and resumes`() = runTest {
         serverSays(AppResult.Success(info()))
-        every { installer.canRequestInstalls() } returns false
+        coEvery { installer.canRequestInstalls() } returns false
         downloadSucceeds()
         backupSucceeds()
         coEvery { installer.install(any()) } returns InstallOutcome.Committed
@@ -201,7 +201,7 @@ class UpdateViewModelTest {
         advanceUntilIdle()
         assertEquals(UpdatePhase.PermissionNeeded(info(), forced = false), vm.phase.value)
 
-        every { installer.canRequestInstalls() } returns true
+        coEvery { installer.canRequestInstalls() } returns true
         vm.onReturnedFromSettings()
         advanceUntilIdle()
 
@@ -211,7 +211,7 @@ class UpdateViewModelTest {
     @Test
     fun `returning from settings without the grant stays put`() = runTest {
         serverSays(AppResult.Success(info()))
-        every { installer.canRequestInstalls() } returns false
+        coEvery { installer.canRequestInstalls() } returns false
         val vm = viewModel()
         advanceUntilIdle()
         vm.onUpdateAccepted()

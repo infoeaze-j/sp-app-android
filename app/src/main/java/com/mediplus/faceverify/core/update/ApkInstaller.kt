@@ -13,8 +13,9 @@ interface ApkInstaller {
      * Whether this app may currently request package installs. `false` means the operator must
      * grant the unknown-sources permission in Settings first. Always `true` below API 26, where
      * only the global installer setting governs (surfaced at commit as a failure if blocked).
+     * Suspends so the debug switching decorator can consult the dev store per call.
      */
-    fun canRequestInstalls(): Boolean
+    suspend fun canRequestInstalls(): Boolean
 
     /**
      * Streams [apk] into an install session and commits it. Suspends until the platform reports a

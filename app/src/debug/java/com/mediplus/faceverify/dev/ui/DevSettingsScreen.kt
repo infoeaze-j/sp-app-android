@@ -32,6 +32,7 @@ import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
 import com.mediplus.faceverify.dev.MemberScenario
 import com.mediplus.faceverify.dev.ServicesScenario
+import com.mediplus.faceverify.dev.UpdateScenario
 
 /** Debug scenario picker. Stateless: hoists all state from [settings] and reports edits via callbacks. */
 @Composable
@@ -46,6 +47,7 @@ fun DevSettingsScreen(
     onServices: (ServicesScenario) -> Unit,
     onCurrency: (CurrencyScenario) -> Unit,
     onEnroll: (EnrollScenario) -> Unit,
+    onUpdate: (UpdateScenario) -> Unit,
     onLatency: (Long) -> Unit,
     onForceExpire: () -> Unit,
 ) {
@@ -73,6 +75,7 @@ fun DevSettingsScreen(
         ScenarioPicker("Services list", ServicesScenario.entries, settings.services, onServices)
         ScenarioPicker("Currencies", CurrencyScenario.entries, settings.currency, onCurrency)
         ScenarioPicker("Enrollment", EnrollScenario.entries, settings.enroll, onEnroll)
+        ScenarioPicker("Self-update", UpdateScenario.entries, settings.update, onUpdate)
 
         HorizontalDivider()
 

@@ -1,19 +1,19 @@
 package com.mediplus.faceverify.core.di
 
 import com.mediplus.faceverify.core.update.ApkInstaller
-import com.mediplus.faceverify.core.update.PackageInstallerApkInstaller
+import com.mediplus.faceverify.dev.update.SwitchingApkInstaller
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/** Debug: real for now; becomes SwitchingApkInstaller when the update fake stack lands. */
+/** Debug: routes the installer through the switching decorator (fake vs real, per the dev toggle). */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class UpdateModule {
 
     @Binds
     @Singleton
-    abstract fun bindApkInstaller(impl: PackageInstallerApkInstaller): ApkInstaller
+    abstract fun bindApkInstaller(impl: SwitchingApkInstaller): ApkInstaller
 }
