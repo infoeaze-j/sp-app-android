@@ -6,6 +6,15 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.NFC" />
 
+    <!-- Self-update: stream the verified APK into a PackageInstaller session (sideloaded fleet,
+         no Play). The operator still confirms each install on unmanaged devices. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Rollback backups live in shared Downloads so they survive uninstall; only pre-Q devices
+         need the legacy write permission for that. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- Camera + NFC drive the core verification flows, but the app degrades gracefully
          (clear message) when a device lacks either, so they are not hard-required. -->
     <uses-feature
@@ -38,6 +47,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Install-session status callbacks; targeted only by our own mutable PendingIntent. -->
+        <receiver
+            android:name=".core.update.UpdateStatusReceiver"
+            android:exported="false" />
+
+        <!-- Best-effort relaunch after a successful self-update replaces this package. -->
+        <receiver
+            android:name=".core.update.UpdateRelaunchReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
