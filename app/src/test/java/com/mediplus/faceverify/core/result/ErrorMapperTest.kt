@@ -78,6 +78,26 @@ class ErrorMapperTest {
     }
 
     @Test
+    fun `each update failure maps to its own retryable message`() {
+        val expected = mapOf(
+            BusinessCode.UPDATE_CORRUPTED to
+                (R.string.err_update_corrupted_title to R.string.err_update_corrupted_body),
+            BusinessCode.UPDATE_BACKUP_FAILED to
+                (R.string.err_update_backup_failed_title to R.string.err_update_backup_failed_body),
+            BusinessCode.UPDATE_INSTALL_ABORTED to
+                (R.string.err_update_install_aborted_title to R.string.err_update_install_aborted_body),
+            BusinessCode.UPDATE_INSTALL_FAILED to
+                (R.string.err_update_install_failed_title to R.string.err_update_install_failed_body),
+        )
+        expected.forEach { (code, titleAndBody) ->
+            val message = mapper.toUserMessage(AppError.Business(code))
+            assertEquals("title for $code", titleAndBody.first, message.titleRes)
+            assertEquals("body for $code", titleAndBody.second, message.bodyRes)
+            assertEquals("action for $code", R.string.action_retry, message.actionRes)
+        }
+    }
+
+    @Test
     fun `an unreadable card offers manual entry rather than a bare retry`() {
         val message = mapper.toUserMessage(AppError.Business(BusinessCode.CARD_UNREADABLE))
 

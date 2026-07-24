@@ -89,6 +89,26 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_not_verified_body,
             R.string.action_start_over,
         )
+        BusinessCode.UPDATE_CORRUPTED -> UiMessage(
+            R.string.err_update_corrupted_title,
+            R.string.err_update_corrupted_body,
+            R.string.action_retry,
+        )
+        BusinessCode.UPDATE_BACKUP_FAILED -> UiMessage(
+            R.string.err_update_backup_failed_title,
+            R.string.err_update_backup_failed_body,
+            R.string.action_retry,
+        )
+        BusinessCode.UPDATE_INSTALL_ABORTED -> UiMessage(
+            R.string.err_update_install_aborted_title,
+            R.string.err_update_install_aborted_body,
+            R.string.action_retry,
+        )
+        BusinessCode.UPDATE_INSTALL_FAILED -> UiMessage(
+            R.string.err_update_install_failed_title,
+            R.string.err_update_install_failed_body,
+            R.string.action_retry,
+        )
         BusinessCode.GENERIC -> genericMessage()
     }
 

@@ -164,4 +164,16 @@
 
     <string name="err_not_verified_title">Verification required</string>
     <string name="err_not_verified_body">This person must be verified again before a service can be added.</string>
+
+    <string name="err_update_corrupted_title">Update file damaged</string>
+    <string name="err_update_corrupted_body">The downloaded update didn\'t check out and was discarded. Retry the download.</string>
+
+    <string name="err_update_backup_failed_title">Backup not saved</string>
+    <string name="err_update_backup_failed_body">The current version couldn\'t be backed up, so the update wasn\'t installed. Free up storage and try again.</string>
+
+    <string name="err_update_install_aborted_title">Update cancelled</string>
+    <string name="err_update_install_aborted_body">The installation was cancelled before it finished. The downloaded update is kept, so retrying won\'t download it again.</string>
+
+    <string name="err_update_install_failed_title">Update not installed</string>
+    <string name="err_update_install_failed_body">The update couldn\'t be installed on this device. Try again, or contact support if it keeps failing.</string>
 </resources>
