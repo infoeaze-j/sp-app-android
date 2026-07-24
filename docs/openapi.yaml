@@ -37,6 +37,8 @@ tags:
     description: Service listing and idempotent enrollment for the current visit (FR-018–FR-023a)
   - name: App
     description: App self-update — version check and APK distribution (docs/superpowers/specs/2026-07-24-self-update-design.md)
+  - name: Diagnostics
+    description: Server-requested device diagnostics snapshot (poll + report)
 
 paths:
   /auth/login:
@@ -277,12 +279,13 @@ paths:
 
   /diagnostics/poll:
     get:
-      summary: >-
-        Does the back office want a device diagnostics snapshot right now?
-        App-invented placeholder (see the /members/verify precedent) — reconcile when the server
-        publishes its shape. Authenticated (bearer). Same-origin with BASE_URL.
-      security:
-        - bearerAuth: []
+      tags: [Diagnostics]
+      summary: Does the back office want a device diagnostics snapshot right now?
+      description: |
+        **App-invented placeholder** — reconcile when the server publishes its
+        real shape (the `/members/verify` precedent). Authenticated (bearer),
+        same-origin with `BASE_URL`.
+      operationId: pollDiagnostics
       responses:
         '200':
           description: A snapshot is requested; body carries the request id to echo back.
@@ -297,11 +300,12 @@ paths:
           description: Nothing requested; the client does nothing.
   /diagnostics:
     post:
-      summary: >-
-        Report the full permission-free device snapshot, tagged with the poll's requestId.
-        App-invented placeholder. Authenticated (bearer). Same-origin with BASE_URL.
-      security:
-        - bearerAuth: []
+      tags: [Diagnostics]
+      summary: Report the full permission-free device snapshot, tagged with the poll's requestId
+      description: |
+        **App-invented placeholder** — reconcile when the server publishes its
+        real shape. Authenticated (bearer), same-origin with `BASE_URL`.
+      operationId: reportDiagnostics
       requestBody:
         required: true
         content:
