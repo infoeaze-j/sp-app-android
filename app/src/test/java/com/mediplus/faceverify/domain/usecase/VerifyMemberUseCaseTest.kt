@@ -65,6 +65,19 @@ class VerifyMemberUseCaseTest {
         assertFalse(identity?.faceVerified == true)
     }
 
+    /**
+     * The scan is the only step that ever sees the back office's details for this person, so if it
+     * doesn't put them in the composite, the enrollment summary has no patient to show.
+     */
+    @Test
+    fun `a valid card carries the resolved details into the composite`() = runTest {
+        coEvery { repository.verify(any()) } returns AppResult.Success(verification())
+
+        useCase(memberNumber)
+
+        assertEquals(details(), sessionManager.verifiedIdentity.value?.patient)
+    }
+
     @Test
     fun `an unresolved member is rejected`() = runTest {
         coEvery { repository.verify(any()) } returns

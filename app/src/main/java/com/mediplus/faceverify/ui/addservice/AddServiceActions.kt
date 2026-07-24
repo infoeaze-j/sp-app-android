@@ -13,6 +13,8 @@ data class AddServiceActions(
     val onCurrencyChange: (Currency) -> Unit,
     val onCancelAmount: () -> Unit,
     val onConfirmAmount: () -> Unit,
+    val onEditSummary: () -> Unit,
+    val onSubmitSummary: () -> Unit,
     val onRetry: () -> Unit,
     val onRecheck: () -> Unit,
     val onDone: () -> Unit,

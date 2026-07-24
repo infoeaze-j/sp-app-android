@@ -11,6 +11,7 @@ import com.mediplus.faceverify.core.result.appErrorOrNull
 import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.MemberDetails
 import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.usecase.AddServiceUseCase
@@ -57,6 +58,24 @@ sealed interface AddServicePhase {
         val amountText: String,
     ) : AddServicePhase
 
+    /**
+     * The whole transaction — patient, service, amount — held still for a final read-through before
+     * anything leaves the device (FR-019a). This is the only phase between a parsed amount and
+     * [Submitting]: confirming the amount now opens this, and nothing is sent until the operator
+     * accepts what they are looking at.
+     *
+     * [patient] is nullable only because the composite's details are typed as optional; reaching
+     * here without them means we cannot show who the transaction is for, and the summary refuses to
+     * submit rather than asking the operator to approve an anonymous charge.
+     */
+    data class ReviewingSummary(
+        val services: List<Service>,
+        val patient: MemberDetails?,
+        val selected: Service,
+        val currency: Currency,
+        val amount: Money,
+    ) : AddServicePhase
+
     data object Submitting : AddServicePhase
     data class Confirmed(val enrollmentId: String) : AddServicePhase
     data class Failed(val message: UiMessage, val canRetry: Boolean, val retryAction: RetryAction) : AddServicePhase
@@ -97,6 +116,12 @@ class AddServiceViewModel @Inject constructor(
      */
     private var currencies: List<Currency> = emptyList()
 
+    /**
+     * Who this screen is enrolling, captured from the same evaluation that decides whether it may
+     * run at all — so the summary can never name a different patient than the one that was checked.
+     */
+    private var patient: MemberDetails? = null
+
     init {
         start()
     }
@@ -104,6 +129,7 @@ class AddServiceViewModel @Inject constructor(
     /** Load services if currently verified; otherwise block with the outstanding requirement (FR-018). */
     fun start() {
         val evaluation = evaluate()
+        patient = evaluation.patient
         if (!evaluation.isCurrentlyVerified) {
             _uiState.value = AddServiceUiState(AddServicePhase.Blocked(evaluation.outstanding))
             return
@@ -171,8 +197,12 @@ class AddServiceViewModel @Inject constructor(
     }
 
     /**
-     * Submit with a fresh idempotency key — but only once the text parses, so an invalid amount is
-     * unrepresentable at submit time rather than rejected after the fact.
+     * Accept the amount and move to the summary — but only once the text parses, so an invalid
+     * amount is unrepresentable past this point rather than rejected after the fact.
+     *
+     * The idempotency key is minted here, alongside the values it will be submitted with: a key
+     * belongs to one reviewed transaction, so editing the amount and confirming again produces a
+     * new one rather than inheriting the abandoned one's.
      */
     fun confirmAmount() {
         val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
@@ -181,7 +211,39 @@ class AddServiceViewModel @Inject constructor(
         pendingCurrency = phase.selectedCurrency
         pendingAmount = amount
         idempotencyKey = UUID.randomUUID().toString()
+        _uiState.value = AddServiceUiState(
+            AddServicePhase.ReviewingSummary(
+                services = phase.services,
+                patient = patient,
+                selected = phase.selected,
+                currency = phase.selectedCurrency,
+                amount = amount,
+            ),
+        )
+    }
+
+    /** The operator read the summary and accepted it. This is the first thing that sends anything. */
+    fun submitSummary() {
+        if (_uiState.value.phase !is AddServicePhase.ReviewingSummary) return
         runSubmit()
+    }
+
+    /**
+     * Back to amount entry from the summary, carrying the reviewed values so a correction is an
+     * edit rather than a re-entry. The service list comes along untouched, so cancelling from there
+     * still lands where it always did.
+     */
+    fun editSummary() {
+        val phase = _uiState.value.phase as? AddServicePhase.ReviewingSummary ?: return
+        _uiState.value = AddServiceUiState(
+            AddServicePhase.EnteringAmount(
+                services = phase.services,
+                currencies = currencies,
+                selected = phase.selected,
+                selectedCurrency = phase.currency,
+                amountText = phase.amount.format(),
+            ),
+        )
     }
 
     /**

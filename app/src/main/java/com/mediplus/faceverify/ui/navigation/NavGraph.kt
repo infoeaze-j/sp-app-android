@@ -3,13 +3,12 @@ package com.mediplus.faceverify.ui.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +25,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mediplus.faceverify.R
+import com.mediplus.faceverify.core.ui.components.ActionDrawer
+import com.mediplus.faceverify.core.ui.components.DrawerAction
 import com.mediplus.faceverify.domain.model.SessionState
 import com.mediplus.faceverify.ui.addservice.AddServiceRoute
 import com.mediplus.faceverify.ui.facecheck.FaceCheckRoute
@@ -63,7 +64,7 @@ fun NavGraph(
     var confirmingLogOut by remember { mutableStateOf(false) }
 
     if (confirmingLogOut) {
-        LogOutConfirmDialog(
+        LogOutConfirmDrawer(
             onConfirm = {
                 confirmingLogOut = false
                 appViewModel.logOut()
@@ -101,18 +102,17 @@ private fun AppBar(onLogOutClick: () -> Unit) {
  * the control never behaves differently based on state the operator cannot see.
  */
 @Composable
-private fun LogOutConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.logout_confirm_title)) },
-        text = { Text(stringResource(R.string.logout_confirm_body)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_log_out)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
+private fun LogOutConfirmDrawer(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ActionDrawer(
+        title = stringResource(R.string.logout_confirm_title),
+        confirm = DrawerAction(labelRes = R.string.action_log_out, onClick = onConfirm),
+        dismiss = DrawerAction(labelRes = R.string.action_cancel, onClick = onDismiss),
+    ) {
+        Text(
+            text = stringResource(R.string.logout_confirm_body),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
 }
 
 @Composable

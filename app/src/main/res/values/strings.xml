@@ -14,6 +14,7 @@
     <string name="action_continue">Continue</string>
     <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
+    <string name="action_back">Back</string>
     <string name="action_log_out">Log out</string>
 
     <!-- ===== App bar ===== -->
@@ -105,6 +106,14 @@
     <string name="addservice_amount_invalid">Enter an amount greater than zero, with at most two decimals.</string>
     <string name="addservice_currency_label">Currency</string>
     <string name="addservice_enter_amount">Enter amount</string>
+    <string name="addservice_summary_title">Check before submitting</string>
+    <string name="addservice_summary_desc">Nothing has been submitted yet. Check these details against the person in front of you.</string>
+    <string name="addservice_summary_patient_heading">Patient</string>
+    <string name="addservice_summary_service_heading">Service</string>
+    <string name="addservice_summary_charge_heading">Charge</string>
+    <string name="addservice_summary_service_label">Service</string>
+    <string name="addservice_summary_patient_unknown">This person\'s details aren\'t available, so this can\'t be submitted. Go back and verify them again.</string>
+    <string name="addservice_summary_submit">Submit</string>
     <string name="addservice_start_over">Start over</string>
 
     <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->

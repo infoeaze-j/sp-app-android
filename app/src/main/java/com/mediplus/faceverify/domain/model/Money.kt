@@ -10,6 +10,14 @@ package com.mediplus.faceverify.domain.model
  */
 data class Money(val cents: Long) {
 
+    /**
+     * Renders the amount in the same `123.45` form [parse] accepts, so what the operator reviews is
+     * exactly what will be submitted and the string can be fed straight back into the amount field.
+     * Locale-independent for the same reason [parse] is: the device locale must never change what
+     * the operator is shown to be agreeing to.
+     */
+    fun format(): String = "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
+
     companion object {
         /**
          * At most 15 whole digits keeps `whole * 100` inside [Long] with room to spare, so the

@@ -43,8 +43,14 @@ class VerifyMemberUseCase @Inject constructor(
             )
         }
         // A fresh scan resets the composite for this member; face verification comes next (FR-032).
+        // The resolved details ride along so the enrollment step can show the operator who the
+        // transaction is for — this is the only point in the journey where they arrive.
         sessionManager.updateVerifiedIdentity {
-            VerifiedIdentity(memberNumber = memberNumber.value, memberVerified = true)
+            VerifiedIdentity(
+                memberNumber = memberNumber.value,
+                memberVerified = true,
+                patient = verification.member,
+            )
         }
         return AppResult.Success(verification)
     }

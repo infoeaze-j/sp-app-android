@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
@@ -20,7 +19,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +36,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.faceverify.R
 import com.mediplus.faceverify.core.result.UiMessage
+import com.mediplus.faceverify.core.ui.components.ActionDrawer
+import com.mediplus.faceverify.core.ui.components.DrawerAction
 import com.mediplus.faceverify.core.ui.components.ErrorState
 import com.mediplus.faceverify.core.ui.components.LoadingState
 import com.mediplus.faceverify.core.ui.theme.LocalSpacing
@@ -64,6 +64,8 @@ fun AddServiceRoute(
         onCurrencyChange = viewModel::currencySelected,
         onCancelAmount = viewModel::cancelAmount,
         onConfirmAmount = viewModel::confirmAmount,
+        onEditSummary = viewModel::editSummary,
+        onSubmitSummary = viewModel::submitSummary,
         onRetry = viewModel::retry,
         onRecheck = viewModel::recheck,
         // End the visit before navigating: the patient must be discarded while this screen still
@@ -87,12 +89,20 @@ fun AddServiceScreen(
         is AddServicePhase.Ready -> ServiceList(phase.services, actions.onSelect, modifier)
         is AddServicePhase.EnteringAmount -> {
             ServiceList(phase.services, actions.onSelect, modifier)
-            AmountDialog(
+            AmountDrawer(
                 phase = phase,
                 onAmountChange = actions.onAmountChange,
                 onCurrencyChange = actions.onCurrencyChange,
                 onCancel = actions.onCancelAmount,
                 onConfirm = actions.onConfirmAmount,
+            )
+        }
+        is AddServicePhase.ReviewingSummary -> {
+            ServiceList(phase.services, actions.onSelect, modifier)
+            AddServiceSummaryDrawer(
+                phase = phase,
+                onEdit = actions.onEditSummary,
+                onSubmit = actions.onSubmitSummary,
             )
         }
         is AddServicePhase.Blocked -> BlockedContent(phase.outstanding, modifier)
@@ -168,11 +178,12 @@ private fun ServiceRow(service: Service, onSelect: (String) -> Unit) {
 }
 
 /**
- * Amount + currency entry over the service list. Confirm is disabled until the text parses, so an
- * invalid amount can never be submitted rather than being rejected afterwards.
+ * Amount + currency entry in a drawer over the service list, so the service the operator picked
+ * stays on screen behind it. Confirm is disabled until the text parses, so an invalid amount can
+ * never be submitted rather than being rejected afterwards.
  */
 @Composable
-private fun AmountDialog(
+private fun AmountDrawer(
     phase: AddServicePhase.EnteringAmount,
     onAmountChange: (String) -> Unit,
     onCurrencyChange: (Currency) -> Unit,
@@ -180,41 +191,36 @@ private fun AmountDialog(
     onConfirm: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(phase.selected.description) },
-        text = {
-            Column {
-                CurrencySelector(phase, onCurrencyChange)
-                OutlinedTextField(
-                    value = phase.amountText,
-                    onValueChange = onAmountChange,
-                    label = { Text(stringResource(R.string.addservice_amount_label)) },
-                    singleLine = true,
-                    isError = phase.amountText.isNotEmpty() && Money.parse(phase.amountText) == null,
-                    supportingText = {
-                        if (phase.amountText.isNotEmpty() && Money.parse(phase.amountText) == null) {
-                            Text(stringResource(R.string.addservice_amount_invalid))
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm, enabled = Money.parse(phase.amountText) != null) {
-                Text(stringResource(R.string.action_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
+    val malformed = phase.amountText.isNotEmpty() && Money.parse(phase.amountText) == null
+    ActionDrawer(
+        title = phase.selected.description,
+        confirm = DrawerAction(
+            labelRes = R.string.action_confirm,
+            onClick = onConfirm,
+            enabled = Money.parse(phase.amountText) != null,
+        ),
+        dismiss = DrawerAction(labelRes = R.string.action_cancel, onClick = onCancel),
+    ) {
+        CurrencySelector(phase, onCurrencyChange)
+        OutlinedTextField(
+            value = phase.amountText,
+            onValueChange = onAmountChange,
+            label = { Text(stringResource(R.string.addservice_amount_label)) },
+            singleLine = true,
+            isError = malformed,
+            supportingText = {
+                if (malformed) {
+                    Text(stringResource(R.string.addservice_amount_invalid))
+                }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm),
+        )
+    }
 }
 
 /**
- * The currency portion of [AmountDialog], extracted to keep that composable under the LongMethod
+ * The currency portion of [AmountDrawer], extracted to keep that composable under the LongMethod
  * threshold (Finding 2). A one-option picker is a decision the operator cannot make; showing it as
  * a control would invite a tap that does nothing, so a single currency renders as a labelled
  * static value instead of the dropdown.

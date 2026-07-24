@@ -11,6 +11,10 @@ import kotlin.time.Duration
  * @param faceVerified set only on server pass + liveness pass (FR-013)
  * @param sameSubject member on file and live face correspond (FR-025)
  * @param verifiedAt freshness anchor in monotonic millis; null until face verification completes
+ * @param patient the back office's details for [memberNumber], carried so later steps can show the
+ *   operator *who* they are acting for without re-fetching. Deliberately part of the composite
+ *   rather than a field of its own: ending the visit drops the whole composite, so the details can
+ *   never outlive the patient they describe.
  */
 data class VerifiedIdentity(
     val memberNumber: String,
@@ -18,6 +22,7 @@ data class VerifiedIdentity(
     val faceVerified: Boolean = false,
     val sameSubject: Boolean = false,
     val verifiedAt: Long? = null,
+    val patient: MemberDetails? = null,
 ) {
     /**
      * True only when the identity is fully verified and still within the back-office-owned freshness

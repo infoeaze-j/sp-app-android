@@ -8,6 +8,7 @@ import com.mediplus.faceverify.core.result.TransientKind
 import com.mediplus.faceverify.domain.model.Currency
 import com.mediplus.faceverify.domain.model.Enrollment
 import com.mediplus.faceverify.domain.model.EnrollmentStatus
+import com.mediplus.faceverify.domain.model.MemberDetails
 import com.mediplus.faceverify.domain.model.Money
 import com.mediplus.faceverify.domain.model.Service
 import com.mediplus.faceverify.domain.model.ServiceCatalog
@@ -45,6 +46,7 @@ class AddServiceViewModelTest {
     private val evaluate = mockk<EvaluateVerifiedIdentityUseCase>()
     private val endVisit = mockk<EndPatientVisitUseCase>(relaxed = true)
 
+    private val patient = MemberDetails("1234567", "Jane Doe", "1985-04-12", "ACTIVE", "Gold")
     private val services = listOf(Service("s1", "Consultation", eligibleForPatient = true, alreadySelected = false))
     private val currencies = listOf(Currency("ZAR", "Rand (R)"), Currency("USD", "US Dollar ($)"))
     private val catalog = ServiceCatalog(services, currencies)
@@ -55,12 +57,14 @@ class AddServiceViewModelTest {
     /**
      * The common arrange steps for tests that only care about reaching a submitted state — not
      * about which currency or amount got there. Tests where the currency or the amount IS the
-     * point keep their explicit steps instead of using this.
+     * point keep their explicit steps instead of using this. Note the summary step: confirming the
+     * amount no longer submits, so every path to the wire goes through [submitSummary].
      */
     private fun AddServiceViewModel.enterAmount(serviceId: String = "s1", amount: String = "150.00") {
         selectService(serviceId)
         amountChanged(amount)
         confirmAmount()
+        submitSummary()
     }
 
     private fun confirmed() = Enrollment(
@@ -298,8 +302,111 @@ class AddServiceViewModelTest {
         assertEquals("99.50", phase.amountText)
 
         vm.confirmAmount()
+        vm.submitSummary()
 
         coVerify { addService("s1", "USD", Money(9_950), any()) }
+    }
+
+    /**
+     * The point of the summary: confirming the amount must not be the same gesture as agreeing to
+     * the transaction. Nothing may reach the back office until the operator has seen it written out.
+     */
+    @Test
+    fun `confirming the amount shows the summary instead of submitting`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE, patient)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        val vm = buildVm()
+
+        vm.selectService("s1")
+        vm.amountChanged("150.00")
+        vm.confirmAmount()
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is AddServicePhase.ReviewingSummary)
+        coVerify(exactly = 0) { addService(any(), any(), any(), any()) }
+    }
+
+    /** The summary is only useful if it names the person, the service, and the amount — all three. */
+    @Test
+    fun `the summary carries the patient, the service, and the amount`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE, patient)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        val vm = buildVm()
+        vm.selectService("s1")
+        vm.currencySelected(Currency("USD", "US Dollar ($)"))
+        vm.amountChanged("99.50")
+
+        vm.confirmAmount()
+
+        val phase = vm.uiState.value.phase as AddServicePhase.ReviewingSummary
+        assertEquals(patient, phase.patient)
+        assertEquals("Consultation", phase.selected.description)
+        assertEquals(Money(9_950), phase.amount)
+        assertEquals("USD", phase.currency.value)
+    }
+
+    @Test
+    fun `submitting from the summary sends exactly what was reviewed`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE, patient)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
+        val vm = buildVm()
+        vm.selectService("s1")
+        vm.amountChanged("150.00")
+        vm.confirmAmount()
+
+        vm.submitSummary()
+
+        coVerify(exactly = 1) { addService("s1", "ZAR", Money(15_000), any()) }
+        assertEquals(AddServicePhase.Confirmed("E1"), vm.uiState.value.phase)
+    }
+
+    /** A summary is only worth showing if the operator can act on what they spot in it. */
+    @Test
+    fun `going back from the summary reopens amount entry with the reviewed values`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE, patient)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        val vm = buildVm()
+        vm.selectService("s1")
+        vm.currencySelected(Currency("USD", "US Dollar ($)"))
+        vm.amountChanged("99.5")
+        vm.confirmAmount()
+
+        vm.editSummary()
+
+        val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
+        assertEquals("99.50", phase.amountText)
+        assertEquals("USD", phase.selectedCurrency.value)
+        assertEquals(services, phase.services)
+        coVerify(exactly = 0) { addService(any(), any(), any(), any()) }
+    }
+
+    /**
+     * An abandoned review is not a submission that failed — the corrected amount is a different
+     * transaction, so it must not inherit the key that would make the back office deduplicate it
+     * against the amount the operator just rejected.
+     */
+    @Test
+    fun `editing the amount after review submits under a new idempotency key`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE, patient)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
+        val vm = buildVm()
+        vm.selectService("s1")
+        vm.amountChanged("150.00")
+        vm.confirmAmount()
+        val abandoned = (vm.uiState.value.phase as AddServicePhase.ReviewingSummary)
+
+        vm.editSummary()
+        vm.amountChanged("250.00")
+        vm.confirmAmount()
+        vm.submitSummary()
+
+        assertEquals(Money(15_000), abandoned.amount)
+        val keys = mutableListOf<String>()
+        coVerify(exactly = 1) { addService("s1", "ZAR", Money(25_000), capture(keys)) }
+        coVerify(exactly = 0) { addService("s1", "ZAR", Money(15_000), any()) }
+        assertEquals(1, keys.size)
     }
 
     /**

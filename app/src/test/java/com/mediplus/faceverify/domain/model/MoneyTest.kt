@@ -69,4 +69,27 @@ class MoneyTest {
     fun `an absurdly long number is rejected instead of overflowing`() {
         assertNull(Money.parse("1234567890123456"))
     }
+
+    @Test
+    fun `format always shows two decimal places`() {
+        assertEquals("150.00", Money(15_000).format())
+        assertEquals("150.50", Money(15_050).format())
+        assertEquals("150.05", Money(15_005).format())
+        assertEquals("0.01", Money(1).format())
+    }
+
+    /**
+     * The summary shows [Money.format] and the amount field is refilled from it, so a formatted
+     * amount that didn't parse back to itself would let the reviewed number drift from the sent one.
+     */
+    @Test
+    fun `format round-trips through parse`() {
+        listOf("150", "150.5", "0.01", "1234567890.99").forEach { input ->
+            val parsed = requireNonNull(Money.parse(input), input)
+            assertEquals(parsed, Money.parse(parsed.format()))
+        }
+    }
+
+    private fun requireNonNull(money: Money?, input: String): Money =
+        money ?: throw AssertionError("expected $input to parse")
 }
