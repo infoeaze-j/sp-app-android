@@ -164,5 +164,13 @@ fun SignInScreen(
                 Text(stringResource(R.string.signin_submit))
             }
         }
+
+        Text(
+            text = stringResource(R.string.signin_version, state.versionName, state.versionCode),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = spacing.lg),
+        )
     }
 }

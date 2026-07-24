@@ -9,6 +9,7 @@ import com.mediplus.faceverify.core.result.ErrorMapper
 import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.core.result.appErrorOrNull
 import com.mediplus.faceverify.data.repository.AuthRepository
+import com.mediplus.faceverify.domain.model.CurrentAppVersion
 import com.mediplus.faceverify.domain.model.SessionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,8 @@ data class SignInUiState(
     val lockedOut: Boolean = false,
     val signedIn: Boolean = false,
     val sessionEndedNotice: Boolean = false,
+    val versionName: String = "",
+    val versionCode: Int = 0,
 ) {
     val canSubmit: Boolean
         get() = identifier.isNotBlank() && secret.isNotBlank() && !isLoading && !lockedOut
@@ -36,9 +39,12 @@ data class SignInUiState(
 class SignInViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val errorMapper: ErrorMapper,
+    appVersion: CurrentAppVersion,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SignInUiState())
+    private val _uiState = MutableStateFlow(
+        SignInUiState(versionName = appVersion.name, versionCode = appVersion.code),
+    )
     val uiState: StateFlow<SignInUiState> = _uiState.asStateFlow()
 
     init {

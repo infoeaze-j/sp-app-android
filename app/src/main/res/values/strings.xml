@@ -35,6 +35,7 @@
     <string name="signin_session_ended">Your session ended. Please sign in again to continue.</string>
     <string name="signin_show_password">Show password</string>
     <string name="signin_hide_password">Hide password</string>
+    <string name="signin_version">Version %1$s (%2$d)</string>
 
     <!-- ===== Member card scan (US2) ===== -->
     <string name="card_title">Scan member card</string>

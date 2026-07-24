@@ -5,6 +5,7 @@ import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.BusinessCode
 import com.mediplus.faceverify.core.result.DefaultErrorMapper
 import com.mediplus.faceverify.data.repository.AuthRepository
+import com.mediplus.faceverify.domain.model.CurrentAppVersion
 import com.mediplus.faceverify.domain.model.Operator
 import com.mediplus.faceverify.domain.model.Session
 import com.mediplus.faceverify.domain.model.SessionState
@@ -44,7 +45,7 @@ class SignInViewModelTest {
     @Before
     fun setUp() {
         every { repo.sessionState() } returns sessionState
-        vm = SignInViewModel(repo, DefaultErrorMapper())
+        vm = SignInViewModel(repo, DefaultErrorMapper(), CurrentAppVersion(code = 1, name = "1.0"))
     }
 
     @Test
@@ -115,5 +116,13 @@ class SignInViewModelTest {
     fun `expired session raises the session-ended notice`() {
         sessionState.value = SessionState.Expired
         assertTrue(vm.uiState.value.sessionEndedNotice)
+    }
+
+    @Test
+    fun `injected build version is exposed for display`() {
+        vm = SignInViewModel(repo, DefaultErrorMapper(), CurrentAppVersion(code = 42, name = "2.3"))
+        val s = vm.uiState.value
+        assertEquals("2.3", s.versionName)
+        assertEquals(42, s.versionCode)
     }
 }
