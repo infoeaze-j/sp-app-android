@@ -1,15 +1,24 @@
 package com.mediplus.faceverify.data.repository
 
 import com.mediplus.faceverify.core.di.IoDispatcher
+import com.mediplus.faceverify.core.di.UpdateCacheDir
 import com.mediplus.faceverify.core.network.apiCall
 import com.mediplus.faceverify.core.result.AppError
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.core.result.TransientKind
 import com.mediplus.faceverify.data.remote.AppVersionResponse
 import com.mediplus.faceverify.data.remote.UpdateApi
+import com.mediplus.faceverify.core.result.BusinessCode
+import com.mediplus.faceverify.domain.model.DownloadedApk
 import com.mediplus.faceverify.domain.model.UpdateInfo
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
+import okhttp3.ResponseBody
+import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.security.MessageDigest
 import javax.inject.Inject
 
 /**
@@ -24,12 +33,87 @@ interface UpdateRepository {
      * treated as up to date (fail open).
      */
     suspend fun fetchVersionInfo(): AppResult<UpdateInfo?>
+
+    /**
+     * Streams the APK behind [info] to app-private cache, digesting as it goes. Success is only
+     * returned for a file whose SHA-256 and byte count both match [info]; any mismatch deletes the
+     * file and reports [com.mediplus.faceverify.core.result.BusinessCode.UPDATE_CORRUPTED].
+     * [onProgress] receives (bytesSoFar, totalBytes), throttled to whole-percent changes.
+     */
+    suspend fun downloadAndVerify(
+        info: UpdateInfo,
+        onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
+    ): AppResult<DownloadedApk>
 }
 
 class UpdateRepositoryImpl @Inject constructor(
     private val api: UpdateApi,
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
+    @param:UpdateCacheDir private val cacheDir: File,
 ) : UpdateRepository {
+
+    // The streaming body escapes apiCall's map lambda, so this hand-rolls the same transport
+    // classification (SocketTimeoutException -> Timeout, IOException -> NO_CONNECTIVITY).
+    override suspend fun downloadAndVerify(
+        info: UpdateInfo,
+        onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
+    ): AppResult<DownloadedApk> = withContext(dispatcher) {
+        val target = File(cacheDir, "update-v${info.latestVersionCode}.apk")
+        try {
+            val response = api.downloadApk(info.apkUrl)
+            val body = response.body()
+            if (!response.isSuccessful || body == null) {
+                AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
+            } else {
+                verified(info, target, body.use { streamTo(target, it, info.sizeBytes, onProgress) })
+            }
+        } catch (_: SocketTimeoutException) {
+            target.delete()
+            AppResult.Timeout
+        } catch (e: IOException) {
+            target.delete()
+            AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY, e))
+        }
+    }
+
+    private suspend fun streamTo(
+        target: File,
+        body: ResponseBody,
+        totalBytes: Long,
+        onProgress: suspend (Long, Long) -> Unit,
+    ): StreamedApk {
+        val digest = MessageDigest.getInstance("SHA-256")
+        var written = 0L
+        var lastPercent = -1
+        cacheDir.mkdirs()
+        body.byteStream().use { input ->
+            target.outputStream().use { output ->
+                val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    digest.update(buffer, 0, read)
+                    output.write(buffer, 0, read)
+                    written += read
+                    val percent = percentOf(written, totalBytes)
+                    if (percent != lastPercent) {
+                        lastPercent = percent
+                        onProgress(written, totalBytes)
+                    }
+                }
+            }
+        }
+        onProgress(written, totalBytes)
+        return StreamedApk(bytes = written, shaHex = digest.digest().toHex())
+    }
+
+    private fun verified(info: UpdateInfo, target: File, streamed: StreamedApk): AppResult<DownloadedApk> =
+        if (streamed.bytes == info.sizeBytes && streamed.shaHex.equals(info.sha256, ignoreCase = true)) {
+            AppResult.Success(DownloadedApk(target, info.latestVersionCode))
+        } else {
+            target.delete()
+            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
+        }
 
     override suspend fun fetchVersionInfo(): AppResult<UpdateInfo?> =
         apiCall(dispatcher, { api.checkVersion() }) { response ->
@@ -47,8 +131,18 @@ class UpdateRepositoryImpl @Inject constructor(
 
     private companion object {
         val SERVER_ERROR_RANGE = 500..599
+        const val DOWNLOAD_CHUNK_BYTES = 64 * 1024
+        const val PERCENT = 100
+
+        fun percentOf(written: Long, total: Long): Int =
+            if (total > 0) ((written * PERCENT) / total).toInt() else 0
+
+        fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
     }
 }
+
+/** The raw outcome of streaming a body to disk, before verification. */
+private data class StreamedApk(val bytes: Long, val shaHex: String)
 
 private fun AppVersionResponse.toDomain() = UpdateInfo(
     latestVersionCode = latestVersionCode,

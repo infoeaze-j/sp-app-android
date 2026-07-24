@@ -1,5 +1,7 @@
 package com.mediplus.faceverify.domain.model
 
+import java.io.File
+
 /**
  * What the back office says the newest build is, as served by `GET /app/version`
  * (see docs/superpowers/specs/2026-07-24-self-update-design.md). [sha256] is the hex digest of the
@@ -35,3 +37,6 @@ sealed interface UpdateStatus {
  * BuildConfig directly.
  */
 data class CurrentAppVersion(val code: Int, val name: String)
+
+/** A downloaded APK whose digest and size have already been verified against [UpdateInfo]. */
+data class DownloadedApk(val file: File, val versionCode: Int)

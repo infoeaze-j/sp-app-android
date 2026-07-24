@@ -16,3 +16,8 @@ annotation class DefaultDispatcher
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class MainDispatcher
+
+/** Marks the app-private directory update APKs are downloaded into. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class UpdateCacheDir
