@@ -135,11 +135,16 @@ app-side** — reconcile it when the server publishes its real shape.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time check of the placeholder `GET /app/version` (fail-open), SHA-256-verified streaming
   download, rollback backup of the installed APK to `Downloads/FaceVerify/` (revert = manual
-  uninstall + install the backup), PackageInstaller session install. **Signing landmine:** release
-  builds still use default debug signing, and updates only install over a same-key build — the
-  permanent release keystore must exist before the first field rollout, or every fleet device needs
-  a manual reinstall. `apkUrl` must stay same-origin with `BASE_URL` (the bearer token rides on
-  every request); every release must bump `versionCode`.
+  uninstall + install the backup), PackageInstaller session install. **Signing landmine:** the Gradle
+  wiring is now in place — `app/build.gradle.kts` signs the `release` build type from a git-ignored
+  `keystore.properties` (project root: `storeFile`/`storePassword`/`keyAlias`/`keyPassword`) when it
+  exists, and falls back to debug signing when it doesn't, so local/CI builds still assemble. **What
+  remains is manual:** create the permanent `.jks` (`keytool -genkeypair`, use `-validity 10000` — the
+  cert can never rotate for an installed app), write `keystore.properties`, and back the keystore up
+  off-machine. Do this before the first field rollout — updates only install over a same-key build, so
+  any device that got an earlier debug-signed build needs a one-time manual reinstall to cross over.
+  `apkUrl` must stay same-origin with `BASE_URL` (the bearer token rides on every request); every
+  release must bump `versionCode`.
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
   tests, LeakCanary clean-run, and the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`.

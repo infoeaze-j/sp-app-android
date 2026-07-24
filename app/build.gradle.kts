@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -6,6 +7,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+// Release signing is driven by a git-ignored keystore.properties in the project root
+// (storeFile / storePassword / keyAlias / keyPassword). When it is absent — local debug
+// work, CI without secrets — the release build silently falls back to debug signing, so
+// the module still assembles. The permanent release keystore must exist before the first
+// field rollout: updates only install over a same-key build.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -31,6 +42,17 @@ android {
         buildConfigField("String", "BASE_URL", "\"https://backoffice.example.com/\"")
     }
 
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", "BASE_URL", "\"https://backoffice.example.com/\"")
@@ -39,6 +61,11 @@ android {
         release {
             optimization {
                 enable = false
+            }
+            // Sign with the permanent release key when keystore.properties is present;
+            // otherwise this stays on the default debug signing config.
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }
