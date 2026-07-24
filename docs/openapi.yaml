@@ -35,6 +35,8 @@ tags:
     description: Server-owned face match and liveness decision (FR-012–FR-017)
   - name: Enrollment
     description: Service listing and idempotent enrollment for the current visit (FR-018–FR-023a)
+  - name: App
+    description: App self-update — version check and APK distribution (docs/superpowers/specs/2026-07-24-self-update-design.md)
 
 paths:
   /auth/login:
@@ -234,6 +236,44 @@ paths:
           $ref: '#/components/responses/SessionInvalidated'
         '404':
           description: No enrollment exists for this key (the POST never landed).
+
+  /app/version:
+    get:
+      tags: [App]
+      summary: Newest published app build (self-update check)
+      description: |
+        **Placeholder invented app-side** — reconcile when the server publishes
+        its real shape (the `/members/verify` precedent).
+
+        Unauthenticated: the check runs at app launch, before sign-in. The
+        client gates on `BuildConfig.VERSION_CODE`: below
+        `minSupportedVersionCode` the update is forced (blocking), below
+        `latestVersionCode` it is optional, otherwise nothing is shown. A build
+        is only ever forced when a newer installable build exists — degenerate
+        data fails open on the client and can never brick a device.
+
+        Server obligations:
+        - `latestVersionCode` bumps monotonically and matches the APK served at
+          `apkUrl`, or devices will loop on the update prompt.
+        - `apkUrl` must stay same-origin with the API base URL: the client's
+          auth interceptor attaches the bearer token to every request when an
+          operator is signed in, which would leak the token to a third-party
+          host.
+        - The APK must be signed with the same certificate as the installed
+          build, or Android rejects the install.
+      operationId: appVersion
+      security: []
+      responses:
+        '200':
+          description: Newest published build facts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppVersionResponse'
+        '404':
+          description: Endpoint not deployed yet — client treats as up to date (fail open).
+        '5XX':
+          description: Transient — client fails open with a dismissible retry notice.
 
 components:
   securitySchemes:
@@ -504,3 +544,34 @@ components:
         timestamp:
           type: [string, "null"]
           format: date-time
+
+    AppVersionResponse:
+      type: object
+      required: [latestVersionCode, latestVersionName, apkUrl, sha256, sizeBytes, minSupportedVersionCode]
+      properties:
+        latestVersionCode:
+          type: integer
+          description: Android versionCode of the newest published build. Monotonic per release.
+          example: 7
+        latestVersionName:
+          type: string
+          description: Human-readable version shown in the update prompt.
+          example: "1.6"
+        apkUrl:
+          type: string
+          format: uri
+          description: HTTPS URL of the APK. Must stay same-origin with the API base URL (see path description).
+          example: https://backoffice.example.com/app/faceverify-7.apk
+        sha256:
+          type: string
+          pattern: '^[0-9a-fA-F]{64}$'
+          description: Hex SHA-256 digest of the APK bytes; the client verifies it before installing.
+        sizeBytes:
+          type: integer
+          format: int64
+          description: Exact APK size. Authoritative for download progress and the size check.
+          example: 12345678
+        minSupportedVersionCode:
+          type: integer
+          description: Builds below this versionCode must update before continuing (forced).
+          example: 5

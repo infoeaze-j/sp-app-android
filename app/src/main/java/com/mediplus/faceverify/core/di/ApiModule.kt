@@ -4,6 +4,7 @@ import com.mediplus.faceverify.data.remote.AuthApi
 import com.mediplus.faceverify.data.remote.EnrollmentApi
 import com.mediplus.faceverify.data.remote.FaceApi
 import com.mediplus.faceverify.data.remote.MemberApi
+import com.mediplus.faceverify.data.remote.UpdateApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -32,4 +33,8 @@ object ApiModule {
     @Provides
     @Singleton
     fun provideEnrollmentApi(retrofit: Retrofit): EnrollmentApi = retrofit.create()
+
+    @Provides
+    @Singleton
+    fun provideUpdateApi(retrofit: Retrofit): UpdateApi = retrofit.create()
 }
