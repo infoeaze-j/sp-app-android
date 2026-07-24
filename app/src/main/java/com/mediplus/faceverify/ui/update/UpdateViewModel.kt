@@ -87,7 +87,13 @@ class UpdateViewModel @Inject constructor(
 
     fun onUpdateAccepted() {
         val phase = _phase.value as? UpdatePhase.UpdateAvailable ?: return
-        proceedFrom(phase.info, phase.forced)
+        viewModelScope.launch {
+            if (installer.canRequestInstalls()) {
+                download(phase.info, phase.forced)
+            } else {
+                _phase.value = UpdatePhase.PermissionNeeded(phase.info, phase.forced)
+            }
+        }
     }
 
     fun onDismissed() {
@@ -103,7 +109,17 @@ class UpdateViewModel @Inject constructor(
     fun onRetry() {
         when (val phase = _phase.value) {
             is UpdatePhase.CheckFailed -> viewModelScope.launch { runCheck() }
-            is UpdatePhase.Failed -> retryFrom(phase)
+            is UpdatePhase.Failed -> {
+                val kept = downloaded
+                viewModelScope.launch {
+                    if (phase.retry == RetryTarget.INSTALL && kept != null && kept.file.exists()) {
+                        backupAndInstall(phase.info, phase.forced, kept)
+                    } else {
+                        // Either a download-stage failure or the OS evicted the cache since.
+                        download(phase.info, phase.forced)
+                    }
+                }
+            }
             else -> Unit
         }
     }
@@ -125,28 +141,6 @@ class UpdateViewModel @Inject constructor(
             forced = phase.forced,
             retry = RetryTarget.INSTALL,
         )
-    }
-
-    private fun proceedFrom(info: UpdateInfo, forced: Boolean) {
-        viewModelScope.launch {
-            if (installer.canRequestInstalls()) {
-                download(info, forced)
-            } else {
-                _phase.value = UpdatePhase.PermissionNeeded(info, forced)
-            }
-        }
-    }
-
-    private fun retryFrom(phase: UpdatePhase.Failed) {
-        val kept = downloaded
-        viewModelScope.launch {
-            if (phase.retry == RetryTarget.INSTALL && kept != null && kept.file.exists()) {
-                backupAndInstall(phase.info, phase.forced, kept)
-            } else {
-                // Either a download-stage failure or the OS evicted the cache since.
-                download(phase.info, phase.forced)
-            }
-        }
     }
 
     private suspend fun runCheck() {
@@ -182,20 +176,23 @@ class UpdateViewModel @Inject constructor(
             return
         }
         _phase.value = UpdatePhase.Installing(forced)
-        _phase.value = when (val outcome = installer.install(apk.file)) {
-            InstallOutcome.Committed -> UpdatePhase.Restarting
-            InstallOutcome.Aborted -> failedInstall(info, forced, BusinessCode.UPDATE_INSTALL_ABORTED)
-            is InstallOutcome.Failed -> failedInstall(info, forced, BusinessCode.UPDATE_INSTALL_FAILED)
+        val outcome = installer.install(apk.file)
+        _phase.value = if (outcome == InstallOutcome.Committed) {
+            UpdatePhase.Restarting
+        } else {
+            val code = if (outcome == InstallOutcome.Aborted) {
+                BusinessCode.UPDATE_INSTALL_ABORTED
+            } else {
+                BusinessCode.UPDATE_INSTALL_FAILED
+            }
+            UpdatePhase.Failed(
+                message = errorMapper.toUserMessage(AppError.Business(code)),
+                info = info,
+                forced = forced,
+                retry = RetryTarget.INSTALL,
+            )
         }
     }
-
-    private fun failedInstall(info: UpdateInfo, forced: Boolean, code: BusinessCode) =
-        UpdatePhase.Failed(
-            message = errorMapper.toUserMessage(AppError.Business(code)),
-            info = info,
-            forced = forced,
-            retry = RetryTarget.INSTALL,
-        )
 
     private fun messageFor(result: AppResult<*>): UiMessage =
         errorMapper.toUserMessage(

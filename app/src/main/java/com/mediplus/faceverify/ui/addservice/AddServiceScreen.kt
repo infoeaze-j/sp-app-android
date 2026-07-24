@@ -35,7 +35,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.faceverify.R
-import com.mediplus.faceverify.core.result.UiMessage
 import com.mediplus.faceverify.core.ui.components.ActionDrawer
 import com.mediplus.faceverify.core.ui.components.DrawerAction
 import com.mediplus.faceverify.core.ui.components.ErrorState
@@ -60,11 +59,11 @@ fun AddServiceRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val actions = AddServiceActions(
         onSelect = viewModel::selectService,
-        onAmountChange = viewModel::amountChanged,
-        onCurrencyChange = viewModel::currencySelected,
-        onCancelAmount = viewModel::cancelAmount,
+        onAmountChange = { viewModel.amountEntryChanged(text = it) },
+        onCurrencyChange = { viewModel.amountEntryChanged(currency = it) },
+        onCancelAmount = viewModel::stepBack,
         onConfirmAmount = viewModel::confirmAmount,
-        onEditSummary = viewModel::editSummary,
+        onEditSummary = viewModel::stepBack,
         onSubmitSummary = viewModel::submitSummary,
         onRetry = viewModel::retry,
         onRecheck = viewModel::recheck,
@@ -113,7 +112,7 @@ fun AddServiceScreen(
             onAction = if (phase.canRetry) actions.onRetry else null,
             modifier = modifier,
         )
-        is AddServicePhase.Uncertain -> UncertainContent(phase.message, actions.onRecheck, modifier)
+        is AddServicePhase.Uncertain -> UncertainContent(actions.onRecheck, modifier)
     }
 }
 
@@ -337,7 +336,7 @@ private fun ConfirmedContent(onDone: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun UncertainContent(message: UiMessage, onRecheck: () -> Unit, modifier: Modifier) {
+private fun UncertainContent(onRecheck: () -> Unit, modifier: Modifier) {
     val spacing = LocalSpacing.current
     Column(
         modifier = modifier.fillMaxSize().padding(spacing.lg).semantics { liveRegion = LiveRegionMode.Assertive },

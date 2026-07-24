@@ -179,21 +179,40 @@ class AddServiceViewModel @Inject constructor(
         )
     }
 
-    fun amountChanged(text: String) {
+    /**
+     * Edits to the amount-entry form; null means "leave that field unchanged". The Decimal IME
+     * renders the device locale's separator, which is a comma in en-ZA and much of Europe, so the
+     * text is normalized here to keep the parser strict and locale-independent.
+     */
+    fun amountEntryChanged(text: String? = null, currency: Currency? = null) {
         val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
-        // The Decimal IME renders the device locale's separator, which is a comma in en-ZA and much
-        // of Europe. Normalize here so the parser can stay strict and locale-independent.
-        _uiState.value = AddServiceUiState(phase.copy(amountText = text.replace(',', '.')))
+        _uiState.value = AddServiceUiState(
+            phase.copy(
+                amountText = text?.replace(',', '.') ?: phase.amountText,
+                selectedCurrency = currency ?: phase.selectedCurrency,
+            ),
+        )
     }
 
-    fun currencySelected(currency: Currency) {
-        val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
-        _uiState.value = AddServiceUiState(phase.copy(selectedCurrency = currency))
-    }
-
-    fun cancelAmount() {
-        val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
-        _uiState.value = AddServiceUiState(AddServicePhase.Ready(phase.services))
+    /**
+     * One step back in the entry flow: from the summary to amount entry — carrying the reviewed
+     * values so a correction is an edit rather than a re-entry — or from amount entry to the
+     * service list. The list itself comes along untouched either way.
+     */
+    fun stepBack() {
+        _uiState.value = when (val phase = _uiState.value.phase) {
+            is AddServicePhase.EnteringAmount -> AddServiceUiState(AddServicePhase.Ready(phase.services))
+            is AddServicePhase.ReviewingSummary -> AddServiceUiState(
+                AddServicePhase.EnteringAmount(
+                    services = phase.services,
+                    currencies = currencies,
+                    selected = phase.selected,
+                    selectedCurrency = phase.currency,
+                    amountText = phase.amount.format(),
+                ),
+            )
+            else -> return
+        }
     }
 
     /**
@@ -226,24 +245,6 @@ class AddServiceViewModel @Inject constructor(
     fun submitSummary() {
         if (_uiState.value.phase !is AddServicePhase.ReviewingSummary) return
         runSubmit()
-    }
-
-    /**
-     * Back to amount entry from the summary, carrying the reviewed values so a correction is an
-     * edit rather than a re-entry. The service list comes along untouched, so cancelling from there
-     * still lands where it always did.
-     */
-    fun editSummary() {
-        val phase = _uiState.value.phase as? AddServicePhase.ReviewingSummary ?: return
-        _uiState.value = AddServiceUiState(
-            AddServicePhase.EnteringAmount(
-                services = phase.services,
-                currencies = currencies,
-                selected = phase.selected,
-                selectedCurrency = phase.currency,
-                amountText = phase.amount.format(),
-            ),
-        )
     }
 
     /**

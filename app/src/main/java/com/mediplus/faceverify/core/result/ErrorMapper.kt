@@ -30,7 +30,38 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
         )
     }
 
+    // The dispatcher stays exhaustive over BusinessCode, so a new code cannot compile without a
+    // mapping; the per-area functions below only ever see their own subset.
     private fun businessMessage(code: BusinessCode): UiMessage = when (code) {
+        BusinessCode.INVALID_CREDENTIALS,
+        BusinessCode.ACCOUNT_LOCKED,
+        -> signInMessage(code)
+
+        BusinessCode.MEMBER_INVALID,
+        BusinessCode.CARD_UNREADABLE,
+        BusinessCode.PATIENT_NOT_FOUND,
+        BusinessCode.FACE_NO_MATCH,
+        BusinessCode.FACE_SPOOF,
+        BusinessCode.FACE_LOCKED_OUT,
+        BusinessCode.SUBJECT_MISMATCH,
+        BusinessCode.CONSENT_WITHHELD,
+        BusinessCode.NOT_CURRENTLY_VERIFIED,
+        -> verificationMessage(code)
+
+        BusinessCode.DUPLICATE_SERVICE,
+        BusinessCode.SERVICE_INELIGIBLE,
+        -> enrollmentMessage(code)
+
+        BusinessCode.UPDATE_CORRUPTED,
+        BusinessCode.UPDATE_BACKUP_FAILED,
+        BusinessCode.UPDATE_INSTALL_ABORTED,
+        BusinessCode.UPDATE_INSTALL_FAILED,
+        -> updateMessage(code)
+
+        BusinessCode.GENERIC -> genericMessage()
+    }
+
+    private fun signInMessage(code: BusinessCode): UiMessage = when (code) {
         BusinessCode.INVALID_CREDENTIALS -> UiMessage(
             R.string.err_invalid_credentials_title,
             R.string.err_invalid_credentials_body,
@@ -40,6 +71,10 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_account_locked_title,
             R.string.err_account_locked_body,
         )
+        else -> genericMessage()
+    }
+
+    private fun verificationMessage(code: BusinessCode): UiMessage = when (code) {
         BusinessCode.MEMBER_INVALID -> UiMessage(
             R.string.err_member_invalid_title,
             R.string.err_member_invalid_body,
@@ -76,6 +111,15 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_consent_withheld_title,
             R.string.err_consent_withheld_body,
         )
+        BusinessCode.NOT_CURRENTLY_VERIFIED -> UiMessage(
+            R.string.err_not_verified_title,
+            R.string.err_not_verified_body,
+            R.string.action_start_over,
+        )
+        else -> genericMessage()
+    }
+
+    private fun enrollmentMessage(code: BusinessCode): UiMessage = when (code) {
         BusinessCode.DUPLICATE_SERVICE -> UiMessage(
             R.string.err_duplicate_service_title,
             R.string.err_duplicate_service_body,
@@ -84,11 +128,10 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_service_ineligible_title,
             R.string.err_service_ineligible_body,
         )
-        BusinessCode.NOT_CURRENTLY_VERIFIED -> UiMessage(
-            R.string.err_not_verified_title,
-            R.string.err_not_verified_body,
-            R.string.action_start_over,
-        )
+        else -> genericMessage()
+    }
+
+    private fun updateMessage(code: BusinessCode): UiMessage = when (code) {
         BusinessCode.UPDATE_CORRUPTED -> UiMessage(
             R.string.err_update_corrupted_title,
             R.string.err_update_corrupted_body,
@@ -109,7 +152,7 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_update_install_failed_body,
             R.string.action_retry,
         )
-        BusinessCode.GENERIC -> genericMessage()
+        else -> genericMessage()
     }
 
     private fun transientMessage(kind: TransientKind): UiMessage = when (kind) {

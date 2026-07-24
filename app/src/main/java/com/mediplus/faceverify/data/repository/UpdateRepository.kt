@@ -16,6 +16,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.security.MessageDigest
@@ -93,28 +95,38 @@ class UpdateRepositoryImpl @Inject constructor(
         onProgress: suspend (Long, Long) -> Unit,
     ): StreamedApk {
         val digest = MessageDigest.getInstance("SHA-256")
-        var written = 0L
-        var lastPercent = -1
         cacheDir.mkdirs()
-        body.byteStream().use { input ->
+        val written = body.byteStream().use { input ->
             target.outputStream().use { output ->
-                val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read == -1) break
-                    digest.update(buffer, 0, read)
-                    output.write(buffer, 0, read)
-                    written += read
-                    val percent = percentOf(written, totalBytes)
-                    if (percent != lastPercent) {
-                        lastPercent = percent
-                        onProgress(written, totalBytes)
-                    }
-                }
+                copyChunks(input, output, digest, totalBytes, onProgress)
             }
         }
         onProgress(written, totalBytes)
         return StreamedApk(bytes = written, shaHex = digest.digest().toHex())
+    }
+
+    private suspend fun copyChunks(
+        input: InputStream,
+        output: OutputStream,
+        digest: MessageDigest,
+        totalBytes: Long,
+        onProgress: suspend (Long, Long) -> Unit,
+    ): Long {
+        val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
+        var written = 0L
+        var lastPercent = -1
+        while (true) {
+            val read = input.read(buffer)
+            if (read == -1) return written
+            digest.update(buffer, 0, read)
+            output.write(buffer, 0, read)
+            written += read
+            val percent = percentOf(written, totalBytes)
+            if (percent != lastPercent) {
+                lastPercent = percent
+                onProgress(written, totalBytes)
+            }
+        }
     }
 
     private fun verified(info: UpdateInfo, target: File, streamed: StreamedApk): AppResult<DownloadedApk> =

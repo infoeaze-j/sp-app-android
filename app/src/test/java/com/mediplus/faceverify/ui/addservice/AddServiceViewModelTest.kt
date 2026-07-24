@@ -62,7 +62,7 @@ class AddServiceViewModelTest {
      */
     private fun AddServiceViewModel.enterAmount(serviceId: String = "s1", amount: String = "150.00") {
         selectService(serviceId)
-        amountChanged(amount)
+        amountEntryChanged(text = amount)
         confirmAmount()
         submitSummary()
     }
@@ -215,7 +215,7 @@ class AddServiceViewModelTest {
         val vm = buildVm()
         vm.selectService("s1")
 
-        vm.amountChanged("abc")
+        vm.amountEntryChanged(text ="abc")
         vm.confirmAmount()
 
         assertTrue(vm.uiState.value.phase is AddServicePhase.EnteringAmount)
@@ -229,7 +229,7 @@ class AddServiceViewModelTest {
         val vm = buildVm()
         vm.selectService("s1")
 
-        vm.cancelAmount()
+        vm.stepBack()
 
         val phase = vm.uiState.value.phase
         assertTrue(phase is AddServicePhase.Ready)
@@ -255,7 +255,7 @@ class AddServiceViewModelTest {
         val vm = buildVm()
         vm.selectService("s1")
 
-        vm.currencySelected(Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
 
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
         assertEquals("USD", phase.selectedCurrency.value)
@@ -295,9 +295,9 @@ class AddServiceViewModelTest {
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
         vm.selectService("s1")
-        vm.currencySelected(Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
 
-        vm.amountChanged("99,50")
+        vm.amountEntryChanged(text ="99,50")
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
         assertEquals("99.50", phase.amountText)
 
@@ -318,7 +318,7 @@ class AddServiceViewModelTest {
         val vm = buildVm()
 
         vm.selectService("s1")
-        vm.amountChanged("150.00")
+        vm.amountEntryChanged(text ="150.00")
         vm.confirmAmount()
 
         val phase = vm.uiState.value.phase
@@ -333,8 +333,8 @@ class AddServiceViewModelTest {
         coEvery { listServices() } returns AppResult.Success(catalog)
         val vm = buildVm()
         vm.selectService("s1")
-        vm.currencySelected(Currency("USD", "US Dollar ($)"))
-        vm.amountChanged("99.50")
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(text ="99.50")
 
         vm.confirmAmount()
 
@@ -352,7 +352,7 @@ class AddServiceViewModelTest {
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
         vm.selectService("s1")
-        vm.amountChanged("150.00")
+        vm.amountEntryChanged(text ="150.00")
         vm.confirmAmount()
 
         vm.submitSummary()
@@ -368,11 +368,11 @@ class AddServiceViewModelTest {
         coEvery { listServices() } returns AppResult.Success(catalog)
         val vm = buildVm()
         vm.selectService("s1")
-        vm.currencySelected(Currency("USD", "US Dollar ($)"))
-        vm.amountChanged("99.5")
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(text ="99.5")
         vm.confirmAmount()
 
-        vm.editSummary()
+        vm.stepBack()
 
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
         assertEquals("99.50", phase.amountText)
@@ -393,12 +393,12 @@ class AddServiceViewModelTest {
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
         vm.selectService("s1")
-        vm.amountChanged("150.00")
+        vm.amountEntryChanged(text ="150.00")
         vm.confirmAmount()
         val abandoned = (vm.uiState.value.phase as AddServicePhase.ReviewingSummary)
 
-        vm.editSummary()
-        vm.amountChanged("250.00")
+        vm.stepBack()
+        vm.amountEntryChanged(text ="250.00")
         vm.confirmAmount()
         vm.submitSummary()
 
