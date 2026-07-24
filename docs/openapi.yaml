@@ -275,6 +275,46 @@ paths:
         '5XX':
           description: Transient — client fails open with a dismissible retry notice.
 
+  /diagnostics/poll:
+    get:
+      summary: >-
+        Does the back office want a device diagnostics snapshot right now?
+        App-invented placeholder (see the /members/verify precedent) — reconcile when the server
+        publishes its shape. Authenticated (bearer). Same-origin with BASE_URL.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: A snapshot is requested; body carries the request id to echo back.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId]
+                properties:
+                  requestId: { type: string }
+        '204':
+          description: Nothing requested; the client does nothing.
+  /diagnostics:
+    post:
+      summary: >-
+        Report the full permission-free device snapshot, tagged with the poll's requestId.
+        App-invented placeholder. Authenticated (bearer). Same-origin with BASE_URL.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, snapshot]
+              properties:
+                requestId: { type: string }
+                snapshot: { type: object, description: Non-identifying device state groups. }
+      responses:
+        '200': { description: Accepted. }
+
 components:
   securitySchemes:
     bearerAuth:
