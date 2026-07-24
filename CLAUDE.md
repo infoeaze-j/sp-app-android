@@ -129,9 +129,17 @@ app-side** — reconcile it when the server publishes its real shape.
   `currencies` array, it parses to `emptyList()` and every operator is blocked at load with
   `AddServicePhase.Unavailable(UnavailableReason.NO_CURRENCY)`. Correct fail-safe — but this build must not reach a
   real device before the server change.
-- As of 2026-07-22 detekt was **already red on `main`** (~52 weighted issues predating recent work:
+- As of 2026-07-24 detekt is **still red on `main`** (48 weighted issues, all predating recent work:
   `Color.kt` magic numbers, `NfcModels` naming, line length, `VerifyFaceUseCase` return count). Check
   the baseline before assuming your change caused a failure.
+- **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
+  launch-time check of the placeholder `GET /app/version` (fail-open), SHA-256-verified streaming
+  download, rollback backup of the installed APK to `Downloads/FaceVerify/` (revert = manual
+  uninstall + install the backup), PackageInstaller session install. **Signing landmine:** release
+  builds still use default debug signing, and updates only install over a same-key build — the
+  permanent release keystore must exist before the first field rollout, or every fleet device needs
+  a manual reinstall. `apkUrl` must stay same-origin with `BASE_URL` (the bearer token rides on
+  every request); every release must bump `versionCode`.
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
   tests, LeakCanary clean-run, and the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`.
