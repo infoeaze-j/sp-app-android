@@ -232,6 +232,16 @@ class UpdateApiContractTest {
     }
 
     @Test
+    fun `clearing downloads removes leftovers from earlier runs`() = runTest {
+        File(cacheDir, "update-v6.apk").writeBytes(ByteArray(10))
+        File(cacheDir, "update-v7.apk").writeBytes(ByteArray(10))
+
+        repository.clearDownloads()
+
+        assertEquals(emptyList<File>(), cacheDir.listFiles().orEmpty().toList())
+    }
+
+    @Test
     fun `a missing APK on the server stays transient`() = runTest {
         server.enqueue(MockResponse().setResponseCode(404))
 

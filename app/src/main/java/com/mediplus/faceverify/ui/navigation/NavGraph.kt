@@ -1,5 +1,6 @@
 package com.mediplus.faceverify.ui.navigation
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -32,6 +33,7 @@ import com.mediplus.faceverify.ui.addservice.AddServiceRoute
 import com.mediplus.faceverify.ui.facecheck.FaceCheckRoute
 import com.mediplus.faceverify.ui.memberscan.MemberScanRoute
 import com.mediplus.faceverify.ui.signin.SignInRoute
+import com.mediplus.faceverify.ui.update.UpdateHost
 
 /**
  * The single-Activity navigation graph for the sequential journey (FR-032). A global guard forces a
@@ -73,10 +75,15 @@ fun NavGraph(
         )
     }
 
-    Scaffold(
-        topBar = { if (showAppBar) AppBar(onLogOutClick = { confirmingLogOut = true }) },
-    ) { innerPadding ->
-        NavGraphHost(navController, Modifier.padding(innerPadding))
+    Box {
+        Scaffold(
+            topBar = { if (showAppBar) AppBar(onLogOutClick = { confirmingLogOut = true }) },
+        ) { innerPadding ->
+            NavGraphHost(navController, Modifier.padding(innerPadding))
+        }
+        // Drawn last so a forced-update overlay covers the chrome too — log out included: with the
+        // build unusable there is nothing meaningful to log out of, and the journey is void anyway.
+        UpdateHost()
     }
 }
 

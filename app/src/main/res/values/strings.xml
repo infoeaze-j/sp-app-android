@@ -116,6 +116,21 @@
     <string name="addservice_summary_submit">Submit</string>
     <string name="addservice_start_over">Start over</string>
 
+    <!-- ===== Self-update ===== -->
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_body">Version %1$s is ready to install. You can update now, or continue and update later.</string>
+    <string name="update_required_title">Update required</string>
+    <string name="update_required_body">This version of FaceVerify can no longer be used. Install version %1$s to continue.</string>
+    <string name="update_downloading">Downloading the update…</string>
+    <string name="update_backing_up">Saving a backup of the current version…</string>
+    <string name="update_installing">Installing… follow the system prompt if one appears.</string>
+    <string name="update_restarting">Update installed. Restarting…</string>
+    <string name="update_permission_title">Allow updates</string>
+    <string name="update_permission_body">FaceVerify needs permission to install its own updates. Open settings and allow installs from this app, then come back.</string>
+    <string name="update_percent">%1$d%%</string>
+    <string name="action_update_now">Update now</string>
+    <string name="action_update_later">Later</string>
+
     <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->
     <string name="err_generic_title">Something went wrong</string>
     <string name="err_generic_body">We couldn\'t complete that. Please try again.</string>

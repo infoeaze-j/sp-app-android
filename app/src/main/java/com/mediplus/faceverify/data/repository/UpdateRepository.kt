@@ -44,6 +44,12 @@ interface UpdateRepository {
         info: UpdateInfo,
         onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
     ): AppResult<DownloadedApk>
+
+    /**
+     * Deletes leftover downloads from earlier runs. Called once at launch: nothing is resumable
+     * across a process restart (a fresh attempt re-downloads), so leftovers are only waste.
+     */
+    suspend fun clearDownloads()
 }
 
 class UpdateRepositoryImpl @Inject constructor(
@@ -51,6 +57,10 @@ class UpdateRepositoryImpl @Inject constructor(
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
     @param:UpdateCacheDir private val cacheDir: File,
 ) : UpdateRepository {
+
+    override suspend fun clearDownloads(): Unit = withContext(dispatcher) {
+        cacheDir.listFiles()?.forEach { it.delete() }
+    }
 
     // The streaming body escapes apiCall's map lambda, so this hand-rolls the same transport
     // classification (SocketTimeoutException -> Timeout, IOException -> NO_CONNECTIVITY).
