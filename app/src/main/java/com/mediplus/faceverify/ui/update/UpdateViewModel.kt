@@ -21,17 +21,22 @@ import com.mediplus.faceverify.domain.usecase.CheckForUpdateUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** How long the restarting overlay lingers before recovering to Idle when the process survives. */
+private const val RESTARTING_SETTLE_MILLIS = 1_500L
 
 /** Which stage a failed update attempt re-enters. INSTALL keeps the verified download. */
 enum class RetryTarget { DOWNLOAD, INSTALL }
 
 /**
  * Every observable state of the self-update flow, explicit per convention. A successful install
- * has no phase: the system kills the process mid-install, so success manifests as process death
- * ([Restarting] renders only in the rare case the system reports success while we're alive).
+ * has no lasting phase: the system kills the process mid-install, so success manifests as process
+ * death. [Restarting] renders only when we survive the commit (the fake dev installer, or the rare
+ * real case), and then settles back to [Idle] rather than freezing on the overlay.
  */
 sealed interface UpdatePhase {
     data object Idle : UpdatePhase
@@ -177,21 +182,34 @@ class UpdateViewModel @Inject constructor(
         }
         _phase.value = UpdatePhase.Installing(forced)
         val outcome = installer.install(apk.file)
-        _phase.value = if (outcome == InstallOutcome.Committed) {
-            UpdatePhase.Restarting
-        } else {
-            val code = if (outcome == InstallOutcome.Aborted) {
-                BusinessCode.UPDATE_INSTALL_ABORTED
-            } else {
-                BusinessCode.UPDATE_INSTALL_FAILED
-            }
-            UpdatePhase.Failed(
-                message = errorMapper.toUserMessage(AppError.Business(code)),
-                info = info,
-                forced = forced,
-                retry = RetryTarget.INSTALL,
-            )
+        if (outcome == InstallOutcome.Committed) {
+            settleAfterCommit()
+            return
         }
+        val code = if (outcome == InstallOutcome.Aborted) {
+            BusinessCode.UPDATE_INSTALL_ABORTED
+        } else {
+            BusinessCode.UPDATE_INSTALL_FAILED
+        }
+        _phase.value = UpdatePhase.Failed(
+            message = errorMapper.toUserMessage(AppError.Business(code)),
+            info = info,
+            forced = forced,
+            retry = RetryTarget.INSTALL,
+        )
+    }
+
+    /**
+     * A real install kills this process mid-commit, so control usually never reaches here. When it
+     * does — the fake dev installer (which cannot die) or the rare real case where the system
+     * reports success while we survive — show [UpdatePhase.Restarting] briefly, then recover to
+     * [UpdatePhase.Idle] the way a relaunched, now up-to-date build would, rather than freezing on
+     * the overlay forever.
+     */
+    private suspend fun settleAfterCommit() {
+        _phase.value = UpdatePhase.Restarting
+        delay(RESTARTING_SETTLE_MILLIS)
+        _phase.value = UpdatePhase.Idle
     }
 
     private fun messageFor(result: AppResult<*>): UiMessage =

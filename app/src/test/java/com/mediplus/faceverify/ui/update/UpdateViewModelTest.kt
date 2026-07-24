@@ -22,6 +22,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -203,7 +204,7 @@ class UpdateViewModelTest {
 
         coEvery { installer.canRequestInstalls() } returns true
         vm.onReturnedFromSettings()
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(UpdatePhase.Restarting, vm.phase.value)
     }
@@ -233,7 +234,7 @@ class UpdateViewModelTest {
         advanceUntilIdle()
 
         vm.onUpdateAccepted()
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(UpdatePhase.Restarting, vm.phase.value)
         coVerifyOrder {
@@ -241,6 +242,26 @@ class UpdateViewModelTest {
             backupStore.backupCurrentApk(currentVersion)
             installer.install(apkFile)
         }
+    }
+
+    @Test
+    fun `a committed install shows restarting then settles back to idle`() = runTest {
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returns InstallOutcome.Committed
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.onUpdateAccepted()
+        runCurrent()
+        // The install "committed" while we're still alive (always, on the fake dev installer):
+        // show the restarting overlay rather than freezing on it.
+        assertEquals(UpdatePhase.Restarting, vm.phase.value)
+
+        advanceUntilIdle()
+        // A real relaunch lands a fresh, up-to-date build at Idle; we recover the same way.
+        assertEquals(UpdatePhase.Idle, vm.phase.value)
     }
 
     @Test
@@ -335,7 +356,7 @@ class UpdateViewModelTest {
         assertEquals(RetryTarget.INSTALL, phase.retry)
 
         vm.onRetry()
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(UpdatePhase.Restarting, vm.phase.value)
         coVerify(exactly = 1) { repository.downloadAndVerify(any(), any()) }
