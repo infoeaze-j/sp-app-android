@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -102,10 +103,14 @@ private fun AppBar(providerName: String?, onLogOutClick: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (providerName != null) {
+                    // Server-supplied text of unbounded length; keep it to one line so a long clinic
+                    // name can't wrap and be clipped by the fixed-height bar.
                     Text(
                         text = providerName,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
