@@ -35,7 +35,13 @@ data class LoginResponse(
     val token: String,
     val expiresAt: String? = null,
     val operator: OperatorDto,
+    val provider: ProviderDto? = null,
     val config: SessionConfigDto? = null,
+)
+
+@Serializable
+data class ProviderDto(
+    val name: String? = null,
 )
 
 @Serializable

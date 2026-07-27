@@ -7,6 +7,7 @@ import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.data.remote.AuthApi
 import com.mediplus.spapp.data.remote.LoginResponse
 import com.mediplus.spapp.data.remote.OperatorDto
+import com.mediplus.spapp.data.remote.ProviderDto
 import com.mediplus.spapp.data.remote.SessionConfigDto
 import com.mediplus.spapp.domain.model.SessionState
 import io.mockk.coEvery
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -116,6 +118,37 @@ class AuthRepositoryTest {
         val result = repo.signIn("sam", "pw")
 
         assertEquals(AppResult.Timeout, result)
+    }
+
+    @Test
+    fun `login maps a provider name onto the session`() = runTest(dispatcher) {
+        coEvery { api.login(any()) } returns Response.success(
+            loginResponse().copy(provider = ProviderDto(name = "Riverside Clinic")),
+        )
+
+        repo.signIn("sam", "pw")
+
+        assertEquals("Riverside Clinic", sessionManager.session.value?.provider?.name)
+    }
+
+    @Test
+    fun `login with a blank provider name yields no provider`() = runTest(dispatcher) {
+        coEvery { api.login(any()) } returns Response.success(
+            loginResponse().copy(provider = ProviderDto(name = "   ")),
+        )
+
+        repo.signIn("sam", "pw")
+
+        assertNull(sessionManager.session.value?.provider)
+    }
+
+    @Test
+    fun `login without a provider yields no provider`() = runTest(dispatcher) {
+        coEvery { api.login(any()) } returns Response.success(loginResponse())
+
+        repo.signIn("sam", "pw")
+
+        assertNull(sessionManager.session.value?.provider)
     }
 
     @Test
