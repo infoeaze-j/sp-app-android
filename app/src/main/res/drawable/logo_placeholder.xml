@@ -1,0 +1,16 @@
+<!-- Placeholder company logo. Replace this drawable with the real brand asset. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path
+        android:pathData="M12,8 L84,8 A8,8 0 0 1 92,16 L92,80 A8,8 0 0 1 84,88 L12,88 A8,8 0 0 1 4,80 L4,16 A8,8 0 0 1 12,8 Z"
+        android:fillColor="#E0E0E0" />
+    <path
+        android:pathData="M64,34 m-9,0 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0 Z"
+        android:fillColor="#9E9E9E" />
+    <path
+        android:pathData="M16,80 L40,48 L56,68 L68,52 L84,80 Z"
+        android:fillColor="#9E9E9E" />
+</vector>

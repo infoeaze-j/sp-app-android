@@ -2,7 +2,7 @@
     <!-- Base theme for a Compose app: no ActionBar; visual styling lives in the Compose
          Material 3 theme (core/ui/theme). This framework parent avoids an AppCompat/Material
          Views dependency. -->
-    <style name="Theme.FaceVerify" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.SpApp" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@android:color/white</item>
     </style>

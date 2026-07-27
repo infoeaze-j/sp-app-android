@@ -1,0 +1,79 @@
+package com.mediplus.spapp.dev
+
+import com.mediplus.spapp.domain.model.Currency
+import com.mediplus.spapp.domain.model.FaceDecision
+import com.mediplus.spapp.domain.model.FaceLockoutState
+import com.mediplus.spapp.domain.model.LivenessResult
+import com.mediplus.spapp.domain.model.MemberDetails
+import com.mediplus.spapp.domain.model.MemberNumber
+import com.mediplus.spapp.domain.model.MemberVerification
+import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Service
+import com.mediplus.spapp.domain.model.Session
+import com.mediplus.spapp.domain.model.SessionState
+
+/** Canned domain payloads for the happy path. Deterministic (no timestamps) for stable tests. */
+object FakeData {
+
+    val session: Session = Session(
+        token = "fake-token-op-001",
+        operator = Operator(operatorId = "op-001", displayName = "Demo Operator"),
+        expiresAt = null,
+        state = SessionState.Active,
+    )
+
+    /** The card number the emulated tap returns. */
+    val memberNumber: MemberNumber = MemberNumber.parse("1234567")!!
+
+    /**
+     * The bytes the emulated capture returns. Content is irrelevant — [FakeFaceRepository] never
+     * inspects it — but it must be non-empty and non-zero so a cleared frame is distinguishable.
+     * Hand out `.copyOf()`: TransientFrame.clear() zeroes its array in place.
+     */
+    val faceFrameBytes: ByteArray = ByteArray(64) { (it + 1).toByte() }
+
+    val memberDetails: MemberDetails = MemberDetails(
+        memberNumber = "1234567",
+        fullName = "Jane Doe",
+        dateOfBirth = "1985-04-12",
+        membershipStatus = "ACTIVE",
+        plan = "Gold",
+    )
+
+    val verificationValid: MemberVerification = MemberVerification(
+        status = MemberVerification.Status.VALID,
+        reason = null,
+        memberVerified = true,
+        memberResolved = true,
+        referenceOnFile = true,
+        member = memberDetails,
+    )
+
+    val verificationInvalid: MemberVerification = MemberVerification(
+        status = MemberVerification.Status.INVALID,
+        reason = "MEMBERSHIP_EXPIRED",
+        memberVerified = false,
+        memberResolved = true,
+        referenceOnFile = true,
+        member = memberDetails,
+    )
+
+    val services: List<Service> = listOf(
+        Service("svc-blood", "Blood test", eligibleForPatient = true, alreadySelected = false),
+        Service("svc-xray", "X-ray", eligibleForPatient = true, alreadySelected = false),
+        Service("svc-vaccine", "Vaccination", eligibleForPatient = true, alreadySelected = false),
+    )
+
+    val currencies: List<Currency> = listOf(
+        Currency("ZAR", "Rand (R)"),
+        Currency("USD", "US Dollar ($)"),
+    )
+
+    val faceDecisionPass: FaceDecision = FaceDecision(
+        decisionPass = true,
+        liveness = LivenessResult.PASSED,
+        sameSubject = true,
+        reason = null,
+        lockout = FaceLockoutState(lockedOut = false, remainingAttempts = null, cooldownUntilMillis = null),
+    )
+}

@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "faceverify"
+rootProject.name = "sp-app"
 include(":app")

@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
-  title: FaceVerify Back Office API
+  title: SP App Back Office API
   version: 0.1.0-provisional
   description: |
-    Back-office API consumed by the FaceVerify Android app for operator
-    authentication, member card verification, face verification, and service
-    enrollment (feature 001-identity-verification-enrollment).
+    Back-office API consumed by the SP App Android app for operator
+    authentication, member card verification, face verification, service
+    enrollment (feature 001-identity-verification-enrollment), app self-update,
+    and device diagnostics telemetry.
 
     **Status:** Provisional. Field names and paths mirror the current Retrofit
     client (`app/src/main/java/com/mediplus/faceverify/data/remote/*Api.kt`) and
@@ -13,11 +14,50 @@ info:
     `specs/001-identity-verification-enrollment/contracts/`. The stable seam is
     the client repository interface, not this wire shape.
 
+    **Complete call inventory.** This document covers every HTTP call the app
+    makes — 12 operations across 6 Retrofit interfaces: Auth (3), Members (1),
+    Face (1), Enrollment (3), App self-update (2), Diagnostics (2). There is no
+    other network traffic: no third-party SDK, analytics, or crash reporter is
+    on the wire.
+
+    **Placeholders invented app-side**, to be reconciled once the back office
+    publishes its real shapes: `POST /members/verify`, `GET /app/version`,
+    `GET /diagnostics/poll`, `POST /diagnostics`.
+
+    Each operation carries two annotations for server implementers:
+    `x-client-method` (Retrofit method → repository) and `x-client-handling`
+    (the exact status codes the client branches on, and what it does with each).
+
     **Privacy constraints enforced by the client (FR-017, FR-029, FR-030):**
     - Session tokens are transient and redacted from all logs.
     - `memberNumber` is the patient key and is never logged in the clear.
     - The live face frame is held in memory for a single request and discarded
       immediately; only outcome metadata is retained for audit — never the image.
+    - The diagnostics snapshot is permission-free: no hardware IDs, no location,
+      no account or patient data.
+
+x-client:
+  package: com.mediplus.faceverify
+  source: app/src/main/java/com/mediplus/faceverify/data/remote/
+  transport: |
+    Retrofit + OkHttp + kotlinx.serialization (`ignoreUnknownKeys = true`,
+    `explicitNulls = false`, `encodeDefaults = true`), wired in
+    `core/di/NetworkModule.kt`. Logging is debug-only, capped at HEADERS with
+    `Authorization` redacted — no request or response body ever reaches a log.
+  timeouts:
+    connectSeconds: 15
+    readSeconds: 30
+    writeSeconds: 30
+  resultType: |
+    Every call is mapped to `AppResult<T>` — Success | BusinessRejection |
+    TransientFailure | Timeout. A Timeout can never be mistaken for success, and
+    no path reports success without an explicit server confirmation.
+  authInvalidation: |
+    `core/network/AuthInterceptor.kt` attaches `Authorization: Bearer <token>`
+    whenever a session exists, and treats a 401 *on a request that carried a
+    token* as session invalidation: `SessionManager.clearAll()` wipes
+    verification state and the app routes to sign-in. A 401 on sign-in itself is
+    "invalid credentials", not session loss.
 
 servers:
   - url: https://backoffice.example.com/
@@ -47,6 +87,11 @@ paths:
       summary: Authenticate an operator and establish a session
       operationId: login
       security: []
+      x-client-method: AuthApi.login → AuthRepositoryImpl.signIn
+      x-client-handling: |
+        2xx + body → Success (session stored; verificationWindowSeconds captured).
+        401 → BusinessRejection(INVALID_CREDENTIALS). 423/429 → BusinessRejection(ACCOUNT_LOCKED).
+        5xx → TransientFailure(SERVER_ERROR). Anything else → BusinessRejection(GENERIC).
       requestBody:
         required: true
         content:
@@ -76,6 +121,10 @@ paths:
       tags: [Auth]
       summary: Invalidate the current session (idempotent)
       operationId: logout
+      x-client-method: AuthApi.logout → AuthRepositoryImpl.signOut
+      x-client-handling: |
+        Best-effort: the result is ignored. `SessionManager.clearAll()` runs regardless, so log out
+        works offline, mid-capture, and mid-request (FR-004a).
       responses:
         '200':
           description: Session invalidated. Client clears all verification state (FR-004a).
@@ -87,10 +136,13 @@ paths:
       tags: [Auth]
       summary: Validate the current session
       description: |
-        Any protected endpoint returning 401 signals session expiry/invalidation;
-        the app transitions to NotSignedIn and discards all verification state
-        (FR-004, FR-004a).
+        **Declared on the client but not called by production code today** — only
+        the contract test exercises it. Session expiry is instead detected
+        passively: any protected endpoint returning 401 signals expiry, and the
+        app transitions to NotSignedIn and discards all verification state
+        (FR-004, FR-004a). Kept as the explicit-revalidation seam.
       operationId: session
+      x-client-method: AuthApi.session (unused in production)
       responses:
         '200':
           description: Session is valid.
@@ -102,10 +154,19 @@ paths:
       tags: [Members]
       summary: Verify a scanned member card and resolve the member
       description: |
+        **Placeholder invented app-side** — reconcile with the back office once
+        it publishes its shape.
+
         The card number is read on-device from an NDEF text record (or entered by
         the operator when the card is unreadable); this endpoint returns the
         authoritative verdict and resolves the member by card number (FR-008, FR-011a).
+        The app never decides membership validity locally.
       operationId: verifyMember
+      x-client-method: MemberApi.verify → MemberRepositoryImpl.verify
+      x-client-handling: |
+        2xx + body → Success (including `status: INVALID`, which is a rejection, not an error).
+        404 → BusinessRejection(PATIENT_NOT_FOUND). 5xx → TransientFailure(SERVER_ERROR).
+        Anything else → BusinessRejection(MEMBER_INVALID).
       requestBody:
         required: true
         content:
@@ -117,6 +178,7 @@ paths:
           description: |
             Verdict returned. `status: INVALID` (with `reason`) is a valid 200
             response — the membership is rejected, not member-verified (FR-008).
+            The `reason` is diagnostic-only and is never rendered to the operator.
           content:
             application/json:
               schema:
@@ -135,8 +197,15 @@ paths:
       description: |
         Submit a live frame against the trusted reference (the back-office
         reference photo on file for the member), keyed to the patient. The frame is transient in memory
-        only and discarded immediately after the response (FR-017).
+        only and discarded immediately after the response (FR-017). The server
+        owns the match threshold, the liveness verdict, and the lockout budget —
+        the app only enforces what it is told.
       operationId: verifyFace
+      x-client-method: FaceApi.verify → FaceRepositoryImpl.verify
+      x-client-handling: |
+        2xx + body → Success (a FAIL decision is a successful call reporting a failed attempt).
+        5xx → TransientFailure(SERVER_ERROR). Anything else → BusinessRejection(GENERIC).
+        The frame is cleared on every path, including the base64-encoding failure path.
       requestBody:
         required: true
         content:
@@ -163,6 +232,15 @@ paths:
       tags: [Enrollment]
       summary: List services eligible for this patient
       operationId: listServices
+      x-client-method: EnrollmentApi.listServices → EnrollmentRepositoryImpl.listServices
+      x-client-handling: |
+        2xx + body → Success. 404 → BusinessRejection(PATIENT_NOT_FOUND).
+        5xx → TransientFailure(SERVER_ERROR). Anything else → BusinessRejection(GENERIC).
+
+        **Live blocker:** the backend does not yet return `currencies`. It parses to an empty list
+        and the add-service step halts at load with `AddServicePhase.Unavailable(NO_CURRENCY)` —
+        the correct fail-safe, but this build must not reach a real device until the server ships
+        the field.
       parameters:
         - $ref: '#/components/parameters/MemberNumber'
       responses:
@@ -186,6 +264,13 @@ paths:
         back-office window (FR-018, FR-024, FR-026). Same `idempotencyKey` on
         retry guarantees no duplicate enrollment (FR-022, SC-003).
       operationId: enroll
+      x-client-method: EnrollmentApi.enroll → EnrollmentRepositoryImpl.enroll
+      x-client-handling: |
+        2xx **and** `status == "CONFIRMED"` → Success. Any other status on a 2xx falls through to
+        BusinessRejection(GENERIC) — success is never inferred. 409 → DUPLICATE_SERVICE.
+        422 → SERVICE_INELIGIBLE. 5xx → TransientFailure(SERVER_ERROR). A transport timeout →
+        AppResult.Timeout, which is *uncertain*: the UI shows no success and resolves it with the
+        re-check GET below, reusing the same key and currency.
       parameters:
         - $ref: '#/components/parameters/MemberNumber'
       requestBody:
@@ -218,6 +303,11 @@ paths:
         Resolves whether an enrollment was actually created, without risking a
         duplicate, after a timeout on the POST (FR-022).
       operationId: recheckEnrollment
+      x-client-method: EnrollmentApi.recheck → EnrollmentRepositoryImpl.recheck
+      x-client-handling: |
+        2xx + `status == "CONFIRMED"` → Success(enrollment). Any other 2xx (including an empty body
+        or 204) and 404 → Success(null), meaning "it never landed; retrying is safe".
+        5xx → TransientFailure(SERVER_ERROR). Anything else → TransientFailure(UNKNOWN).
       parameters:
         - $ref: '#/components/parameters/MemberNumber'
         - name: idempotencyKey
@@ -247,7 +337,8 @@ paths:
         **Placeholder invented app-side** — reconcile when the server publishes
         its real shape (the `/members/verify` precedent).
 
-        Unauthenticated: the check runs at app launch, before sign-in. The
+        Unauthenticated: the check runs at app launch, before sign-in (the
+        interceptor will still attach a token if a session happens to exist). The
         client gates on `BuildConfig.VERSION_CODE`: below
         `minSupportedVersionCode` the update is forced (blocking), below
         `latestVersionCode` it is optional, otherwise nothing is shown. A build
@@ -265,6 +356,11 @@ paths:
           build, or Android rejects the install.
       operationId: appVersion
       security: []
+      x-client-method: UpdateApi.checkVersion → UpdateRepositoryImpl.fetchVersionInfo
+      x-client-handling: |
+        2xx + body → Success(UpdateInfo). 404 → Success(null) — endpoint not deployed is a fact,
+        not a failure, and the app treats itself as up to date (fail open). 5xx and anything else →
+        TransientFailure, which the launch check swallows: degenerate data can never brick a device.
       responses:
         '200':
           description: Newest published build facts.
@@ -277,6 +373,50 @@ paths:
         '5XX':
           description: Transient — client fails open with a dismissible retry notice.
 
+  /app/{apkFile}:
+    get:
+      tags: [App]
+      summary: Download the APK bytes (streaming)
+      description: |
+        Called with the **absolute `apkUrl`** returned by `GET /app/version`
+        (Retrofit `@Url`), so the real path is whatever the server publishes —
+        the templated path here is illustrative. The only binding constraint is
+        that the origin matches the API base URL, because the bearer token rides
+        on this request too.
+
+        The response is streamed (`@Streaming`) in 64 KiB chunks straight to
+        app-private cache while being SHA-256 digested; nothing is buffered in
+        memory. The install proceeds only if **both** the digest and the byte
+        count match `AppVersionResponse`; otherwise the file is deleted and the
+        attempt is rejected as `UPDATE_CORRUPTED`.
+      operationId: downloadApk
+      security: []
+      x-client-method: UpdateApi.downloadApk → UpdateRepositoryImpl.downloadAndVerify
+      x-client-handling: |
+        Non-2xx or a null body → TransientFailure(SERVER_ERROR). SocketTimeoutException → Timeout.
+        Any other IOException → TransientFailure(NO_CONNECTIVITY). Every failure path deletes the
+        partial file — downloads are never resumed across a process restart.
+      parameters:
+        - name: apkFile
+          in: path
+          required: true
+          description: Server-chosen filename; the client never constructs it, it follows `apkUrl` verbatim.
+          schema:
+            type: string
+          example: faceverify-7.apk
+      responses:
+        '200':
+          description: APK bytes.
+          content:
+            application/vnd.android.package-archive:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: APK missing — the update attempt fails and is retryable.
+        '5XX':
+          description: Transient — retryable; the partial download is discarded.
+
   /diagnostics/poll:
     get:
       tags: [Diagnostics]
@@ -285,19 +425,31 @@ paths:
         **App-invented placeholder** — reconcile when the server publishes its
         real shape (the `/members/verify` precedent). Authenticated (bearer),
         same-origin with `BASE_URL`.
+
+        Polled by `DiagnosticsPoller` (a `ProcessLifecycleOwner` observer) on
+        login and every 15 minutes while the app is foregrounded. A `requestId`
+        the client has already handled is ignored, so a server that keeps
+        returning the same id gets exactly one report.
       operationId: pollDiagnostics
+      x-client-method: DiagnosticsApi.poll → DiagnosticsRepositoryImpl.poll
+      x-client-handling: |
+        2xx + body → Success(requestId). 204 and 404 → Success(null), i.e. nothing requested / not
+        deployed. Everything else → TransientFailure, swallowed silently: this feature is
+        best-effort and never produces a UiMessage or a screen.
       responses:
         '200':
           description: A snapshot is requested; body carries the request id to echo back.
           content:
             application/json:
               schema:
-                type: object
-                required: [requestId]
-                properties:
-                  requestId: { type: string }
+                $ref: '#/components/schemas/DiagnosticsPollResponse'
         '204':
           description: Nothing requested; the client does nothing.
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
+        '404':
+          description: Endpoint not deployed yet — treated as "nothing requested".
+
   /diagnostics:
     post:
       tags: [Diagnostics]
@@ -305,19 +457,26 @@ paths:
       description: |
         **App-invented placeholder** — reconcile when the server publishes its
         real shape. Authenticated (bearer), same-origin with `BASE_URL`.
+
+        The snapshot is collected only after a fresh `requestId` and is
+        permission-free by construction: battery, network, storage, memory,
+        display, build, app, locale, thermal and uptime.
       operationId: reportDiagnostics
+      x-client-method: DiagnosticsApi.report → DiagnosticsRepositoryImpl.report
+      x-client-handling: |
+        2xx → the requestId is recorded as handled (dedupe). Any failure is swallowed and the
+        requestId is *not* marked handled, so the next poll retries.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [requestId, snapshot]
-              properties:
-                requestId: { type: string }
-                snapshot: { type: object, description: Non-identifying device state groups. }
+              $ref: '#/components/schemas/DiagnosticsReport'
       responses:
-        '200': { description: Accepted. }
+        '200':
+          description: Accepted.
+        '401':
+          $ref: '#/components/responses/SessionInvalidated'
 
 components:
   securitySchemes:
@@ -343,8 +502,9 @@ components:
   responses:
     SessionInvalidated:
       description: |
-        Session expired or invalidated. The app transitions to NotSignedIn,
-        discards all verification state, and routes to sign-in (FR-004, FR-004a).
+        Session expired or invalidated. On a request that carried a token, the
+        app transitions to NotSignedIn, discards all verification state, and
+        routes to sign-in (FR-004, FR-004a).
 
   schemas:
     LoginRequest:
@@ -396,7 +556,8 @@ components:
           description: |
             Back-office-owned verification-freshness window (FR-026). The app
             enforces this value and MUST NOT hardcode it. If absent, verification
-            is treated as immediately stale (fail-safe).
+            is treated as immediately stale (fail-safe) — not as "no expiry", so
+            omitting it forces re-verification before every enrollment.
 
     VerifyMemberRequest:
       type: object
@@ -416,7 +577,7 @@ components:
           enum: [VALID, INVALID]
         reason:
           type: [string, "null"]
-          description: Specific reason when INVALID.
+          description: Specific reason when INVALID. Diagnostic only — never rendered to the operator.
         memberVerified:
           type: boolean
           default: false
@@ -426,6 +587,7 @@ components:
         referenceOnFile:
           type: boolean
           default: false
+          description: Whether a reference photo exists; without it the face step cannot proceed.
         member:
           $ref: '#/components/schemas/Member'
 
@@ -475,6 +637,7 @@ components:
           enum: [PASS, FAIL]
         reason:
           type: [string, "null"]
+          description: Diagnostic only; never rendered.
         liveness:
           type: string
           enum: [PASS, FAIL]
@@ -582,9 +745,13 @@ components:
           type: [string, "null"]
         status:
           type: string
-          description: e.g. CONFIRMED, DUPLICATE, REJECTED. Success only on CONFIRMED (FR-020).
+          description: >
+            e.g. CONFIRMED, DUPLICATE, REJECTED. The client compares
+            case-insensitively against `CONFIRMED` and reports success on nothing
+            else (FR-020).
         reason:
           type: [string, "null"]
+          description: Diagnostic only; never rendered.
         timestamp:
           type: [string, "null"]
           format: date-time
@@ -619,3 +786,196 @@ components:
           type: integer
           description: Builds below this versionCode must update before continuing (forced).
           example: 5
+
+    DiagnosticsPollResponse:
+      type: object
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+          description: Opaque id. A repeat of the last-handled id is ignored (dedupe).
+
+    DiagnosticsReport:
+      type: object
+      required: [requestId, snapshot]
+      properties:
+        requestId:
+          type: string
+          description: Echoed verbatim from the poll.
+        snapshot:
+          $ref: '#/components/schemas/DeviceSnapshot'
+
+    DeviceSnapshot:
+      type: object
+      description: |
+        Permission-free device state. Every field is readable without a runtime
+        permission; there are no hardware identifiers (no IMEI, serial, MAC,
+        ANDROID_ID), no location, and no account, operator, or patient data.
+      required: [battery, network, storage, memory, display, device, app, environment, thermal, uptime]
+      properties:
+        battery:
+          $ref: '#/components/schemas/BatteryState'
+        network:
+          $ref: '#/components/schemas/NetworkState'
+        storage:
+          $ref: '#/components/schemas/StorageState'
+        memory:
+          $ref: '#/components/schemas/MemoryState'
+        display:
+          $ref: '#/components/schemas/DisplayState'
+        device:
+          $ref: '#/components/schemas/DeviceBuild'
+        app:
+          $ref: '#/components/schemas/AppBuild'
+        environment:
+          $ref: '#/components/schemas/EnvironmentState'
+        thermal:
+          $ref: '#/components/schemas/ThermalState'
+        uptime:
+          $ref: '#/components/schemas/UptimeState'
+
+    BatteryState:
+      type: object
+      required: [levelPercent, isCharging, plug, health, temperatureDeciC, voltageMv, powerSaveMode]
+      properties:
+        levelPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        isCharging:
+          type: boolean
+        plug:
+          type: string
+          description: Charging source enum name (e.g. AC, USB, WIRELESS, NONE).
+        health:
+          type: string
+        temperatureDeciC:
+          type: integer
+          description: Tenths of a degree Celsius, as Android reports it.
+        voltageMv:
+          type: integer
+        powerSaveMode:
+          type: boolean
+
+    NetworkState:
+      type: object
+      required: [transport, isMetered, isValidated]
+      properties:
+        transport:
+          type: string
+          description: Active transport enum name (e.g. WIFI, CELLULAR, ETHERNET, NONE).
+        isMetered:
+          type: boolean
+        isValidated:
+          type: boolean
+          description: Whether the network actually has validated internet access.
+
+    StorageState:
+      type: object
+      required: [internalFreeBytes, internalTotalBytes]
+      properties:
+        internalFreeBytes:
+          type: integer
+          format: int64
+        internalTotalBytes:
+          type: integer
+          format: int64
+
+    MemoryState:
+      type: object
+      required: [availBytes, totalBytes, lowMemory]
+      properties:
+        availBytes:
+          type: integer
+          format: int64
+        totalBytes:
+          type: integer
+          format: int64
+        lowMemory:
+          type: boolean
+
+    DisplayState:
+      type: object
+      required: [widthPx, heightPx, densityDpi, refreshRateHz, rotationDegrees]
+      properties:
+        widthPx:
+          type: integer
+        heightPx:
+          type: integer
+        densityDpi:
+          type: integer
+        refreshRateHz:
+          type: number
+          format: float
+        rotationDegrees:
+          type: integer
+          enum: [0, 90, 180, 270]
+
+    DeviceBuild:
+      type: object
+      required: [manufacturer, model, brand, device, sdkInt, release]
+      properties:
+        manufacturer:
+          type: string
+        model:
+          type: string
+        brand:
+          type: string
+        device:
+          type: string
+          description: Build.DEVICE — the board/device codename, not an identifier.
+        sdkInt:
+          type: integer
+          example: 36
+        release:
+          type: string
+          example: "16"
+
+    AppBuild:
+      type: object
+      required: [versionName, versionCode]
+      properties:
+        versionName:
+          type: string
+          example: "1.6"
+        versionCode:
+          type: integer
+          example: 7
+
+    EnvironmentState:
+      type: object
+      required: [locale, timeZoneId, airplaneMode]
+      properties:
+        locale:
+          type: string
+          example: en-ZA
+        timeZoneId:
+          type: string
+          example: Africa/Johannesburg
+        airplaneMode:
+          type: boolean
+
+    ThermalState:
+      type: object
+      description: Both fields are null on devices/API levels that do not expose thermal data.
+      properties:
+        headroom:
+          type: [number, "null"]
+          format: float
+          description: Predicted thermal headroom, 0.0–1.0+.
+        status:
+          type: [integer, "null"]
+          description: PowerManager thermal status constant.
+
+    UptimeState:
+      type: object
+      required: [uptimeMillis, elapsedRealtimeMillis]
+      properties:
+        uptimeMillis:
+          type: integer
+          format: int64
+          description: Milliseconds awake since boot, excluding deep sleep.
+        elapsedRealtimeMillis:
+          type: integer
+          format: int64
+          description: Milliseconds since boot, including deep sleep.

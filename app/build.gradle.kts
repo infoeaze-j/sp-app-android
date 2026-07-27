@@ -20,7 +20,7 @@ val keystoreProps = Properties().apply {
 }
 
 android {
-    namespace = "com.mediplus.faceverify"
+    namespace = "com.mediplus.spapp"
     // compileSdk 37: modern AndroidX (core 1.19, activity 1.11, compose 2025.10) require it.
     // targetSdk stays 36 (runtime-behavior opt-in per plan); compileSdk >= targetSdk is standard.
     compileSdk {
@@ -30,13 +30,13 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.mediplus.faceverify"
+        applicationId = "com.mediplus.spapp"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "com.mediplus.faceverify.HiltTestRunner"
+        testInstrumentationRunner = "com.mediplus.spapp.HiltTestRunner"
 
         // Configurable back-office base URL. Overridable per build type (e.g. MockWebServer in CI).
         buildConfigField("String", "BASE_URL", "\"https://backoffice.example.com/\"")

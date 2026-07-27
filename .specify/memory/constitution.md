@@ -53,8 +53,8 @@ Code MUST be readable, consistent, and safe to change before it is considered do
 - Every non-trivial change MUST be reviewed by at least one other person; the author
   MUST NOT approve their own merge.
 
-**Rationale**: FaceVerify handles identity verification in a medical context
-(`com.mediplus.faceverify`). Ambiguous or sprawling code is where correctness and
+**Rationale**: SP App handles identity verification in a medical context
+(`com.mediplus.spapp`). Ambiguous or sprawling code is where correctness and
 privacy bugs hide; enforcing clarity mechanically keeps the security-sensitive core
 auditable.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-FaceVerify (`com.mediplus.faceverify`) — a single-Activity Android app where a clinic **operator**
+SP App (`com.mediplus.spapp`) — a single-Activity Android app where a clinic **operator**
 walks a **patient** through a gated verification journey: sign in → tap member card (NFC) → consent
 → live face check → add a service. Every authoritative decision is made by the back office; the app
 never decides identity locally.
@@ -24,7 +24,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 ./gradlew assembleDebug                  # build
 ./gradlew lintDebug                      # Android Lint — the in-build static-analysis gate (abortOnError=true)
 ./gradlew testDebugUnitTest              # JVM unit suite (~200 tests)
-./gradlew testDebugUnitTest --tests "com.mediplus.faceverify.ui.facecheck.FaceCheckViewModelTest"   # one test class
+./gradlew testDebugUnitTest --tests "com.mediplus.spapp.ui.facecheck.FaceCheckViewModelTest"   # one test class
 ./gradlew testDebugUnitTest --tests "*.FaceCheckViewModelTest.consent withheld halts"               # one test
 ./gradlew createDebugUnitTestCoverageReport                # coverage → app/build/reports/coverage/
 ./gradlew connectedDebugAndroidTest      # instrumented (camera/NFC/nav) — needs a device or emulator
@@ -87,7 +87,7 @@ There are no product flavors. The **`debug` and `release` source sets each defin
 `Switching*` wrappers that pick fake-or-real per call from `DevSettingsStore`. A single master
 toggle (`DevSettings.fakeEnabled`, default **on**) plus per-step scenario enums (`AuthScenario`,
 `CardScenario`, `CameraScenario`, `FaceScenario`, `CurrencyScenario`, …) drive it. Debug builds
-install a second launcher icon, **"FaceVerify Dev"** (`DevSettingsActivity`), for editing them.
+install a second launcher icon, **"SP App Dev"** (`DevSettingsActivity`), for editing them.
 
 Consequence: the whole journey runs on a bare emulator with no camera and no NFC, using default
 settings. Tests for this stack live in `app/src/testDebug/` (not `test/`).
@@ -134,7 +134,7 @@ app-side** — reconcile it when the server publishes its real shape.
   the baseline before assuming your change caused a failure.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time check of the placeholder `GET /app/version` (fail-open), SHA-256-verified streaming
-  download, rollback backup of the installed APK to `Downloads/FaceVerify/` (revert = manual
+  download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
   uninstall + install the backup), PackageInstaller session install. **Signing landmine:** the Gradle
   wiring is now in place — `app/build.gradle.kts` signs the `release` build type from a git-ignored
   `keystore.properties` (project root: `storeFile`/`storePassword`/`keyAlias`/`keyPassword`) when it
