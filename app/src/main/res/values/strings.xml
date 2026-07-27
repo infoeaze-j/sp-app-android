@@ -113,6 +113,7 @@
     <string name="addservice_summary_title">Check before submitting</string>
     <string name="addservice_summary_desc">Nothing has been submitted yet. Check these details against the person in front of you.</string>
     <string name="addservice_summary_patient_heading">Patient</string>
+    <string name="addservice_summary_provider_heading">Provider</string>
     <string name="addservice_summary_service_heading">Service</string>
     <string name="addservice_summary_charge_heading">Charge</string>
     <string name="addservice_summary_service_label">Service</string>

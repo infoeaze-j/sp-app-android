@@ -530,6 +530,8 @@ components:
           format: date-time
         operator:
           $ref: '#/components/schemas/Operator'
+        provider:
+          $ref: '#/components/schemas/Provider'
         config:
           $ref: '#/components/schemas/SessionConfig'
 
@@ -546,6 +548,17 @@ components:
           items:
             type: string
           default: []
+
+    Provider:
+      type: [object, "null"]
+      description: |
+        App-invented placeholder (reconcile when the server publishes its real
+        shape). The service provider (clinic/organization) the session belongs
+        to. Display-only; the app shows the name in the app chrome and on the
+        final confirmation. If absent or blank, nothing is shown (fail-open).
+      properties:
+        name:
+          type: [string, "null"]
 
     SessionConfig:
       type: [object, "null"]

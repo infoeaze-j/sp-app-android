@@ -8,6 +8,7 @@ import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.ErrorMapper
 import com.mediplus.spapp.core.result.UiMessage
 import com.mediplus.spapp.core.result.appErrorOrNull
+import com.mediplus.spapp.core.session.SessionManager
 import com.mediplus.spapp.domain.model.Currency
 import com.mediplus.spapp.domain.model.Enrollment
 import com.mediplus.spapp.domain.model.EnrollmentStatus
@@ -69,6 +70,7 @@ sealed interface AddServicePhase {
      * submit rather than asking the operator to approve an anonymous charge.
      */
     data class ReviewingSummary(
+        val providerName: String?,
         val services: List<Service>,
         val patient: MemberDetails?,
         val selected: Service,
@@ -100,6 +102,7 @@ class AddServiceViewModel @Inject constructor(
     private val evaluate: EvaluateVerifiedIdentityUseCase,
     private val endPatientVisit: EndPatientVisitUseCase,
     private val errorMapper: ErrorMapper,
+    private val sessionManager: SessionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AddServiceUiState())
@@ -232,6 +235,7 @@ class AddServiceViewModel @Inject constructor(
         idempotencyKey = UUID.randomUUID().toString()
         _uiState.value = AddServiceUiState(
             AddServicePhase.ReviewingSummary(
+                providerName = sessionManager.session.value?.provider?.name,
                 services = phase.services,
                 patient = patient,
                 selected = phase.selected,

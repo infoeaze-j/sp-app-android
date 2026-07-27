@@ -12,6 +12,13 @@ data class Operator(
 )
 
 /**
+ * The service provider (clinic/organization) the authenticated session belongs to. Display-only;
+ * surfaced in the app chrome and on the final confirmation. Absent until the back office supplies
+ * it, in which case it is simply not shown (fail-open).
+ */
+data class Provider(val name: String)
+
+/**
  * Proof of authenticated access attached to every protected request (FR-002).
  *
  * @param token opaque bearer credential — held in memory only and redacted from all logs (FR-029)
@@ -24,6 +31,7 @@ data class Session(
     val operator: Operator,
     val expiresAt: Long?,
     val state: SessionState = SessionState.Active,
+    val provider: Provider? = null,
 ) {
     /** Never leak the token via toString() (FR-029). */
     override fun toString(): String =

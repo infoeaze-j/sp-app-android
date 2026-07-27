@@ -49,6 +49,7 @@ internal fun AddServiceSummaryDrawer(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(bottom = spacing.sm),
         )
+        phase.providerName?.let { ProviderSection(it) }
         PatientSection(phase.patient)
         SectionHeading(R.string.addservice_summary_service_heading)
         SummaryField(R.string.addservice_summary_service_label, phase.selected.description)
@@ -56,6 +57,16 @@ internal fun AddServiceSummaryDrawer(
         SummaryField(R.string.addservice_currency_label, phase.currency.label)
         SummaryField(R.string.addservice_amount_label, phase.amount.format())
     }
+}
+
+@Composable
+private fun ProviderSection(name: String) {
+    SectionHeading(R.string.addservice_summary_provider_heading)
+    Text(
+        text = name,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
 }
 
 @Composable

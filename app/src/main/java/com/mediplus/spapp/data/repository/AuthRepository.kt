@@ -11,6 +11,7 @@ import com.mediplus.spapp.data.remote.AuthApi
 import com.mediplus.spapp.data.remote.LoginRequest
 import com.mediplus.spapp.data.remote.LoginResponse
 import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Provider
 import com.mediplus.spapp.domain.model.Session
 import com.mediplus.spapp.domain.model.SessionState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -86,6 +87,7 @@ private fun LoginResponse.toSession(): Session = Session(
     ),
     expiresAt = expiresAt?.let { parseEpochMillisOrNull(it) },
     state = SessionState.Active,
+    provider = provider?.name?.takeIf { it.isNotBlank() }?.let { Provider(it) },
 )
 
 private fun parseEpochMillisOrNull(iso: String): Long? =
