@@ -1,6 +1,7 @@
 package com.mediplus.spapp.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -50,6 +51,7 @@ fun NavGraph(
     appViewModel: AppViewModel = hiltViewModel(),
 ) {
     val sessionState by appViewModel.sessionState.collectAsStateWithLifecycle()
+    val providerName by appViewModel.providerName.collectAsStateWithLifecycle()
 
     androidx.compose.runtime.LaunchedEffect(sessionState) {
         if (sessionState != SessionState.Active) {
@@ -77,7 +79,9 @@ fun NavGraph(
 
     Box {
         Scaffold(
-            topBar = { if (showAppBar) AppBar(onLogOutClick = { confirmingLogOut = true }) },
+            topBar = {
+                if (showAppBar) AppBar(providerName = providerName, onLogOutClick = { confirmingLogOut = true })
+            },
         ) { innerPadding ->
             NavGraphHost(navController, Modifier.padding(innerPadding))
         }
@@ -89,9 +93,23 @@ fun NavGraph(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppBar(onLogOutClick: () -> Unit) {
+private fun AppBar(providerName: String?, onLogOutClick: () -> Unit) {
     TopAppBar(
-        title = { Text(stringResource(R.string.appbar_title)) },
+        title = {
+            Column {
+                Text(
+                    text = stringResource(R.string.appbar_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (providerName != null) {
+                    Text(
+                        text = providerName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
         actions = {
             // Never disabled: log out has to work mid-capture and mid-request alike.
             IconButton(onClick = onLogOutClick) {

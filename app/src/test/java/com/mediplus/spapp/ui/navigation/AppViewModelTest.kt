@@ -5,6 +5,7 @@ import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.core.session.SessionManager
 import com.mediplus.spapp.data.repository.AuthRepository
 import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Provider
 import com.mediplus.spapp.domain.model.Session
 import com.mediplus.spapp.domain.model.SessionState
 import com.mediplus.spapp.util.MainDispatcherRule
@@ -58,6 +59,27 @@ class AppViewModelTest {
         vm.logOut()
 
         assertNotEquals(SessionState.Active, vm.sessionState.value)
+    }
+
+    @Test
+    fun `provider name is null when the session has none`() {
+        assertEquals(null, vm.providerName.value)
+    }
+
+    @Test
+    fun `provider name is exposed from the session`() {
+        sessionManager.set(
+            Session(
+                "tok",
+                Operator("op-1", "Sam"),
+                expiresAt = null,
+                state = SessionState.Active,
+                provider = Provider("Riverside Clinic"),
+            ),
+        )
+        val freshVm = AppViewModel(sessionManager, repo)
+
+        assertEquals("Riverside Clinic", freshVm.providerName.value)
     }
 }
 
