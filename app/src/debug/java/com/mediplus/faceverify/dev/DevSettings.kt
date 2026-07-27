@@ -17,6 +17,7 @@ data class DevSettings(
     val currency: CurrencyScenario = CurrencyScenario.MULTIPLE,
     val enroll: EnrollScenario = EnrollScenario.CONFIRMED,
     val update: UpdateScenario = UpdateScenario.UP_TO_DATE,
+    val diagnostics: DiagnosticsScenario = DiagnosticsScenario.OFF,
     val latencyMillis: Long = 500L,
     val verificationWindowSeconds: Long = 300L,
 )
@@ -33,6 +34,7 @@ object DevPrefKeys {
     val CURRENCY = stringPreferencesKey("dev_scenario_currency")
     val ENROLL = stringPreferencesKey("dev_scenario_enroll")
     val UPDATE = stringPreferencesKey("dev_scenario_update")
+    val DIAGNOSTICS = stringPreferencesKey("dev_scenario_diagnostics")
     val LATENCY_MS = longPreferencesKey("dev_latency_ms")
     val WINDOW_SECONDS = longPreferencesKey("dev_verification_window_seconds")
 }
@@ -54,6 +56,7 @@ fun Preferences.toDevSettings(): DevSettings {
         currency = this[DevPrefKeys.CURRENCY].toEnumOr(defaults.currency),
         enroll = this[DevPrefKeys.ENROLL].toEnumOr(defaults.enroll),
         update = this[DevPrefKeys.UPDATE].toEnumOr(defaults.update),
+        diagnostics = this[DevPrefKeys.DIAGNOSTICS].toEnumOr(defaults.diagnostics),
         latencyMillis = this[DevPrefKeys.LATENCY_MS] ?: defaults.latencyMillis,
         verificationWindowSeconds = this[DevPrefKeys.WINDOW_SECONDS] ?: defaults.verificationWindowSeconds,
     )

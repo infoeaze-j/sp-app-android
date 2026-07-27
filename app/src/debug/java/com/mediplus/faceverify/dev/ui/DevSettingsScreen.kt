@@ -28,6 +28,7 @@ import com.mediplus.faceverify.dev.CardScenario
 import com.mediplus.faceverify.dev.CameraScenario
 import com.mediplus.faceverify.dev.CurrencyScenario
 import com.mediplus.faceverify.dev.DevSettings
+import com.mediplus.faceverify.dev.DiagnosticsScenario
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
 import com.mediplus.faceverify.dev.MemberScenario
@@ -48,6 +49,7 @@ fun DevSettingsScreen(
     onCurrency: (CurrencyScenario) -> Unit,
     onEnroll: (EnrollScenario) -> Unit,
     onUpdate: (UpdateScenario) -> Unit,
+    onDiagnostics: (DiagnosticsScenario) -> Unit,
     onLatency: (Long) -> Unit,
     onForceExpire: () -> Unit,
 ) {
@@ -76,6 +78,7 @@ fun DevSettingsScreen(
         ScenarioPicker("Currencies", CurrencyScenario.entries, settings.currency, onCurrency)
         ScenarioPicker("Enrollment", EnrollScenario.entries, settings.enroll, onEnroll)
         ScenarioPicker("Self-update", UpdateScenario.entries, settings.update, onUpdate)
+        ScenarioPicker("Diagnostics telemetry", DiagnosticsScenario.entries, settings.diagnostics, onDiagnostics)
 
         HorizontalDivider()
 

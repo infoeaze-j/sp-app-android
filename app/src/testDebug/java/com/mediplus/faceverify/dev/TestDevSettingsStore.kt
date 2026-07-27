@@ -22,6 +22,9 @@ class TestDevSettingsStore(initial: DevSettings = DevSettings(latencyMillis = 0L
     override suspend fun setCurrency(scenario: CurrencyScenario) { state.value = state.value.copy(currency = scenario) }
     override suspend fun setEnroll(scenario: EnrollScenario) { state.value = state.value.copy(enroll = scenario) }
     override suspend fun setUpdate(scenario: UpdateScenario) { state.value = state.value.copy(update = scenario) }
+    override suspend fun setDiagnostics(scenario: DiagnosticsScenario) {
+        state.value = state.value.copy(diagnostics = scenario)
+    }
     override suspend fun setLatencyMillis(millis: Long) { state.value = state.value.copy(latencyMillis = millis) }
     override suspend fun setVerificationWindowSeconds(seconds: Long) { state.value = state.value.copy(verificationWindowSeconds = seconds) }
 }

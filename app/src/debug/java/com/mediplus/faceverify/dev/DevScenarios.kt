@@ -40,3 +40,10 @@ enum class UpdateScenario {
     HASH_MISMATCH,
     INSTALL_FAILS,
 }
+
+/**
+ * The emulated diagnostics telemetry. OFF = back office wants nothing; REQUESTED_ONCE = one
+ * request id, then silent; ALWAYS_REQUESTED = a new id every poll; POLL_FAILS / REPORT_FAILS
+ * exercise the swallowed-failure paths.
+ */
+enum class DiagnosticsScenario { OFF, REQUESTED_ONCE, ALWAYS_REQUESTED, POLL_FAILS, REPORT_FAILS }

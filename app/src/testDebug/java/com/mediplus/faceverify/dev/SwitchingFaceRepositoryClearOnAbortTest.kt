@@ -35,6 +35,7 @@ class SwitchingFaceRepositoryClearOnAbortTest {
         override suspend fun setCurrency(scenario: CurrencyScenario) = throw NotImplementedError("unused")
         override suspend fun setEnroll(scenario: EnrollScenario) = throw NotImplementedError("unused")
         override suspend fun setUpdate(scenario: UpdateScenario) = throw NotImplementedError("unused")
+        override suspend fun setDiagnostics(scenario: DiagnosticsScenario) = throw NotImplementedError("unused")
         override suspend fun setLatencyMillis(millis: Long) = throw NotImplementedError("unused")
         override suspend fun setVerificationWindowSeconds(seconds: Long) = throw NotImplementedError("unused")
     }
@@ -53,6 +54,7 @@ class SwitchingFaceRepositoryClearOnAbortTest {
         override suspend fun setCurrency(scenario: CurrencyScenario) = throw NotImplementedError("unused")
         override suspend fun setEnroll(scenario: EnrollScenario) = throw NotImplementedError("unused")
         override suspend fun setUpdate(scenario: UpdateScenario) = throw NotImplementedError("unused")
+        override suspend fun setDiagnostics(scenario: DiagnosticsScenario) = throw NotImplementedError("unused")
         override suspend fun setLatencyMillis(millis: Long) = throw NotImplementedError("unused")
         override suspend fun setVerificationWindowSeconds(seconds: Long) = throw NotImplementedError("unused")
     }

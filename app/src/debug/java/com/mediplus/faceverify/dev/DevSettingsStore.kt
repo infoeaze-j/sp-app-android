@@ -26,6 +26,7 @@ interface DevSettingsStore {
     suspend fun setCurrency(scenario: CurrencyScenario)
     suspend fun setEnroll(scenario: EnrollScenario)
     suspend fun setUpdate(scenario: UpdateScenario)
+    suspend fun setDiagnostics(scenario: DiagnosticsScenario)
     suspend fun setLatencyMillis(millis: Long)
     suspend fun setVerificationWindowSeconds(seconds: Long)
 }
@@ -70,6 +71,9 @@ class DataStoreDevSettingsStore @Inject constructor(
 
     override suspend fun setUpdate(scenario: UpdateScenario) =
         edit { it[DevPrefKeys.UPDATE] = scenario.name }
+
+    override suspend fun setDiagnostics(scenario: DiagnosticsScenario) =
+        edit { it[DevPrefKeys.DIAGNOSTICS] = scenario.name }
 
     override suspend fun setLatencyMillis(millis: Long) =
         edit { it[DevPrefKeys.LATENCY_MS] = millis }

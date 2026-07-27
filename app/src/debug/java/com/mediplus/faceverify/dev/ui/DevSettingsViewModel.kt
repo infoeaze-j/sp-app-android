@@ -9,6 +9,7 @@ import com.mediplus.faceverify.dev.CardScenario
 import com.mediplus.faceverify.dev.CameraScenario
 import com.mediplus.faceverify.dev.CurrencyScenario
 import com.mediplus.faceverify.dev.DevSettingsStore
+import com.mediplus.faceverify.dev.DiagnosticsScenario
 import com.mediplus.faceverify.dev.EnrollScenario
 import com.mediplus.faceverify.dev.FaceScenario
 import com.mediplus.faceverify.dev.MemberScenario
@@ -40,6 +41,7 @@ class DevSettingsViewModel @Inject constructor(
     fun setCurrency(scenario: CurrencyScenario) = launchEdit { store.setCurrency(scenario) }
     fun setEnroll(scenario: EnrollScenario) = launchEdit { store.setEnroll(scenario) }
     fun setUpdate(scenario: UpdateScenario) = launchEdit { store.setUpdate(scenario) }
+    fun setDiagnostics(scenario: DiagnosticsScenario) = launchEdit { store.setDiagnostics(scenario) }
     fun setLatencyMillis(millis: Long) = launchEdit { store.setLatencyMillis(millis) }
 
     /** Immediately drop the session so the NavGraph guard routes back to sign-in (FR-004/FR-004a). */
