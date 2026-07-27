@@ -4,6 +4,7 @@ import com.mediplus.faceverify.core.diagnostics.DeviceDiagnostics
 import com.mediplus.faceverify.core.result.AppResult
 import com.mediplus.faceverify.data.repository.DiagnosticsRepository
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /** The outcome of one poll tick. Purely diagnostic — nothing user-facing. */
 enum class PollOutcome { NothingRequested, Reported, AlreadyHandled, PollFailed, ReportFailed }
@@ -15,8 +16,10 @@ enum class PollOutcome { NothingRequested, Reported, AlreadyHandled, PollFailed,
  * retries on the next interval. A failed report is *not* recorded, so it is retried.
  *
  * Holds `lastHandledRequestId` in memory. The `DiagnosticsPoller` is the sole caller and invokes
- * this sequentially on a single dispatcher, so the field needs no synchronization.
+ * this sequentially on a single dispatcher, so the field needs no synchronization. `@Singleton` so the
+ * dedup state is a single process-wide instance — its correctness depends on exactly one existing.
  */
+@Singleton
 class PollAndReportDiagnosticsUseCase @Inject constructor(
     private val repository: DiagnosticsRepository,
     private val diagnostics: DeviceDiagnostics,

@@ -41,6 +41,9 @@ class DiagnosticsPoller @Inject constructor(
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        // Cancel any prior loop before relaunching. ProcessLifecycleOwner pairs start/stop today, so
+        // this is defensive — but a leaked loop would double the poll traffic (dedup hides the report).
+        loop?.cancel()
         loop = scope.launch { pollWhileActive() }
     }
 

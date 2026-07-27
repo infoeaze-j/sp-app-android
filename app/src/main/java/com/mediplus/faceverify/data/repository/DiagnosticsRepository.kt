@@ -36,6 +36,8 @@ class DiagnosticsRepositoryImpl @Inject constructor(
                 // 204 (no content) and 404 (not deployed) both mean "nothing requested".
                 response.code() == HttpURLConnection.HTTP_NO_CONTENT ||
                     response.code() == HttpURLConnection.HTTP_NOT_FOUND -> AppResult.Success(null)
+                // A 200 with an empty/malformed body throws in api.poll() and is caught by apiCall as a
+                // transient failure — deliberately NOT treated as "nothing requested" (fail-safe).
                 else -> AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
             }
         }

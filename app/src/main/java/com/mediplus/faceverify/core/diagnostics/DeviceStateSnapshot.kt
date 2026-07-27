@@ -5,8 +5,10 @@ package com.mediplus.faceverify.core.diagnostics
  * asks for it (docs/superpowers/specs/2026-07-24-device-diagnostics-telemetry-design.md).
  *
  * Every field here is readable without a runtime-permission grant. Deliberately excludes anything
- * identifying or permission-gated (IMEI/serial/MAC/ANDROID_ID, location, cellular generation) — this
- * is low-entropy device *state*, never a device fingerprint, per the constitution's non-revealing rule.
+ * identifying or permission-gated (IMEI/serial/MAC/ANDROID_ID, location, cellular generation) — nothing
+ * patient-, session-, or operator-derived, per the constitution's non-revealing rule. Note the *stable*
+ * subset (build model, display metrics, total storage/memory, locale) is device-correlatable, so this
+ * must stay device-state-only; it is not a claim that the payload is inherently non-fingerprintable.
  */
 data class DeviceStateSnapshot(
     val battery: BatteryState,
