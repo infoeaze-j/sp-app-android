@@ -5,13 +5,17 @@ import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.DefaultErrorMapper
 import com.mediplus.spapp.core.result.TransientKind
+import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.domain.model.Currency
 import com.mediplus.spapp.domain.model.Enrollment
 import com.mediplus.spapp.domain.model.EnrollmentStatus
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.Money
+import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Provider
 import com.mediplus.spapp.domain.model.Service
 import com.mediplus.spapp.domain.model.ServiceCatalog
+import com.mediplus.spapp.domain.model.Session
 import com.mediplus.spapp.domain.usecase.AddServiceUseCase
 import com.mediplus.spapp.domain.usecase.EndPatientVisitUseCase
 import com.mediplus.spapp.domain.usecase.EvaluateVerifiedIdentityUseCase
@@ -51,8 +55,10 @@ class AddServiceViewModelTest {
     private val currencies = listOf(Currency("ZAR", "Rand (R)"), Currency("USD", "US Dollar ($)"))
     private val catalog = ServiceCatalog(services, currencies)
 
+    private val sessionManager = InMemorySessionManager()
+
     private fun buildVm() =
-        AddServiceViewModel(listServices, addService, evaluate, endVisit, DefaultErrorMapper())
+        AddServiceViewModel(listServices, addService, evaluate, endVisit, DefaultErrorMapper(), sessionManager)
 
     /**
      * The common arrange steps for tests that only care about reaching a submitted state — not
@@ -324,6 +330,38 @@ class AddServiceViewModelTest {
         val phase = vm.uiState.value.phase
         assertTrue(phase is AddServicePhase.ReviewingSummary)
         coVerify(exactly = 0) { addService(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `summary captures the provider name from the session`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        sessionManager.set(
+            Session("tok", Operator("op-1", "Sam"), expiresAt = null, provider = Provider("Riverside Clinic")),
+        )
+        val vm = buildVm()
+
+        vm.selectService("s1")
+        vm.amountEntryChanged(text = "150.00")
+        vm.confirmAmount()
+
+        val phase = vm.uiState.value.phase
+        assertTrue(phase is AddServicePhase.ReviewingSummary)
+        assertEquals("Riverside Clinic", (phase as AddServicePhase.ReviewingSummary).providerName)
+    }
+
+    @Test
+    fun `summary has no provider name when the session has none`() {
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog)
+        val vm = buildVm()
+
+        vm.selectService("s1")
+        vm.amountEntryChanged(text = "150.00")
+        vm.confirmAmount()
+
+        val phase = vm.uiState.value.phase
+        assertEquals(null, (phase as AddServicePhase.ReviewingSummary).providerName)
     }
 
     /** The summary is only useful if it names the person, the service, and the amount — all three. */
