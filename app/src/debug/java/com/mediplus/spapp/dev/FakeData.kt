@@ -8,6 +8,7 @@ import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
 import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Provider
 import com.mediplus.spapp.domain.model.Service
 import com.mediplus.spapp.domain.model.Session
 import com.mediplus.spapp.domain.model.SessionState
@@ -20,6 +21,7 @@ object FakeData {
         operator = Operator(operatorId = "op-001", displayName = "Demo Operator"),
         expiresAt = null,
         state = SessionState.Active,
+        provider = Provider("Mercy Hospital"),
     )
 
     /** The card number the emulated tap returns. */
