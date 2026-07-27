@@ -1,6 +1,7 @@
 package com.mediplus.faceverify.core.di
 
 import com.mediplus.faceverify.data.remote.AuthApi
+import com.mediplus.faceverify.data.remote.DiagnosticsApi
 import com.mediplus.faceverify.data.remote.EnrollmentApi
 import com.mediplus.faceverify.data.remote.FaceApi
 import com.mediplus.faceverify.data.remote.MemberApi
@@ -37,4 +38,8 @@ object ApiModule {
     @Provides
     @Singleton
     fun provideUpdateApi(retrofit: Retrofit): UpdateApi = retrofit.create()
+
+    @Provides
+    @Singleton
+    fun provideDiagnosticsApi(retrofit: Retrofit): DiagnosticsApi = retrofit.create()
 }

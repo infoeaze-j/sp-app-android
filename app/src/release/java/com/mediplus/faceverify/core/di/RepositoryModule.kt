@@ -2,6 +2,8 @@ package com.mediplus.faceverify.core.di
 
 import com.mediplus.faceverify.data.repository.AuthRepository
 import com.mediplus.faceverify.data.repository.AuthRepositoryImpl
+import com.mediplus.faceverify.data.repository.DiagnosticsRepository
+import com.mediplus.faceverify.data.repository.DiagnosticsRepositoryImpl
 import com.mediplus.faceverify.data.repository.EnrollmentRepository
 import com.mediplus.faceverify.data.repository.EnrollmentRepositoryImpl
 import com.mediplus.faceverify.data.repository.FaceRepository
@@ -40,4 +42,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindUpdateRepository(impl: UpdateRepositoryImpl): UpdateRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindDiagnosticsRepository(impl: DiagnosticsRepositoryImpl): DiagnosticsRepository
 }
