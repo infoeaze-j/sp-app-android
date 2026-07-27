@@ -2,9 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
+        <!-- Keep the Dev launcher on the app's previous icon so it stays visually
+             distinct from the main app after the main icon was replaced. -->
         <activity
             android:name="com.mediplus.faceverify.dev.ui.DevSettingsActivity"
             android:exported="true"
+            android:icon="@mipmap/ic_launcher_dev"
+            android:roundIcon="@mipmap/ic_launcher_dev_round"
             android:label="FaceVerify Dev">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
