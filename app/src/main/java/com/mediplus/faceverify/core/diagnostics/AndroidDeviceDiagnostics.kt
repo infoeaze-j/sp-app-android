@@ -81,15 +81,6 @@ class AndroidDeviceDiagnostics @Inject constructor(
         )
     }
 
-    private fun transportOf(caps: NetworkCapabilities?): NetworkTransport = when {
-        caps == null -> NetworkTransport.NONE
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkTransport.CELLULAR
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
-        else -> NetworkTransport.NONE
-    }
-
     private fun buildStorage(): StorageState {
         val stat = StatFs(Environment.getDataDirectory().path)
         return StorageState(internalFreeBytes = stat.availableBytes, internalTotalBytes = stat.totalBytes)
@@ -148,4 +139,13 @@ class AndroidDeviceDiagnostics @Inject constructor(
         const val ROTATION_STEP_DEGREES = 90
         const val THERMAL_FORECAST_SECONDS = 10
     }
+}
+
+private fun transportOf(caps: NetworkCapabilities?): NetworkTransport = when {
+    caps == null -> NetworkTransport.NONE
+    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
+    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
+    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkTransport.CELLULAR
+    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
+    else -> NetworkTransport.NONE
 }

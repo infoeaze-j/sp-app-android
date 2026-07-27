@@ -145,9 +145,18 @@ app-side** — reconcile it when the server publishes its real shape.
   any device that got an earlier debug-signed build needs a one-time manual reinstall to cross over.
   `apkUrl` must stay same-origin with `BASE_URL` (the bearer token rides on every request); every
   release must bump `versionCode`.
+- **Device diagnostics telemetry** (design: `docs/superpowers/specs/2026-07-24-device-diagnostics-telemetry-design.md`):
+  poll-then-report. `DiagnosticsPoller` (a `ProcessLifecycleOwner` observer) polls `GET /diagnostics/poll`
+  on login + every 15 min while foregrounded; on a fresh `requestId` it collects a **permission-free**
+  `DeviceStateSnapshot` (battery/network/storage/memory/display/build/app/locale/thermal/uptime — no
+  hardware IDs, no location) and POSTs it to `/diagnostics`, deduping on the last-handled `requestId`.
+  Best-effort throughout (all failures swallowed; no `UiMessage`, no screen). Both endpoints are
+  app-invented placeholders, authenticated, same-origin with `BASE_URL`.
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
-  tests, LeakCanary clean-run, and the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`.
+  tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the
+  real `AndroidDeviceDiagnostics` reader against real hardware sensors (battery/thermal/network
+  transitions).
 - Driving the emulator headlessly: `adb exec-out screencap -p > file.png` **corrupts the PNG** under
   PowerShell — use `adb shell screencap -p /sdcard/x.png` then `adb pull`. Git Bash mangles
   `/sdcard/...` paths, so run adb from PowerShell.
