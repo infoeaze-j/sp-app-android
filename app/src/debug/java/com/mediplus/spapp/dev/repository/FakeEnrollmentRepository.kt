@@ -12,8 +12,8 @@ import com.mediplus.spapp.dev.FakeData
 import com.mediplus.spapp.dev.ServicesScenario
 import com.mediplus.spapp.domain.model.Currency
 import com.mediplus.spapp.domain.model.Enrollment
+import com.mediplus.spapp.domain.model.EnrollmentRequest
 import com.mediplus.spapp.domain.model.EnrollmentStatus
-import com.mediplus.spapp.domain.model.Money
 import com.mediplus.spapp.domain.model.Service
 import com.mediplus.spapp.domain.model.ServiceCatalog
 import kotlinx.coroutines.delay
@@ -42,8 +42,10 @@ class FakeEnrollmentRepository @Inject constructor(
         delay(settings.latencyMillis)
         val currencies = currenciesFor(settings.currency)
         return when (settings.services) {
-            ServicesScenario.SUCCESS -> AppResult.Success(ServiceCatalog(FakeData.services, currencies))
-            ServicesScenario.EMPTY -> AppResult.Success(ServiceCatalog(emptyList(), currencies))
+            ServicesScenario.SUCCESS ->
+                AppResult.Success(ServiceCatalog(FakeData.services, currencies, VISIT_DATE))
+            ServicesScenario.EMPTY ->
+                AppResult.Success(ServiceCatalog(emptyList(), currencies, VISIT_DATE))
             ServicesScenario.PATIENT_NOT_FOUND ->
                 AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
             ServicesScenario.SERVER_ERROR ->
@@ -57,20 +59,15 @@ class FakeEnrollmentRepository @Inject constructor(
         CurrencyScenario.NONE -> emptyList()
     }
 
-    override suspend fun enroll(
-        memberNumber: String,
-        serviceId: String,
-        currency: String,
-        amount: Money,
-        idempotencyKey: String,
-    ): AppResult<Enrollment> {
+    override suspend fun enroll(memberNumber: String, request: EnrollmentRequest): AppResult<Enrollment> {
         val settings = store.current()
         delay(settings.latencyMillis)
-        landed[idempotencyKey]?.let { return AppResult.Success(it) }
-        val confirmed = confirmedEnrollment(memberNumber, serviceId, currency, amount, idempotencyKey)
+        val key = request.idempotencyKey
+        landed[key]?.let { return AppResult.Success(it) }
+        val confirmed = confirmedEnrollment(memberNumber, request)
         return when (settings.enroll) {
             EnrollScenario.CONFIRMED -> {
-                landed[idempotencyKey] = confirmed
+                landed[key] = confirmed
                 AppResult.Success(confirmed)
             }
             EnrollScenario.DUPLICATE ->
@@ -78,7 +75,7 @@ class FakeEnrollmentRepository @Inject constructor(
             EnrollScenario.INELIGIBLE ->
                 AppResult.BusinessRejection(AppError.Business(BusinessCode.SERVICE_INELIGIBLE, "Not eligible"))
             EnrollScenario.TIMEOUT -> {
-                landed[idempotencyKey] = confirmed // POST landed; ack lost.
+                landed[key] = confirmed // POST landed; ack lost.
                 AppResult.Timeout
             }
             EnrollScenario.SERVER_ERROR ->
@@ -91,25 +88,25 @@ class FakeEnrollmentRepository @Inject constructor(
         return AppResult.Success(landed[idempotencyKey])
     }
 
-    private fun confirmedEnrollment(
-        memberNumber: String,
-        serviceId: String,
-        currency: String,
-        amount: Money,
-        idempotencyKey: String,
-    ): Enrollment {
-        val id = "enr-$idempotencyKey"
-        val service = FakeData.services.firstOrNull { it.serviceId == serviceId }
-            ?: Service(serviceId, "", eligibleForPatient = true, alreadySelected = false)
+    private fun confirmedEnrollment(memberNumber: String, request: EnrollmentRequest): Enrollment {
+        val id = "enr-${request.idempotencyKey}"
+        val service = FakeData.services.firstOrNull { it.serviceId == request.serviceId }
+            ?: Service(request.serviceId, "", "", eligibleForPatient = true, alreadyEnrolled = false)
         return Enrollment(
             enrollmentId = id,
             memberNumber = memberNumber,
             service = service,
-            idempotencyKey = idempotencyKey,
+            idempotencyKey = request.idempotencyKey,
             status = EnrollmentStatus.Confirmed(id),
             timestampMillis = null,
-            currency = currency,
-            amount = amount,
+            currency = request.currency,
+            amount = request.amount,
+            visitDate = VISIT_DATE,
         )
+    }
+
+    private companion object {
+        /** Fixed so the fake stays deterministic; the real catalogue dates the current visit. */
+        const val VISIT_DATE = "2026-01-01"
     }
 }

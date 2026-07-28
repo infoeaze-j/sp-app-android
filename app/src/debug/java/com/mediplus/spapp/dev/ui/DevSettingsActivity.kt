@@ -25,6 +25,7 @@ class DevSettingsActivity : ComponentActivity() {
                     DevSettingsScreen(
                         settings = settings,
                         onFakeEnabled = vm::setFakeEnabled,
+                        onFakeSeam = vm::setFakeSeam,
                         onAuth = vm::setAuth,
                         onCard = vm::setCard,
                         onCamera = vm::setCamera,

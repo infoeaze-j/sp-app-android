@@ -84,10 +84,14 @@ made once per screen entry).
 
 There are no product flavors. The **`debug` and `release` source sets each define their own
 `RepositoryModule`, `CameraModule`, and `NfcModule`** — release binds the real impls, debug binds
-`Switching*` wrappers that pick fake-or-real per call from `DevSettingsStore`. A single master
-toggle (`DevSettings.fakeEnabled`, default **on**) plus per-step scenario enums (`AuthScenario`,
-`CardScenario`, `CameraScenario`, `FaceScenario`, `CurrencyScenario`, …) drive it. Debug builds
-install a second launcher icon, **"SP App Dev"** (`DevSettingsActivity`), for editing them.
+`Switching*` wrappers that pick fake-or-real per call from `DevSettingsStore`. Three things drive
+that choice: a master toggle (`DevSettings.fakeEnabled`, default **on**), a per-seam toggle for each
+`FakeSeam` (`AUTH`, `DEVICE`, `CARD`, `CAMERA`, `MEMBER`, `FACE`, `ENROLLMENT`, `UPDATE`,
+`DIAGNOSTICS`, `DEVICE_STATE` — all default **on**), and the per-step scenario enums (`AuthScenario`,
+`CardScenario`, `CameraScenario`, `FaceScenario`, `CurrencyScenario`, …). Every wrapper asks
+`DevSettings.isFakeActive(seam)`, which ANDs the master toggle with that seam's own toggle, so the
+master switch is a kill switch and the seam toggles let one step run real while the rest stay faked.
+Debug builds install a second launcher icon, **"SP App Dev"** (`DevSettingsActivity`), for editing them.
 
 Consequence: the whole journey runs on a bare emulator with no camera and no NFC, using default
 settings. Tests for this stack live in `app/src/testDebug/` (not `test/`).
@@ -120,21 +124,49 @@ for the shipped feature live in `specs/001-identity-verification-enrollment/` �
 Smaller changes use the Superpowers brainstorm→design→plan flow, with artifacts in
 `docs/superpowers/specs/` and `docs/superpowers/plans/` dated by day.
 
-The back-office contract is `docs/openapi.yaml`. `POST /members/verify` is a **placeholder invented
-app-side** — reconcile it when the server publishes its real shape.
+The back-office contract is `docs/openapi.json` — the server's own published spec, and the single
+source of truth. The per-endpoint docs under `specs/001-.../contracts/` predate it and now carry a
+"superseded" banner: read them for the client-side reasoning, never for wire shapes.
+
+Two of the spec's declared response types are generator artifacts, not contract: it types the
+streamed APK download as `object`, and it types three plainly boolean fields (`canVerifyFace`,
+`updateRequired`, `updateAvailable`) as `string`. `data/remote/WireCompat.kt` reads booleans
+leniently, and the `devices.register` / `members.enrollments.store` responses are read as either a
+bare id string or an object. All of it fails towards the safe answer rather than throwing.
+
+### Open decisions from the 2026-07-28 spec realignment
+
+Three questions the realignment surfaced and deliberately did **not** answer. Each is a product or
+server call, not a coding one; nothing is blocked on them, and the current behaviour is the
+conservative option in every case.
+
+1. **The APK download is authenticated, but the update check runs before sign-in.**
+   `GET /app/releases/{release}/binary` requires the bearer token; the launch-time check is
+   unauthenticated by design (it runs before anyone signs in). A *forced* update therefore has no
+   token to present and will 401. Today that surfaces as a retryable failure rather than a loop.
+   Fix is either: move the update prompt behind sign-in, or have the server exempt the binary.
+2. **`GET /auth/session` is aligned but unwired.** Designed but not built — see
+   `docs/superpowers/specs/2026-07-28-session-revalidation-on-resume-design.md`. In short: it would
+   **not** give resumability across an app close (the token lives only in `InMemorySessionManager`
+   and `PrefsDataStore` persists none, so process death ends the session and there is nothing to
+   revalidate). What it buys is *timing* — expiry is currently discovered passively and late, when
+   the next protected call 401s, possibly after the operator has already tapped a card and captured
+   a face. **It must fail open**: only an explicit 401 counts as expiry. Note the design also
+   records that `DiagnosticsPoller` already catches most of these expiries *by accident*, and why
+   that is not something to rely on.
+3. **`MemberVerification.capabilities` is carried but not gated on.** `canVerifyFace`/`canEnroll`
+   are parsed and available; the journey does not branch on them, because `canVerifyFace` is one of
+   the fields the spec mis-types as `string` and a parsing quirk defaulting it to `false` would
+   block every card. The server stays the enforcer. Revisit once a live response confirms the type.
 
 ## Current state to be aware of
 
-- The **backend has not shipped the amount/currency half**. Until the services response includes a
-  `currencies` array, it parses to `emptyList()` and every operator is blocked at load with
-  `AddServicePhase.Unavailable(UnavailableReason.NO_CURRENCY)`. Correct fail-safe — but this build must not reach a
-  real device before the server change.
 - As of 2026-07-24 detekt is **still red on `main`** (48 weighted issues, all predating recent work:
   `Color.kt` magic numbers, `NfcModels` naming, line length, `VerifyFaceUseCase` return count). Check
   the baseline before assuming your change caused a failure.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
-  launch-time check of the placeholder `GET /app/version` (fail-open), SHA-256-verified streaming
-  download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
+  launch-time `GET /app/releases/latest?versionCode=N` (unauthenticated, always 200, fail-open),
+  SHA-256-verified streaming download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
   uninstall + install the backup), PackageInstaller session install. **Signing landmine:** the Gradle
   wiring is now in place — `app/build.gradle.kts` signs the `release` build type from a git-ignored
   `keystore.properties` (project root: `storeFile`/`storePassword`/`keyAlias`/`keyPassword`) when it
@@ -143,15 +175,22 @@ app-side** — reconcile it when the server publishes its real shape.
   cert can never rotate for an installed app), write `keystore.properties`, and back the keystore up
   off-machine. Do this before the first field rollout — updates only install over a same-key build, so
   any device that got an earlier debug-signed build needs a one-time manual reinstall to cross over.
-  `apkUrl` must stay same-origin with `BASE_URL` (the bearer token rides on every request); every
-  release must bump `versionCode`.
+  `apkUrl` must stay same-origin with `BASE_URL` — `CheckForUpdateUseCase` now *enforces* that
+  (a build on any other host is refused, https or not, because the bearer token rides along); every
+  release must bump `versionCode`. The authenticated-binary-before-sign-in problem is open decision
+  #1 above.
+- **Device registration** (`POST /devices/register`): a client-generated `installId` UUID is minted
+  and persisted once by `PrefsDataStore`, `SignInViewModel` registers best-effort right after a
+  successful sign-in, and `DeviceIdInterceptor` attaches the returned id as `X-Device-Id` on every
+  later call. Diagnostics requires it; everywhere else it is audit trail. Nothing here reads a
+  hardware identifier, and a failure never blocks the journey.
 - **Device diagnostics telemetry** (design: `docs/superpowers/specs/2026-07-24-device-diagnostics-telemetry-design.md`):
-  poll-then-report. `DiagnosticsPoller` (a `ProcessLifecycleOwner` observer) polls `GET /diagnostics/poll`
-  on login + every 15 min while foregrounded; on a fresh `requestId` it collects a **permission-free**
-  `DeviceStateSnapshot` (battery/network/storage/memory/display/build/app/locale/thermal/uptime — no
-  hardware IDs, no location) and POSTs it to `/diagnostics`, deduping on the last-handled `requestId`.
-  Best-effort throughout (all failures swallowed; no `UiMessage`, no screen). Both endpoints are
-  app-invented placeholders, authenticated, same-origin with `BASE_URL`.
+  poll-then-report. `DiagnosticsPoller` (a `ProcessLifecycleOwner` observer) polls
+  `GET /diagnostics/requests/pending` on login + every 15 min while foregrounded; on a fresh
+  `request.id` it collects a **permission-free** `DeviceStateSnapshot`
+  (battery/network/storage/memory/display/build/app/locale/thermal/uptime — no hardware IDs, no
+  location) and POSTs it to `/diagnostics/requests/{id}/report`, deduping on the last-handled id.
+  Best-effort throughout (all failures swallowed; no `UiMessage`, no screen).
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
   tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the

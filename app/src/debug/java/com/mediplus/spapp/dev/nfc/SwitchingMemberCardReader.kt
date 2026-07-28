@@ -5,11 +5,12 @@ import com.mediplus.spapp.core.nfc.NdefMemberCardReader
 import com.mediplus.spapp.core.nfc.NfcHost
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.dev.DevSettingsStore
+import com.mediplus.spapp.dev.FakeSeam
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.NfcAvailability
 import javax.inject.Inject
 
-/** Debug-only router: emulate the card tap when the master toggle is on, else use real NFC. */
+/** Debug-only router: emulate the card tap while the CARD seam is faked, else use real NFC. */
 class SwitchingMemberCardReader @Inject constructor(
     private val real: NdefMemberCardReader,
     private val fake: FakeMemberCardReader,
@@ -23,5 +24,6 @@ class SwitchingMemberCardReader @Inject constructor(
         onCardPresented: () -> Unit,
     ): AppResult<MemberNumber> = pick().awaitAndRead(host, onCardPresented)
 
-    private suspend fun pick(): MemberCardReader = if (store.current().fakeEnabled) fake else real
+    private suspend fun pick(): MemberCardReader =
+        if (store.current().isFakeActive(FakeSeam.CARD)) fake else real
 }

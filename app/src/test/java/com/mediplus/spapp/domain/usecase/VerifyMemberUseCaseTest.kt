@@ -6,6 +6,7 @@ import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.data.repository.MemberRepository
+import com.mediplus.spapp.domain.model.MemberCapabilities
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
@@ -40,17 +41,15 @@ class VerifyMemberUseCaseTest {
         memberNumber = "1234567",
         fullName = "Jane Doe",
         dateOfBirth = "1985-04-12",
-        membershipStatus = "ACTIVE",
         plan = "Gold",
     )
 
     private fun verification(
         status: MemberVerification.Status = MemberVerification.Status.VALID,
-        verified: Boolean = true,
-        resolved: Boolean = true,
         reason: String? = null,
         member: MemberDetails? = details(),
-    ) = MemberVerification(status, reason, verified, resolved, referenceOnFile = true, member = member)
+        capabilities: MemberCapabilities = MemberCapabilities(canVerifyFace = true, canEnroll = true),
+    ) = MemberVerification(status, reason, referenceOnFile = true, member = member, capabilities = capabilities)
 
     @Test
     fun `a valid card marks the composite member-verified`() = runTest {
@@ -79,9 +78,10 @@ class VerifyMemberUseCaseTest {
     }
 
     @Test
-    fun `an unresolved member is rejected`() = runTest {
-        coEvery { repository.verify(any()) } returns
-            AppResult.Success(verification(resolved = false, member = null))
+    fun `a member the back office could not resolve is rejected`() = runTest {
+        // The spec marks `member` required, but without details there is nothing to key the face
+        // check or the services call on — so an omitted member is a rejection, not a crash.
+        coEvery { repository.verify(any()) } returns AppResult.Success(verification(member = null))
 
         val result = useCase(memberNumber)
 
@@ -93,23 +93,25 @@ class VerifyMemberUseCaseTest {
     }
 
     @Test
-    fun `a resolved member with no details is still rejected`() = runTest {
-        coEvery { repository.verify(any()) } returns AppResult.Success(verification(member = null))
+    fun `an INVALID verdict with no details is reported as not found, before any validity check`() =
+        runTest {
+            coEvery { repository.verify(any()) } returns AppResult.Success(
+                verification(status = MemberVerification.Status.INVALID, member = null),
+            )
 
-        val result = useCase(memberNumber)
+            val result = useCase(memberNumber)
 
-        assertEquals(
-            BusinessCode.PATIENT_NOT_FOUND,
-            (result as AppResult.BusinessRejection).error.code,
-        )
-    }
+            assertEquals(
+                BusinessCode.PATIENT_NOT_FOUND,
+                (result as AppResult.BusinessRejection).error.code,
+            )
+        }
 
     @Test
     fun `server INVALID surfaces a member-invalid rejection carrying the reason`() = runTest {
         coEvery { repository.verify(any()) } returns AppResult.Success(
             verification(
                 status = MemberVerification.Status.INVALID,
-                verified = false,
                 reason = "MEMBERSHIP_EXPIRED",
             ),
         )
@@ -121,16 +123,18 @@ class VerifyMemberUseCaseTest {
     }
 
     @Test
-    fun `VALID but not memberVerified is still a rejection`() = runTest {
-        coEvery { repository.verify(any()) } returns AppResult.Success(verification(verified = false))
+    fun `capabilities are carried through rather than gated on here`() = runTest {
+        // They describe what the server will allow next and the server enforces them; gating on a
+        // field the spec types loosely would let a parsing quirk block every card.
+        coEvery { repository.verify(any()) } returns AppResult.Success(
+            verification(capabilities = MemberCapabilities(canVerifyFace = false, canEnroll = false)),
+        )
 
         val result = useCase(memberNumber)
 
-        assertEquals(
-            BusinessCode.MEMBER_INVALID,
-            (result as AppResult.BusinessRejection).error.code,
-        )
-        assertFalse(sessionManager.verifiedIdentity.value?.memberVerified == true)
+        assertTrue(result is AppResult.Success)
+        assertFalse((result as AppResult.Success).data.capabilities.canEnroll)
+        assertTrue(sessionManager.verifiedIdentity.value?.memberVerified == true)
     }
 
     @Test

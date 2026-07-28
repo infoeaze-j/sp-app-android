@@ -182,7 +182,7 @@ git add app/src/main/java/com/mediplus/spapp/domain/model/Session.kt \
   app/src/main/java/com/mediplus/spapp/data/remote/AuthApi.kt \
   app/src/main/java/com/mediplus/spapp/data/repository/AuthRepository.kt \
   app/src/test/java/com/mediplus/spapp/data/repository/AuthRepositoryTest.kt \
-  docs/openapi.yaml
+  docs/openapi.json
 git commit -m "feat: carry clinic provider name on the login session"
 ```
 

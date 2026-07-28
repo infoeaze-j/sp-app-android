@@ -9,6 +9,7 @@ import com.mediplus.spapp.core.result.ErrorMapper
 import com.mediplus.spapp.core.result.UiMessage
 import com.mediplus.spapp.core.result.appErrorOrNull
 import com.mediplus.spapp.data.repository.AuthRepository
+import com.mediplus.spapp.data.repository.DeviceRepository
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.SessionState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,6 +39,7 @@ data class SignInUiState(
 @HiltViewModel
 class SignInViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val deviceRepository: DeviceRepository,
     private val errorMapper: ErrorMapper,
     appVersion: CurrentAppVersion,
 ) : ViewModel() {
@@ -68,6 +70,10 @@ class SignInViewModel @Inject constructor(
         viewModelScope.launch {
             val result = authRepository.signIn(current.identifier.trim(), current.secret)
             _uiState.update { reduce(it, result) }
+            // Register the device once the session exists, so later calls can carry `X-Device-Id`.
+            // Deliberately after the state update and deliberately unchecked: registration is
+            // best-effort audit-trail plumbing and must never delay or fail the operator's sign-in.
+            if (result is AppResult.Success) deviceRepository.register()
         }
     }
 

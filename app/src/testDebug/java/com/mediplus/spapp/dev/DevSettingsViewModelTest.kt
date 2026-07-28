@@ -47,6 +47,19 @@ class DevSettingsViewModelTest {
     }
 
     @Test
+    fun `setFakeSeam persists one seam without disturbing the others`() = runTest {
+        val store = TestDevSettingsStore()
+        val vm = DevSettingsViewModel(store, InMemorySessionManager())
+
+        vm.setFakeSeam(FakeSeam.CARD, false)
+        advanceUntilIdle()
+
+        val settings = store.current()
+        assertEquals(false, settings.isFakeActive(FakeSeam.CARD))
+        assertEquals(true, settings.isFakeActive(FakeSeam.CAMERA))
+    }
+
+    @Test
     fun `setCamera persists to the store`() = runTest {
         val store = TestDevSettingsStore()
         val vm = DevSettingsViewModel(store, InMemorySessionManager())

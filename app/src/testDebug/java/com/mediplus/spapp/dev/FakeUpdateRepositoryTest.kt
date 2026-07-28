@@ -1,5 +1,6 @@
 package com.mediplus.spapp.dev
 
+import com.mediplus.spapp.BuildConfig
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.dev.repository.FakeUpdateRepository
@@ -34,7 +35,7 @@ class FakeUpdateRepositoryTest {
     }
 
     private suspend fun gated(): AppResult<UpdateStatus> =
-        CheckForUpdateUseCase(fake(), currentVersion)()
+        CheckForUpdateUseCase(fake(), currentVersion, BuildConfig.BASE_URL)()
 
     private suspend fun publishedInfo(): UpdateInfo =
         ((fake().fetchVersionInfo() as AppResult.Success).data)!!

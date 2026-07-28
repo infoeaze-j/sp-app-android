@@ -65,7 +65,7 @@ class UpdateViewModelTest {
     }
 
     private fun viewModel() = UpdateViewModel(
-        checkForUpdate = CheckForUpdateUseCase(repository, currentVersion),
+        checkForUpdate = CheckForUpdateUseCase(repository, currentVersion, BASE_URL),
         updateRepository = repository,
         installer = installer,
         backupStore = backupStore,
@@ -76,7 +76,7 @@ class UpdateViewModelTest {
     private fun info(latest: Int = 7, minSupported: Int = 1) = UpdateInfo(
         latestVersionCode = latest,
         latestVersionName = "1.6",
-        apkUrl = "https://backoffice.example.com/app/spapp-$latest.apk",
+        apkUrl = "${BASE_URL}app/releases/$latest/binary",
         sha256 = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6",
         sizeBytes = 100,
         minSupportedVersionCode = minSupported,
@@ -410,5 +410,9 @@ class UpdateViewModelTest {
         val phase = vm.phase.value as UpdatePhase.Failed
         assertEquals(businessMessage(BusinessCode.UPDATE_BACKUP_FAILED), phase.message)
         assertEquals(RetryTarget.INSTALL, phase.retry)
+    }
+
+    private companion object {
+        const val BASE_URL = "https://backoffice.example.com/api/v1/"
     }
 }

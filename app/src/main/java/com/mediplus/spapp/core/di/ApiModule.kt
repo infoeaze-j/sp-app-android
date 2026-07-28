@@ -1,6 +1,7 @@
 package com.mediplus.spapp.core.di
 
 import com.mediplus.spapp.data.remote.AuthApi
+import com.mediplus.spapp.data.remote.DeviceApi
 import com.mediplus.spapp.data.remote.DiagnosticsApi
 import com.mediplus.spapp.data.remote.EnrollmentApi
 import com.mediplus.spapp.data.remote.FaceApi
@@ -22,6 +23,10 @@ object ApiModule {
     @Provides
     @Singleton
     fun provideAuthApi(retrofit: Retrofit): AuthApi = retrofit.create()
+
+    @Provides
+    @Singleton
+    fun provideDeviceApi(retrofit: Retrofit): DeviceApi = retrofit.create()
 
     @Provides
     @Singleton

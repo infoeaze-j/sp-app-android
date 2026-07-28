@@ -4,6 +4,8 @@ import com.mediplus.spapp.core.camera.TransientFrame
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.data.repository.AuthRepository
 import com.mediplus.spapp.data.repository.AuthRepositoryImpl
+import com.mediplus.spapp.data.repository.DeviceRepository
+import com.mediplus.spapp.data.repository.DeviceRepositoryImpl
 import com.mediplus.spapp.data.repository.EnrollmentRepository
 import com.mediplus.spapp.data.repository.EnrollmentRepositoryImpl
 import com.mediplus.spapp.data.repository.FaceRepository
@@ -13,9 +15,11 @@ import com.mediplus.spapp.data.repository.MemberRepositoryImpl
 import com.mediplus.spapp.data.repository.UpdateRepository
 import com.mediplus.spapp.data.repository.UpdateRepositoryImpl
 import com.mediplus.spapp.dev.DevSettingsStore
+import com.mediplus.spapp.dev.FakeSeam
 import com.mediplus.spapp.domain.model.DownloadedApk
 import com.mediplus.spapp.domain.model.UpdateInfo
 import com.mediplus.spapp.domain.model.Enrollment
+import com.mediplus.spapp.domain.model.EnrollmentRequest
 import com.mediplus.spapp.domain.model.FaceDecision
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
@@ -26,7 +30,7 @@ import com.mediplus.spapp.domain.model.SessionState
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
-/** Debug-only routers: use the fake when the master toggle is on, else the real impl. */
+/** Debug-only routers: use the fake when the master toggle and this seam's own toggle are on. */
 
 class SwitchingAuthRepository @Inject constructor(
     private val real: AuthRepositoryImpl,
@@ -41,7 +45,19 @@ class SwitchingAuthRepository @Inject constructor(
     // Both delegate to the same singleton SessionManager, so either is fine; use the real one.
     override fun sessionState(): StateFlow<SessionState> = real.sessionState()
 
-    private suspend fun pick(): AuthRepository = if (store.current().fakeEnabled) fake else real
+    private suspend fun pick(): AuthRepository =
+        if (store.current().isFakeActive(FakeSeam.AUTH)) fake else real
+}
+
+class SwitchingDeviceRepository @Inject constructor(
+    private val real: DeviceRepositoryImpl,
+    private val fake: FakeDeviceRepository,
+    private val store: DevSettingsStore,
+) : DeviceRepository {
+    override suspend fun register(): AppResult<String> = pick().register()
+
+    private suspend fun pick(): DeviceRepository =
+        if (store.current().isFakeActive(FakeSeam.DEVICE)) fake else real
 }
 
 class SwitchingMemberRepository @Inject constructor(
@@ -52,7 +68,8 @@ class SwitchingMemberRepository @Inject constructor(
     override suspend fun verify(memberNumber: MemberNumber): AppResult<MemberVerification> =
         pick().verify(memberNumber)
 
-    private suspend fun pick(): MemberRepository = if (store.current().fakeEnabled) fake else real
+    private suspend fun pick(): MemberRepository =
+        if (store.current().isFakeActive(FakeSeam.MEMBER)) fake else real
 }
 
 class SwitchingFaceRepository @Inject constructor(
@@ -67,7 +84,8 @@ class SwitchingFaceRepository @Inject constructor(
             frame.clear()
         }
 
-    private suspend fun pick(): FaceRepository = if (store.current().fakeEnabled) fake else real
+    private suspend fun pick(): FaceRepository =
+        if (store.current().isFakeActive(FakeSeam.FACE)) fake else real
 }
 
 class SwitchingEnrollmentRepository @Inject constructor(
@@ -78,18 +96,14 @@ class SwitchingEnrollmentRepository @Inject constructor(
     override suspend fun listServices(memberNumber: String): AppResult<ServiceCatalog> =
         pick().listServices(memberNumber)
 
-    override suspend fun enroll(
-        memberNumber: String,
-        serviceId: String,
-        currency: String,
-        amount: Money,
-        idempotencyKey: String,
-    ): AppResult<Enrollment> = pick().enroll(memberNumber, serviceId, currency, amount, idempotencyKey)
+    override suspend fun enroll(memberNumber: String, request: EnrollmentRequest): AppResult<Enrollment> =
+        pick().enroll(memberNumber, request)
 
     override suspend fun recheck(memberNumber: String, idempotencyKey: String): AppResult<Enrollment?> =
         pick().recheck(memberNumber, idempotencyKey)
 
-    private suspend fun pick(): EnrollmentRepository = if (store.current().fakeEnabled) fake else real
+    private suspend fun pick(): EnrollmentRepository =
+        if (store.current().isFakeActive(FakeSeam.ENROLLMENT)) fake else real
 }
 
 class SwitchingUpdateRepository @Inject constructor(
@@ -106,5 +120,6 @@ class SwitchingUpdateRepository @Inject constructor(
 
     override suspend fun clearDownloads() = pick().clearDownloads()
 
-    private suspend fun pick(): UpdateRepository = if (store.current().fakeEnabled) fake else real
+    private suspend fun pick(): UpdateRepository =
+        if (store.current().isFakeActive(FakeSeam.UPDATE)) fake else real
 }

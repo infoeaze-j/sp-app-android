@@ -50,7 +50,8 @@ class VerifyFaceUseCaseTest {
         liveness: LivenessResult = LivenessResult.PASSED,
         sameSubject: Boolean = true,
         lockout: FaceLockoutState = notLocked,
-    ) = FaceDecision(pass, liveness, sameSubject, reason = null, lockout = lockout)
+        verificationId: String? = "ver-1",
+    ) = FaceDecision(pass, liveness, sameSubject, lockout, verificationId)
 
     @Test
     fun `withheld consent halts without capture`() = runTest {

@@ -233,8 +233,9 @@ private fun ConfirmContent(
         )
         Field(R.string.card_field_name, member.fullName)
         Field(R.string.card_field_number, member.memberNumber)
-        Field(R.string.card_field_dob, member.dateOfBirth)
-        Field(R.string.card_field_status, member.membershipStatus)
+        // Only what the back office actually reports is shown; membership status is not among it —
+        // the verdict is VALID/INVALID and its reason is diagnostic, never rendered (FR-029).
+        member.dateOfBirth?.let { Field(R.string.card_field_dob, it) }
         member.plan?.let { Field(R.string.card_field_plan, it) }
         Button(
             onClick = onConfirm,

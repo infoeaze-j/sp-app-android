@@ -68,10 +68,22 @@ class DiagnosticsRepositoryTest {
     )
 
     @Test
-    fun `poll 200 yields the request id`() = runTest {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"requestId":"req-7"}"""))
+    fun `a pending request yields its id`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"request":{"id":"req-7","reason":"scheduled","requestedAt":"2026-07-20T12:00:00Z",""" +
+                    """"expiresAt":"2026-07-20T13:00:00Z"}}""",
+            ),
+        )
         val result = repo().poll()
         assertEquals(AppResult.Success("req-7"), result)
+        assertEquals("/diagnostics/requests/pending", server.takeRequest().path)
+    }
+
+    @Test
+    fun `a null request is nothing requested, not a failure`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"request":null}"""))
+        assertEquals(AppResult.Success(null), repo().poll())
     }
 
     @Test
@@ -93,12 +105,14 @@ class DiagnosticsRepositoryTest {
     }
 
     @Test
-    fun `report posts requestId and snapshot and succeeds on 200`() = runTest {
-        server.enqueue(MockResponse().setResponseCode(200))
+    fun `report puts the request id in the path and the snapshot in the body`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"accepted"}"""))
         val result = repo().report("req-7", snapshot())
         assertEquals(AppResult.Success(Unit), result)
-        val body = server.takeRequest().body.readUtf8()
-        assertTrue(body.contains("\"requestId\":\"req-7\""))
+        val recorded = server.takeRequest()
+        assertEquals("/diagnostics/requests/req-7/report", recorded.path)
+        val body = recorded.body.readUtf8()
+        assertTrue(body.contains("\"snapshot\":"))
         assertTrue(body.contains("\"transport\":\"WIFI\""))
         assertTrue(body.contains("\"levelPercent\":80"))
     }

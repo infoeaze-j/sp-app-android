@@ -17,6 +17,9 @@ interface DevSettingsStore {
     val settings: Flow<DevSettings>
     suspend fun current(): DevSettings
     suspend fun setFakeEnabled(enabled: Boolean)
+
+    /** Flip one seam's own toggle. Only takes effect while the master toggle is on. */
+    suspend fun setFakeSeam(seam: FakeSeam, enabled: Boolean)
     suspend fun setAuth(scenario: AuthScenario)
     suspend fun setCard(scenario: CardScenario)
     suspend fun setCamera(scenario: CameraScenario)
@@ -44,6 +47,9 @@ class DataStoreDevSettingsStore @Inject constructor(
 
     override suspend fun setFakeEnabled(enabled: Boolean) =
         edit { it[DevPrefKeys.FAKE_ENABLED] = enabled }
+
+    override suspend fun setFakeSeam(seam: FakeSeam, enabled: Boolean) =
+        edit { it[DevPrefKeys.seam(seam)] = enabled }
 
     override suspend fun setAuth(scenario: AuthScenario) =
         edit { it[DevPrefKeys.AUTH] = scenario.name }

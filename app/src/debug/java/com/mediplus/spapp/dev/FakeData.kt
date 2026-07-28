@@ -4,6 +4,7 @@ import com.mediplus.spapp.domain.model.Currency
 import com.mediplus.spapp.domain.model.FaceDecision
 import com.mediplus.spapp.domain.model.FaceLockoutState
 import com.mediplus.spapp.domain.model.LivenessResult
+import com.mediplus.spapp.domain.model.MemberCapabilities
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
@@ -18,11 +19,19 @@ object FakeData {
 
     val session: Session = Session(
         token = "fake-token-op-001",
-        operator = Operator(operatorId = "op-001", displayName = "Demo Operator"),
+        operator = Operator(operatorId = "op-001", displayName = "Demo Operator", identifier = "demo"),
         expiresAt = null,
         state = SessionState.Active,
-        provider = Provider("Mercy Hospital"),
+        provider = Provider(
+            name = "Mercy Hospital",
+            id = "prov-001",
+            code = "MERCY",
+            timezone = "Africa/Johannesburg",
+        ),
     )
+
+    /** The id the fake `POST /devices/register` hands back, carried as `X-Device-Id` afterwards. */
+    const val deviceId: String = "fake-device-001"
 
     /** The card number the emulated tap returns. */
     val memberNumber: MemberNumber = MemberNumber.parse("1234567")!!
@@ -34,48 +43,52 @@ object FakeData {
      */
     val faceFrameBytes: ByteArray = ByteArray(64) { (it + 1).toByte() }
 
+    /** The single-use token the fake face check issues; the fake enrollment spends it. */
+    const val verificationId: String = "fake-verification-001"
+
     val memberDetails: MemberDetails = MemberDetails(
         memberNumber = "1234567",
         fullName = "Jane Doe",
         dateOfBirth = "1985-04-12",
-        membershipStatus = "ACTIVE",
         plan = "Gold",
     )
 
     val verificationValid: MemberVerification = MemberVerification(
         status = MemberVerification.Status.VALID,
         reason = null,
-        memberVerified = true,
-        memberResolved = true,
         referenceOnFile = true,
         member = memberDetails,
+        capabilities = MemberCapabilities(canVerifyFace = true, canEnroll = true),
     )
 
     val verificationInvalid: MemberVerification = MemberVerification(
         status = MemberVerification.Status.INVALID,
         reason = "MEMBERSHIP_EXPIRED",
-        memberVerified = false,
-        memberResolved = true,
         referenceOnFile = true,
         member = memberDetails,
+        capabilities = MemberCapabilities(canVerifyFace = false, canEnroll = false),
     )
 
     val services: List<Service> = listOf(
-        Service("svc-blood", "Blood test", eligibleForPatient = true, alreadySelected = false),
-        Service("svc-xray", "X-ray", eligibleForPatient = true, alreadySelected = false),
-        Service("svc-vaccine", "Vaccination", eligibleForPatient = true, alreadySelected = false),
+        Service("svc-blood", "BLD", "Blood test", eligibleForPatient = true, alreadyEnrolled = false),
+        Service("svc-xray", "XRY", "X-ray", eligibleForPatient = true, alreadyEnrolled = false),
+        Service("svc-vaccine", "VAC", "Vaccination", eligibleForPatient = true, alreadyEnrolled = false),
     )
 
+    /**
+     * Two currencies with *different* minor-unit exponents, so the amount keypad's scaling is
+     * exercised on a bare emulator rather than only ever seeing the two-decimal case.
+     */
     val currencies: List<Currency> = listOf(
-        Currency("ZAR", "Rand (R)"),
-        Currency("USD", "US Dollar ($)"),
+        Currency("ZAR", "Rand (R)", minorUnitExponent = 2, isDefault = true),
+        Currency("JPY", "Japanese Yen (¥)", minorUnitExponent = 0),
     )
 
     val faceDecisionPass: FaceDecision = FaceDecision(
         decisionPass = true,
         liveness = LivenessResult.PASSED,
         sameSubject = true,
-        reason = null,
         lockout = FaceLockoutState(lockedOut = false, remainingAttempts = null, cooldownUntilMillis = null),
+        verificationId = verificationId,
     )
 }

@@ -1,5 +1,11 @@
 # Contract: Service Enrollment API
 
+> **Superseded — do not implement from this file.** The back office has since published its real
+> contract as `docs/openapi.json`, and the app is aligned to that. Paths, field names and status
+> codes below are the provisional shapes this feature was designed against and are now wrong in
+> places (the paths are `/members/{memberNumber}/…`, services carry `id`/`code`/`alreadyEnrolled`, currencies carry `code`/`minorUnitExponent`, and enrollment now requires a `verificationId` and sends `amountMinor`). What still holds is the *client-side* reasoning — which outcomes are
+> business rejections, which are transient, and what must never be reported as success.
+
 **Feature**: 001-identity-verification-enrollment | **Consumer**: FaceVerify Android app | **Direction**: app → back office
 
 Provisional contract for listing eligible services and adding one for the current visit

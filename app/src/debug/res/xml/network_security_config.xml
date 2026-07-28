@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only: allow plain-HTTP (cleartext) traffic to the local Docker back office.
+  This lives in src/debug so release builds stay strict-HTTPS by default.
+  - 10.21.2.82  : the Docker host on the LAN (matches BASE_URL in build.gradle.kts)
+  - 10.0.2.2    : the host machine as seen from an Android emulator
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.21.2.82</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

@@ -1,5 +1,11 @@
 # Contract: Member Card Verification API
 
+> **Superseded — do not implement from this file.** The back office has since published its real
+> contract as `docs/openapi.json`, and the app is aligned to that. Paths, field names and status
+> codes below are the provisional shapes this feature was designed against and are now wrong in
+> places (the response is a `MemberVerificationResource` with `capabilities`, and `memberVerified`/`memberResolved`/`membershipStatus` are gone). What still holds is the *client-side* reasoning — which outcomes are
+> business rejections, which are transient, and what must never be reported as success.
+
 **Feature**: 001-identity-verification-enrollment | **Consumer**: FaceVerify Android app | **Direction**: app → back office
 
 Provisional contract for authoritative member card verification (FR-007, FR-008, FR-011, FR-011a).

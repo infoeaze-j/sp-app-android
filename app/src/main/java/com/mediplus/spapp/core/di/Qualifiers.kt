@@ -21,3 +21,11 @@ annotation class MainDispatcher
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class UpdateCacheDir
+
+/**
+ * Marks the back-office base URL. Supplied as a value rather than read from `BuildConfig` at the
+ * point of use, so the same-origin rule for the APK download stays testable.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class BaseUrl

@@ -1,0 +1,1474 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FaceVerify Back Office",
+    "version": "1.0.0",
+    "description": "The authoritative back office for the FaceVerify checkout app.\n\n**Errors.** Every failure uses one envelope and carries a stable,\nmachine-readable code. Clients branch on `error.code` \u2014 never on\nprose, and never on the HTTP status alone.\n\n```json\n{ \"error\": { \"code\": \"VERIFICATION_STALE\", \"message\": \"\u2026\", \"details\": {} } }\n```\n\n**Authentication.** `POST /auth/login` returns an opaque bearer\ntoken. Send it as `Authorization: Bearer <token>` on every other\ncall. The token is memory-only on the client and must never be\nlogged.\n\n**Devices.** Register once with `POST /devices/register` and send\nthe returned id as `X-Device-Id` on subsequent calls. Diagnostics\nrequires it; everywhere else it is recorded for the audit trail\nwhen present."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "http": []
+    }
+  ],
+  "paths": {
+    "/app/releases/latest": {
+      "get": {
+        "operationId": "app.releases.latest",
+        "description": "Runs at launch, before sign-in, so it is unauthenticated.\n\nAlways 200. \"Nothing published yet\" is a fact about the fleet, not a\nfailure, and answering it with 404 made that state indistinguishable\nfrom a routing mistake \u2014 the client then had to treat a genuine outage\nas \"you are up to date\".",
+        "summary": "GET /app/releases/latest",
+        "tags": [
+          "AppRelease"
+        ],
+        "parameters": [
+          {
+            "name": "versionCode",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "latest": {
+                          "type": "object",
+                          "properties": {
+                            "versionCode": {
+                              "type": "integer"
+                            },
+                            "versionName": {
+                              "type": "string"
+                            },
+                            "minSupportedVersionCode": {
+                              "type": "integer"
+                            },
+                            "url": {
+                              "type": "string",
+                              "description": "Same origin as the API by construction: the client attaches\nits bearer token to this request, and a third-party host\nwould therefore receive the session token."
+                            },
+                            "sha256": {
+                              "type": "string"
+                            },
+                            "sizeBytes": {
+                              "type": "integer"
+                            },
+                            "releaseNotes": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "publishedAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "versionCode",
+                            "versionName",
+                            "minSupportedVersionCode",
+                            "url",
+                            "sha256",
+                            "sizeBytes",
+                            "releaseNotes",
+                            "publishedAt"
+                          ]
+                        },
+                        "updateRequired": {
+                          "type": "string",
+                          "description": "Computed here rather than left to the client, so the rule for\n\"must update\" lives in one place."
+                        },
+                        "updateAvailable": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "latest",
+                        "updateRequired",
+                        "updateAvailable"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "latest": {
+                          "type": "null"
+                        }
+                      },
+                      "required": [
+                        "latest"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/app/releases/{release}/binary": {
+      "get": {
+        "operationId": "app.releases.binary",
+        "description": "Authenticated, so published builds are not publicly harvestable, and\nstreamed in chunks so a 40 MB APK never sits in PHP's memory.",
+        "summary": "GET /app/releases/{release}/binary",
+        "tags": [
+          "AppRelease"
+        ],
+        "parameters": [
+          {
+            "name": "release",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "auth.login",
+        "summary": "POST /auth/login",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "`SessionResource`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResource"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "auth.logout",
+        "description": "Idempotent and best-effort: the client wipes its own state regardless of\nwhat happens here, so this must never be the thing that keeps an\noperator signed in.",
+        "summary": "POST /auth/logout",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          }
+        }
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "operationId": "auth.session",
+        "description": "Explicit revalidation. Expiry is normally detected passively \u2014 any\nprotected endpoint returning SESSION_INVALID \u2014 but a client resuming\nfrom the background can ask directly instead of guessing.",
+        "summary": "GET /auth/session",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "`SessionResource`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResource"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          }
+        }
+      }
+    },
+    "/devices/register": {
+      "post": {
+        "operationId": "devices.register",
+        "description": "Idempotent on the client-generated `installId`: an app that re-registers\nafter a reinstall, a token expiry or a crash updates its record and gets\nthe same device id back, rather than littering the fleet with duplicates.",
+        "summary": "POST /devices/register",
+        "tags": [
+          "Device"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          }
+        }
+      }
+    },
+    "/diagnostics/requests/pending": {
+      "get": {
+        "operationId": "diagnostics.pending",
+        "description": "Always 200. \"Nothing pending\" is the normal answer and must not look\nlike a routing failure or a missing deployment \u2014 the client polls this\nevery fifteen minutes and swallows failures silently, so an ambiguous\nstatus here would be invisible.",
+        "summary": "GET /diagnostics/requests/pending",
+        "tags": [
+          "Diagnostics"
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "request": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "expiresAt": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "reason",
+                            "requestedAt",
+                            "expiresAt"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "request"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "request": {
+                          "type": "null"
+                        }
+                      },
+                      "required": [
+                        "request"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          }
+        }
+      }
+    },
+    "/diagnostics/requests/{diagnosticsRequest}/report": {
+      "post": {
+        "operationId": "diagnostics.report",
+        "description": "Idempotent: a device that retries because it never saw the 202 gets the\nsame answer and creates no second row.",
+        "summary": "POST /diagnostics/requests/{request}/report",
+        "tags": [
+          "Diagnostics"
+        ],
+        "parameters": [
+          {
+            "name": "diagnosticsRequest",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportDiagnosticsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "accepted"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          }
+        }
+      }
+    },
+    "/members/{memberNumber}/enrollments": {
+      "post": {
+        "operationId": "members.enrollments.store",
+        "description": "A retry carrying the same idempotency key replays the original response\nverbatim. That makes the common case \u2014 a request that succeeded but whose\nresponse was lost to a timeout \u2014 indistinguishable from the first call,\ninstead of surfacing as a duplicate error.",
+        "summary": "POST /members/{memberNumber}/enrollments",
+        "tags": [
+          "Enrollment"
+        ],
+        "parameters": [
+          {
+            "name": "memberNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreEnrollmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          }
+        }
+      },
+      "get": {
+        "operationId": "members.enrollments.show",
+        "description": "Resolves an uncertain outcome after a timeout, without risking a\nduplicate. A 404 here is a definite answer \u2014 \"it never landed, retrying\n     * is safe\" \u2014 not an error.",
+        "summary": "GET /members/{memberNumber}/enrollments?idempotencyKey=\u2026",
+        "tags": [
+          "Enrollment"
+        ],
+        "parameters": [
+          {
+            "name": "memberNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idempotencyKey",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enrollmentId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "code",
+                            "description"
+                          ]
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "amountMinor": {
+                          "type": "integer"
+                        },
+                        "visitDate": {
+                          "type": "string"
+                        },
+                        "recordedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "enrollmentId",
+                        "status",
+                        "service",
+                        "currency",
+                        "amountMinor",
+                        "visitDate",
+                        "recordedAt"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          }
+        }
+      }
+    },
+    "/face/verifications": {
+      "post": {
+        "operationId": "face.verifications.store",
+        "description": "A FAIL is a successful call reporting a rejected attempt, not an error \u2014\nthe operator needs to see the result, and the client needs to tell it\napart from a network failure.",
+        "summary": "POST /face/verifications",
+        "tags": [
+          "Face"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyFaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "`VerificationResource`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationResource"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          }
+        }
+      }
+    },
+    "/members/verify": {
+      "post": {
+        "operationId": "members.verify",
+        "description": "An INVALID membership is a successful call reporting a rejection, not an\nerror: the operator needs to be told the card is no good, and the client\nneeds to distinguish that from a network failure.",
+        "summary": "POST /members/verify",
+        "tags": [
+          "Member"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "`MemberVerificationResource`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberVerificationResource"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationException"
+          }
+        }
+      }
+    },
+    "/members/{memberNumber}/services": {
+      "get": {
+        "operationId": "members.services.index",
+        "description": "Returns the catalogue and the accepted currencies together, because the\nclient needs both to render the add-service step and neither is useful\nalone.",
+        "summary": "GET /members/{memberNumber}/services",
+        "tags": [
+          "Service"
+        ],
+        "parameters": [
+          {
+            "name": "memberNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "eligibleForPatient": {
+                            "type": "boolean"
+                          },
+                          "alreadyEnrolled": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "code",
+                          "description",
+                          "eligibleForPatient",
+                          "alreadyEnrolled"
+                        ]
+                      }
+                    },
+                    "currencies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "minorUnitExponent": {
+                            "type": "integer",
+                            "description": "Stated rather than assumed. The original client scaled every\namount by 100 regardless of currency, which is wrong for JPY\nand for KWD."
+                          },
+                          "isDefault": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "label",
+                          "minorUnitExponent",
+                          "isDefault"
+                        ]
+                      }
+                    },
+                    "visitDate": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "services",
+                    "currencies",
+                    "visitDate"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationException"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "http": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "secret": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "deviceName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional label for the issued token, so an administrator\nrevoking a lost tablet can tell the sessions apart.",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "identifier",
+          "secret"
+        ],
+        "title": "LoginRequest"
+      },
+      "MemberVerificationResource": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "INVALID"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Diagnostic only \u2014 the client must never render this.\nDiagnostic only. Recorded for support, never rendered to the\noperator, who has no business knowing why cover lapsed."
+          },
+          "member": {
+            "type": "object",
+            "properties": {
+              "memberNumber": {
+                "type": "string"
+              },
+              "fullName": {
+                "type": "string"
+              },
+              "dateOfBirth": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "plan": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "memberNumber",
+              "fullName",
+              "dateOfBirth",
+              "plan"
+            ]
+          },
+          "referenceOnFile": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "canVerifyFace": {
+                "type": "string"
+              },
+              "canEnroll": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "canVerifyFace",
+              "canEnroll"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "member",
+          "referenceOnFile",
+          "capabilities"
+        ],
+        "title": "MemberVerificationResource"
+      },
+      "RegisterDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "installId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Generated once by the client and stored locally. A UUID rather\nthan a hardware id: the app holds no permission to read one, and\nmust not need one."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "manufacturer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100
+          },
+          "osRelease": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 32
+          },
+          "sdkInt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 999
+          },
+          "appVersionName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 32
+          },
+          "appVersionCode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        },
+        "required": [
+          "installId"
+        ],
+        "title": "RegisterDeviceRequest"
+      },
+      "ReportDiagnosticsRequest": {
+        "type": "object",
+        "description": "Validates a device snapshot.\n\nThe shape is checked rather than accepted wholesale, and the rules are the\nenforcement point for the privacy promise: the listed fields are all readable\nwithout a runtime permission, and anything else a client sends is stripped\nbefore storage. A device cannot start reporting a hardware identifier by\nchanging its own code.",
+        "properties": {
+          "reportedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshot": {
+            "type": "object",
+            "properties": {
+              "battery": {
+                "type": "object",
+                "properties": {
+                  "levelPercent": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "isCharging": {
+                    "type": "boolean"
+                  },
+                  "plug": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 32
+                  },
+                  "health": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 32
+                  },
+                  "temperatureDeciC": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "voltageMv": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "powerSaveMode": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "levelPercent",
+                  "isCharging"
+                ]
+              },
+              "network": {
+                "type": "object",
+                "properties": {
+                  "transport": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "isMetered": {
+                    "type": "boolean"
+                  },
+                  "isValidated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "isMetered",
+                  "isValidated"
+                ]
+              },
+              "storage": {
+                "type": "object",
+                "properties": {
+                  "internalFreeBytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "internalTotalBytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "internalFreeBytes",
+                  "internalTotalBytes"
+                ]
+              },
+              "memory": {
+                "type": "object",
+                "properties": {
+                  "availBytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "totalBytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "lowMemory": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "availBytes",
+                  "totalBytes",
+                  "lowMemory"
+                ]
+              },
+              "display": {
+                "type": "object",
+                "properties": {
+                  "widthPx": {
+                    "type": "integer"
+                  },
+                  "heightPx": {
+                    "type": "integer"
+                  },
+                  "densityDpi": {
+                    "type": "integer"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  },
+                  "rotationDegrees": {
+                    "type": "integer",
+                    "enum": [
+                      "0",
+                      "90",
+                      "180",
+                      "270"
+                    ]
+                  }
+                }
+              },
+              "device": {
+                "type": "object",
+                "properties": {
+                  "manufacturer": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "model": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "brand": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 100
+                  },
+                  "device": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Build.DEVICE \u2014 a board codename, not an identifier.",
+                    "maxLength": 100
+                  },
+                  "sdkInt": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 999
+                  },
+                  "release": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "manufacturer",
+                  "model",
+                  "sdkInt"
+                ]
+              },
+              "app": {
+                "type": "object",
+                "properties": {
+                  "versionName": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "versionCode": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "versionName",
+                  "versionCode"
+                ]
+              },
+              "environment": {
+                "type": "object",
+                "properties": {
+                  "locale": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "timeZoneId": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "airplaneMode": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "thermal": {
+                "type": "object",
+                "properties": {
+                  "headroom": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "uptime": {
+                "type": "object",
+                "properties": {
+                  "uptimeMillis": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "elapsedRealtimeMillis": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "required": [
+              "battery",
+              "network",
+              "storage",
+              "memory",
+              "device",
+              "app"
+            ]
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "title": "ReportDiagnosticsRequest"
+      },
+      "SessionResource": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "operator": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "identifier": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "identifier",
+              "displayName",
+              "permissions"
+            ]
+          },
+          "provider": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "name",
+              "timezone"
+            ]
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "verificationTtlSeconds": {
+                "type": "integer"
+              },
+              "sessionTtlSeconds": {
+                "type": "integer"
+              },
+              "face": {
+                "type": "object",
+                "properties": {
+                  "maxAttempts": {
+                    "type": "integer"
+                  },
+                  "lockoutSeconds": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "maxAttempts",
+                  "lockoutSeconds"
+                ]
+              }
+            },
+            "required": [
+              "verificationTtlSeconds",
+              "sessionTtlSeconds",
+              "face"
+            ]
+          },
+          "serverTime": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt",
+          "operator",
+          "provider",
+          "policy",
+          "serverTime"
+        ],
+        "title": "SessionResource"
+      },
+      "StoreEnrollmentRequest": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string"
+          },
+          "verificationId": {
+            "type": "string",
+            "description": "Issued by the face step. The server checks it belongs to this\nmember, has not expired, and has not already been spent."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Reused verbatim on every retry of the same logical enrollment."
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3
+          },
+          "amountMinor": {
+            "type": "integer",
+            "description": "Minor units, so no floating point reaches the wire.",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "serviceId",
+          "verificationId",
+          "idempotencyKey",
+          "currency",
+          "amountMinor"
+        ],
+        "title": "StoreEnrollmentRequest"
+      },
+      "VerificationResource": {
+        "type": "object",
+        "properties": {
+          "verificationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decision": {
+            "type": "string"
+          },
+          "liveness": {
+            "type": "string"
+          },
+          "sameSubject": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lockout": {
+            "type": "object",
+            "properties": {
+              "lockedOut": {
+                "type": "boolean"
+              },
+              "remainingAttempts": {
+                "type": "integer"
+              },
+              "cooldownUntil": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "lockedOut",
+              "remainingAttempts",
+              "cooldownUntil"
+            ]
+          }
+        },
+        "required": [
+          "verificationId",
+          "decision",
+          "liveness",
+          "sameSubject",
+          "expiresAt",
+          "lockout"
+        ],
+        "title": "VerificationResource"
+      },
+      "VerifyFaceRequest": {
+        "type": "object",
+        "properties": {
+          "memberNumber": {
+            "type": "string",
+            "pattern": "^[0-9]{7,32}$"
+          },
+          "image": {
+            "type": "string",
+            "description": "Base64 of a single still frame. Decoded and validated as real\nimage data by LiveFrame; the size ceiling is enforced there too,\nagainst the decoded bytes rather than the encoded string."
+          },
+          "capture": {
+            "type": "object",
+            "properties": {
+              "hasLivenessChallengeResponse": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "required": [
+          "memberNumber",
+          "image"
+        ],
+        "title": "VerifyFaceRequest"
+      },
+      "VerifyMemberRequest": {
+        "type": "object",
+        "description": "Deliberately a POST body rather than a path parameter.\n\nA member number is the patient key. In a URL it would land in nginx access\nlogs, proxy logs and browser history; in a body it does not.",
+        "properties": {
+          "memberNumber": {
+            "type": "string",
+            "pattern": "^[0-9]{7,32}$"
+          }
+        },
+        "required": [
+          "memberNumber"
+        ],
+        "title": "VerifyMemberRequest"
+      }
+    },
+    "responses": {
+      "ValidationException": {
+        "description": "Validation error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "description": "Errors overview."
+                },
+                "errors": {
+                  "type": "object",
+                  "description": "A detailed description of each field that failed validation.",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "message",
+                "errors"
+              ]
+            }
+          }
+        }
+      },
+      "AuthenticationException": {
+        "description": "Unauthenticated",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "description": "Error overview."
+                }
+              },
+              "required": [
+                "message"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

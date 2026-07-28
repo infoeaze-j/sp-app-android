@@ -72,8 +72,15 @@ class VerifyFaceUseCase @Inject constructor(
         if (!decision.decisionPass) return FaceCheckResult.Rejected(BusinessCode.FACE_NO_MATCH, decision.lockout)
         if (decision.lockout.lockedOut) return FaceCheckResult.Rejected(BusinessCode.FACE_LOCKED_OUT, decision.lockout)
 
+        // The issued verification id rides on the composite: enrollment spends it, and ending the
+        // visit drops it with everything else, so it can never be reused for a different patient.
         sessionManager.updateVerifiedIdentity {
-            it?.copy(faceVerified = true, sameSubject = true, verifiedAt = time.nowMillis())
+            it?.copy(
+                faceVerified = true,
+                sameSubject = true,
+                verifiedAt = time.nowMillis(),
+                verificationId = decision.verificationId,
+            )
         }
         return FaceCheckResult.Verified(decision)
     }

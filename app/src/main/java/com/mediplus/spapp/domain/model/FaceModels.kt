@@ -43,11 +43,15 @@ data class FaceLockoutState(
 /**
  * The authoritative face decision returned by the back office (Decision 2). The app only submits and
  * enforces this; it never computes match or liveness on-device.
+ *
+ * A pass issues a [verificationId], which is the single-use token the enrollment step spends: the
+ * server checks it belongs to this member, has not expired and has not already been used. Without
+ * one, no service can be added — which is what keeps enrollment tied to *this* face check.
  */
 data class FaceDecision(
     val decisionPass: Boolean,
     val liveness: LivenessResult,
     val sameSubject: Boolean,
-    val reason: String?,
     val lockout: FaceLockoutState,
+    val verificationId: String? = null,
 )

@@ -16,6 +16,8 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -25,8 +27,9 @@ import retrofit2.create
 import java.util.concurrent.TimeUnit
 
 /**
- * Member verification contract (FR-008): VALID, INVALID+reason, 404, 5xx, and timeout each map to
- * the correct [AppResult] through the repository.
+ * Member verification contract (FR-008) against the `MemberVerificationResource` in
+ * docs/openapi.json: VALID, INVALID+reason, capabilities, 404, 5xx and timeout each map to the
+ * correct [AppResult] through the repository.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MemberApiContractTest {
@@ -57,9 +60,9 @@ class MemberApiContractTest {
     fun `VALID card maps to a verified verification carrying the member details`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"status":"VALID","memberVerified":true,"memberResolved":true,"referenceOnFile":true,""" +
+                """{"status":"VALID","reason":null,"referenceOnFile":true,""" +
                     """"member":{"memberNumber":"1234567","fullName":"Jane Doe","dateOfBirth":"1985-04-12",""" +
-                    """"membershipStatus":"ACTIVE","plan":"Gold"}}""",
+                    """"plan":"Gold"},"capabilities":{"canVerifyFace":true,"canEnroll":true}}""",
             ),
         )
 
@@ -67,26 +70,31 @@ class MemberApiContractTest {
 
         val verification = (result as AppResult.Success).data
         assertEquals(MemberVerification.Status.VALID, verification.status)
-        assertTrue(verification.memberVerified)
+        assertTrue(verification.referenceOnFile)
         assertEquals("Jane Doe", verification.member?.fullName)
         assertEquals("Gold", verification.member?.plan)
+        assertTrue(verification.capabilities.canVerifyFace)
+        assertTrue(verification.capabilities.canEnroll)
     }
 
     @Test
-    fun `the request sends the card number as memberNumber`() = runTest {
+    fun `the request sends the card number as memberNumber in the body, never the path`() = runTest {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"VALID"}"""))
 
         repository.verify(memberNumber)
 
-        val body = server.takeRequest().body.readUtf8()
-        assertTrue(body.contains(""""memberNumber":"1234567""""))
+        val recorded = server.takeRequest()
+        assertEquals("/members/verify", recorded.path)
+        assertTrue(recorded.body.readUtf8().contains(""""memberNumber":"1234567""""))
     }
 
     @Test
     fun `INVALID card carries the specific reason`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"status":"INVALID","reason":"MEMBERSHIP_EXPIRED","memberVerified":false,"memberResolved":true}""",
+                """{"status":"INVALID","reason":"MEMBERSHIP_EXPIRED","referenceOnFile":false,""" +
+                    """"member":{"memberNumber":"1234567","fullName":"Jane Doe","dateOfBirth":null,"plan":null},""" +
+                    """"capabilities":{"canVerifyFace":false,"canEnroll":false}}""",
             ),
         )
 
@@ -94,6 +102,38 @@ class MemberApiContractTest {
 
         assertEquals(MemberVerification.Status.INVALID, verification.status)
         assertEquals("MEMBERSHIP_EXPIRED", verification.reason)
+        assertNull(verification.member?.dateOfBirth)
+        assertFalse(verification.capabilities.canVerifyFace)
+    }
+
+    @Test
+    fun `canVerifyFace spelled as a string still reads as a boolean`() = runTest {
+        // The spec types this field `string` beside a boolean sibling, so both spellings arrive.
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"VALID","member":{"memberNumber":"1234567"},""" +
+                    """"capabilities":{"canVerifyFace":"true","canEnroll":true}}""",
+            ),
+        )
+
+        val verification = (repository.verify(memberNumber) as AppResult.Success).data
+
+        assertTrue(verification.capabilities.canVerifyFace)
+    }
+
+    @Test
+    fun `an unrecognised capability spelling reads as false rather than failing the call`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"VALID","member":{"memberNumber":"1234567"},""" +
+                    """"capabilities":{"canVerifyFace":"maybe","canEnroll":false}}""",
+            ),
+        )
+
+        val verification = (repository.verify(memberNumber) as AppResult.Success).data
+
+        assertEquals(MemberVerification.Status.VALID, verification.status)
+        assertFalse(verification.capabilities.canVerifyFace)
     }
 
     @Test
@@ -104,6 +144,22 @@ class MemberApiContractTest {
 
         assertEquals(
             BusinessCode.PATIENT_NOT_FOUND,
+            (result as AppResult.BusinessRejection).error.code,
+        )
+    }
+
+    @Test
+    fun `a rejected member number maps to a member-invalid rejection`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(422).setBody(
+                """{"message":"The member number format is invalid.","errors":{"memberNumber":["Invalid."]}}""",
+            ),
+        )
+
+        val result = repository.verify(memberNumber)
+
+        assertEquals(
+            BusinessCode.MEMBER_INVALID,
             (result as AppResult.BusinessRejection).error.code,
         )
     }

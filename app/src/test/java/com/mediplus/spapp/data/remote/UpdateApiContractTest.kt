@@ -4,6 +4,7 @@ import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.data.repository.UpdateRepositoryImpl
+import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.UpdateInfo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -32,9 +33,9 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
- * Version-check contract (self-update design): a published build maps to [UpdateInfo]; an
- * undeployed endpoint (404) is "nothing published", never an error; 5xx and timeout classify like
- * every other endpoint.
+ * Release-check contract (`app.releases.latest`): a published build maps to [UpdateInfo],
+ * `{"latest": null}` is "nothing published" rather than an error, the running versionCode is sent
+ * so the server can compute its own verdict, and 5xx/timeout classify like every other endpoint.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpdateApiContractTest {
@@ -46,6 +47,7 @@ class UpdateApiContractTest {
     private lateinit var repository: UpdateRepositoryImpl
     private lateinit var cacheDir: File
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val currentVersion = CurrentAppVersion(code = 5, name = "1.5")
 
     @Before
     fun setUp() {
@@ -59,19 +61,20 @@ class UpdateApiContractTest {
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create()
-        repository = UpdateRepositoryImpl(api, UnconfinedTestDispatcher(), cacheDir)
+        repository = UpdateRepositoryImpl(api, UnconfinedTestDispatcher(), cacheDir, currentVersion)
     }
 
     @After
     fun tearDown() = server.shutdown()
 
     @Test
-    fun `a published build maps to UpdateInfo`() = runTest {
+    fun `a published build maps to UpdateInfo and reports the running version`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"latestVersionCode":7,"latestVersionName":"1.6",""" +
-                    """"apkUrl":"https://backoffice.example.com/app/spapp-7.apk",""" +
-                    """"sha256":"$SHA","sizeBytes":12345678,"minSupportedVersionCode":5}""",
+                """{"latest":{"versionCode":7,"versionName":"1.6","minSupportedVersionCode":5,""" +
+                    """"url":"https://backoffice.example.com/api/v1/app/releases/7/binary","sha256":"$SHA",""" +
+                    """"sizeBytes":12345678,"releaseNotes":"Fixes","publishedAt":"2026-07-20T09:00:00Z"},""" +
+                    """"updateRequired":false,"updateAvailable":true}""",
             ),
         )
 
@@ -82,21 +85,49 @@ class UpdateApiContractTest {
                 UpdateInfo(
                     latestVersionCode = 7,
                     latestVersionName = "1.6",
-                    apkUrl = "https://backoffice.example.com/app/spapp-7.apk",
+                    apkUrl = "https://backoffice.example.com/api/v1/app/releases/7/binary",
                     sha256 = SHA,
                     sizeBytes = 12_345_678,
                     minSupportedVersionCode = 5,
+                    updateRequired = false,
+                    updateAvailable = true,
+                    releaseNotes = "Fixes",
                 ),
             ),
             result,
         )
+        assertEquals("/app/releases/latest?versionCode=5", server.takeRequest().path)
+    }
+
+    @Test
+    fun `nothing published is an empty answer, not an error`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"latest":null}"""))
+
+        assertEquals(AppResult.Success(null), repository.fetchVersionInfo())
+    }
+
+    @Test
+    fun `the server verdicts are read even when spelled as strings`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"latest":{"versionCode":7,"versionName":"1.6","minSupportedVersionCode":1,""" +
+                    """"url":"https://backoffice.example.com/api/v1/app/releases/7/binary","sha256":"$SHA",""" +
+                    """"sizeBytes":1,"releaseNotes":null,"publishedAt":null},""" +
+                    """"updateRequired":"true","updateAvailable":"true"}""",
+            ),
+        )
+
+        val info = (repository.fetchVersionInfo() as AppResult.Success).data
+
+        assertTrue(info!!.updateRequired)
+        assertTrue(info.updateAvailable)
     }
 
     @Test
     fun `unknown keys in the response are ignored`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"latestVersionCode":7,"releaseNotes":"surprise field","channel":"stable"}""",
+                """{"latest":{"versionCode":7,"channel":"stable"},"updateAvailable":true,"surprise":1}""",
             ),
         )
 
@@ -144,7 +175,7 @@ class UpdateApiContractTest {
     private fun infoFor(bytes: ByteArray, declaredSha: String = sha256Of(bytes)) = UpdateInfo(
         latestVersionCode = 7,
         latestVersionName = "1.6",
-        apkUrl = server.url("/app/spapp-7.apk").toString(),
+        apkUrl = server.url("/app/releases/7/binary").toString(),
         sha256 = declaredSha,
         sizeBytes = bytes.size.toLong(),
         minSupportedVersionCode = 5,
@@ -175,6 +206,16 @@ class UpdateApiContractTest {
             progress.zipWithNext().all { (a, b) -> a.first <= b.first },
         )
         assertTrue("total must be the declared size", progress.all { it.second == apkBytes.size.toLong() })
+    }
+
+    @Test
+    fun `the binary download is authenticated, so an unauthorised one stays retryable`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"message":"Unauthenticated."}"""))
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals(TransientKind.SERVER_ERROR, (result as AppResult.TransientFailure).error.kind)
+        assertFalse(downloadedFile().exists())
     }
 
     @Test

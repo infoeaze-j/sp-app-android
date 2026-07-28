@@ -9,6 +9,8 @@ data class Operator(
     val operatorId: String,
     val displayName: String?,
     val permissions: Set<String> = emptySet(),
+    /** The credential signed in with. Display-only; never a security input on its own. */
+    val identifier: String = "",
 )
 
 /**
@@ -16,7 +18,13 @@ data class Operator(
  * surfaced in the app chrome and on the final confirmation. Absent until the back office supplies
  * it, in which case it is simply not shown (fail-open).
  */
-data class Provider(val name: String)
+data class Provider(
+    val name: String,
+    val id: String = "",
+    val code: String = "",
+    /** The provider's own timezone, as the back office reports it. */
+    val timezone: String = "",
+)
 
 /**
  * Proof of authenticated access attached to every protected request (FR-002).

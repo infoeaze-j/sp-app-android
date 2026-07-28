@@ -612,7 +612,7 @@ Expected: BUILD SUCCESSFUL.
 git add app/src/main/java/com/mediplus/faceverify/data/remote/MemberApi.kt \
         app/src/main/java/com/mediplus/faceverify/domain/model/MemberModels.kt \
         app/src/main/java/com/mediplus/faceverify/core/di/ApiModule.kt \
-        docs/openapi.yaml
+        docs/openapi.json
 git commit -m "feat: add members/verify API contract and domain models"
 ```
 
@@ -2555,7 +2555,7 @@ In `plan.md`, update any architecture prose naming JMRTD, BAC, DG1/DG2, or `/doc
 - [ ] **Step 4: Check for stragglers**
 
 ```bash
-grep -rn 'documentNumber\|eMRTD\|JMRTD\|DG1\|DG2\|BAC\|documents/validate' specs/ docs/openapi.yaml
+grep -rn 'documentNumber\|eMRTD\|JMRTD\|DG1\|DG2\|BAC\|documents/validate' specs/ docs/openapi.json
 ```
 
 Expected: no matches outside historical notes.

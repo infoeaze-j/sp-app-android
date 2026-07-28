@@ -46,7 +46,7 @@ class FaceCheckViewModelTest {
         pass: Boolean = true,
         liveness: LivenessResult = LivenessResult.PASSED,
         sameSubject: Boolean = true,
-    ) = FaceDecision(pass, liveness, sameSubject, null, notLocked)
+    ) = FaceDecision(pass, liveness, sameSubject, notLocked, verificationId = "ver-1")
 
     private fun grantAndCapture(result: FaceCheckResult) {
         coEvery { verifyFace(any(), any(), any()) } returns result

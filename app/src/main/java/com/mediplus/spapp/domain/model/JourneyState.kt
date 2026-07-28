@@ -15,6 +15,8 @@ import kotlin.time.Duration
  *   operator *who* they are acting for without re-fetching. Deliberately part of the composite
  *   rather than a field of its own: ending the visit drops the whole composite, so the details can
  *   never outlive the patient they describe.
+ * @param verificationId the single-use token the face step issued, which enrollment spends. Null
+ *   until a face check passes; part of the composite for the same reason [patient] is.
  */
 data class VerifiedIdentity(
     val memberNumber: String,
@@ -23,6 +25,7 @@ data class VerifiedIdentity(
     val sameSubject: Boolean = false,
     val verifiedAt: Long? = null,
     val patient: MemberDetails? = null,
+    val verificationId: String? = null,
 ) {
     /**
      * True only when the identity is fully verified and still within the back-office-owned freshness

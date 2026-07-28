@@ -54,7 +54,7 @@ class ConsentAndLockoutTest {
         val useCase = VerifyFaceUseCase(faceRepository, sessionManager, TimeProvider { 0L })
         val lockout = FaceLockoutState(lockedOut = true, remainingAttempts = 0, cooldownUntilMillis = 9_000)
         coEvery { faceRepository.verify(any(), any()) } returns AppResult.Success(
-            FaceDecision(decisionPass = false, liveness = LivenessResult.PASSED, sameSubject = true, reason = null, lockout = lockout),
+            FaceDecision(decisionPass = false, liveness = LivenessResult.PASSED, sameSubject = true, lockout = lockout),
         )
 
         val result = useCase(

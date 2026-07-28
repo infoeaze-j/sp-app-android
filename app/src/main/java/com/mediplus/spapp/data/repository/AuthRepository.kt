@@ -9,7 +9,7 @@ import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.core.session.SessionManager
 import com.mediplus.spapp.data.remote.AuthApi
 import com.mediplus.spapp.data.remote.LoginRequest
-import com.mediplus.spapp.data.remote.LoginResponse
+import com.mediplus.spapp.data.remote.SessionResource
 import com.mediplus.spapp.domain.model.Operator
 import com.mediplus.spapp.domain.model.Provider
 import com.mediplus.spapp.domain.model.Session
@@ -41,9 +41,12 @@ class AuthRepositoryImpl @Inject constructor(
         apiCall(dispatcher, { api.login(LoginRequest(identifier, secret)) }) { response ->
             val body = response.body()
             when {
+                // The spec answers a good credential with 201, not 200.
                 response.isSuccessful && body != null -> onLoginSuccess(body)
-                // 401 during sign-in means invalid credentials — non-revealing, no session (FR-005).
-                response.code() == HttpURLConnection.HTTP_UNAUTHORIZED ->
+                // Login is unauthenticated, so the spec reports a bad credential as a 422 validation
+                // failure; a 401 means the same thing. Either way: non-revealing, no session (FR-005).
+                response.code() == UNPROCESSABLE_ENTITY ||
+                    response.code() == HttpURLConnection.HTTP_UNAUTHORIZED ->
                     AppResult.BusinessRejection(AppError.Business(BusinessCode.INVALID_CREDENTIALS))
                 // 423 locked / 429 throttled — server-owned lockout (FR-006).
                 response.code() == LOCKED || response.code() == TOO_MANY_REQUESTS ->
@@ -54,11 +57,11 @@ class AuthRepositoryImpl @Inject constructor(
             }
         }
 
-    private fun onLoginSuccess(body: LoginResponse): AppResult<Session> {
+    private fun onLoginSuccess(body: SessionResource): AppResult<Session> {
         val session = body.toSession()
         sessionManager.set(session)
         // Capture the back-office-owned freshness window; absent → stale (fail-safe) (FR-026).
-        sessionManager.setVerificationWindow(body.config?.verificationWindowSeconds?.seconds)
+        sessionManager.setVerificationWindow(body.policy.verificationTtlSeconds?.seconds)
         return AppResult.Success(session)
     }
 
@@ -73,21 +76,26 @@ class AuthRepositoryImpl @Inject constructor(
 
     private companion object {
         const val LOCKED = 423
+        const val UNPROCESSABLE_ENTITY = 422
         const val TOO_MANY_REQUESTS = 429
         val SERVER_ERROR_RANGE = 500..599
     }
 }
 
-private fun LoginResponse.toSession(): Session = Session(
+private fun SessionResource.toSession(): Session = Session(
     token = token,
     operator = Operator(
-        operatorId = operator.operatorId,
+        operatorId = operator.id,
         displayName = operator.displayName,
         permissions = operator.permissions.toSet(),
+        identifier = operator.identifier,
     ),
     expiresAt = expiresAt?.let { parseEpochMillisOrNull(it) },
     state = SessionState.Active,
-    provider = provider?.name?.takeIf { it.isNotBlank() }?.let { Provider(it) },
+    // A provider without a name is not shown rather than shown blank (fail-open).
+    provider = provider.name.takeIf { it.isNotBlank() }?.let {
+        Provider(name = it, id = provider.id, code = provider.code, timezone = provider.timezone)
+    },
 )
 
 private fun parseEpochMillisOrNull(iso: String): Long? =

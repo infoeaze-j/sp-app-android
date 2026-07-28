@@ -1,5 +1,7 @@
 package com.mediplus.spapp.core.di
 
+import com.mediplus.spapp.core.device.AndroidDeviceBuildInfoProvider
+import com.mediplus.spapp.core.device.DeviceBuildInfoProvider
 import com.mediplus.spapp.core.result.DefaultErrorMapper
 import com.mediplus.spapp.core.result.ErrorMapper
 import com.mediplus.spapp.core.session.InMemorySessionManager
@@ -34,4 +36,8 @@ abstract class BindingsModule {
     @Binds
     @Singleton
     abstract fun bindDateProvider(impl: SystemDateProvider): DateProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindDeviceBuildInfoProvider(impl: AndroidDeviceBuildInfoProvider): DeviceBuildInfoProvider
 }

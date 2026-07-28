@@ -2,6 +2,7 @@ package com.mediplus.spapp.core.di
 
 import com.mediplus.spapp.BuildConfig
 import com.mediplus.spapp.core.network.AuthInterceptor
+import com.mediplus.spapp.core.network.DeviceIdInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -27,6 +28,11 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @BaseUrl
+    fun provideBaseUrl(): String = BuildConfig.BASE_URL
+
+    @Provides
+    @Singleton
     fun provideJson(): Json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
@@ -47,9 +53,11 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         authInterceptor: AuthInterceptor,
+        deviceIdInterceptor: DeviceIdInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
+        .addInterceptor(deviceIdInterceptor)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)

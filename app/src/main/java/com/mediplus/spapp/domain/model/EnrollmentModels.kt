@@ -6,24 +6,53 @@ package com.mediplus.spapp.domain.model
  */
 data class Service(
     val serviceId: String,
+    /** The provider-facing code for the service; display-only alongside [description]. */
+    val code: String,
     val description: String,
     val eligibleForPatient: Boolean,
-    val alreadySelected: Boolean,
+    /** Already added for this visit, so offering it again would only produce a duplicate. */
+    val alreadyEnrolled: Boolean,
 )
 
 /**
  * A currency the back office will accept for an enrollment. Like [Service], the app enumerates what
- * the server reports and invents none. [value] is what goes on the wire; [label] is display-only.
+ * the server reports and invents none. [code] is what goes on the wire; [label] is display-only.
+ *
+ * [minorUnitExponent] is stated by the server rather than assumed, because scaling every amount by
+ * 100 is wrong for JPY and for KWD — see [Money].
  */
-data class Currency(val value: String, val label: String)
+data class Currency(
+    val code: String,
+    val label: String,
+    val minorUnitExponent: Int = Money.DEFAULT_MINOR_UNIT_EXPONENT,
+    val isDefault: Boolean = false,
+)
 
 /**
- * What one services call returns: what can be added, and in which currencies. The two travel
- * together so they can never drift apart in the UI state.
+ * What one services call returns: what can be added, in which currencies, and for which visit. They
+ * travel together so they can never drift apart in the UI state.
  */
 data class ServiceCatalog(
     val services: List<Service>,
     val currencies: List<Currency>,
+    val visitDate: String? = null,
+)
+
+/**
+ * One enrollment submission, minus the member it is for. Bundled rather than passed as loose
+ * arguments because a retry must re-send *exactly* these values — same key, same verification, same
+ * amount — and a single object cannot drift apart between the first attempt and the retry (FR-022).
+ *
+ * [verificationId] is the single-use token the face step issued; the back office checks it belongs
+ * to this member, has not expired and has not already been spent.
+ */
+data class EnrollmentRequest(
+    val serviceId: String,
+    val verificationId: String,
+    /** The [Currency.code] that was selected, never its display label. */
+    val currency: String,
+    val amount: Money,
+    val idempotencyKey: String,
 )
 
 /** Outcome of an enrollment submission (FR-020, FR-022). */
@@ -61,4 +90,6 @@ data class Enrollment(
      */
     val currency: String?,
     val amount: Money?,
+    /** The visit the enrollment was recorded against, as the back office dates it. */
+    val visitDate: String? = null,
 )

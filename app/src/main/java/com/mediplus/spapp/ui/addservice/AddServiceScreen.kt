@@ -150,12 +150,12 @@ private fun ServiceList(services: List<Service>, onSelect: (String) -> Unit, mod
 @Composable
 private fun ServiceRow(service: Service, onSelect: (String) -> Unit) {
     val spacing = LocalSpacing.current
-    val enabled = service.eligibleForPatient && !service.alreadySelected
+    val enabled = service.eligibleForPatient && !service.alreadyEnrolled
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = spacing.xs)) {
         Column(modifier = Modifier.padding(spacing.md)) {
             Text(service.description, style = MaterialTheme.typography.titleMedium)
             val tag = when {
-                service.alreadySelected -> stringResource(R.string.addservice_already_added)
+                service.alreadyEnrolled -> stringResource(R.string.addservice_already_added)
                 !service.eligibleForPatient -> stringResource(R.string.addservice_ineligible_tag)
                 else -> null
             }
@@ -190,13 +190,14 @@ private fun AmountDrawer(
     onConfirm: () -> Unit,
 ) {
     val spacing = LocalSpacing.current
-    val malformed = phase.amountText.isNotEmpty() && Money.parse(phase.amountText) == null
+    val exponent = phase.selectedCurrency.minorUnitExponent
+    val malformed = phase.amountText.isNotEmpty() && Money.parse(phase.amountText, exponent) == null
     ActionDrawer(
         title = phase.selected.description,
         confirm = DrawerAction(
             labelRes = R.string.action_confirm,
             onClick = onConfirm,
-            enabled = Money.parse(phase.amountText) != null,
+            enabled = Money.parse(phase.amountText, exponent) != null,
         ),
         dismiss = DrawerAction(labelRes = R.string.action_cancel, onClick = onCancel),
     ) {

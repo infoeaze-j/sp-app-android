@@ -16,23 +16,31 @@ import org.junit.Test
 
 /**
  * Gating rules for the self-update check (design: 2026-07-24-self-update-design.md):
+ *  - the server's own `updateRequired` / `updateAvailable` verdicts are honoured,
  *  - a build below `minSupportedVersionCode` is forced ONLY when a newer installable build exists,
  *  - boundaries are inclusive-supported (`current == minSupported` is fine, `current == latest`
  *    is up to date),
  *  - degenerate server payloads fail OPEN as a check failure — they can never brick a device,
+ *  - an APK URL off the API's own origin is refused: the bearer token rides on that download,
  *  - non-success results pass through unchanged.
  */
 class CheckForUpdateUseCaseTest {
 
     private val repository = mockk<UpdateRepository>()
-    private val useCase = CheckForUpdateUseCase(repository, CurrentAppVersion(code = 5, name = "1.4"))
+    private val useCase = CheckForUpdateUseCase(
+        repository,
+        CurrentAppVersion(code = 5, name = "1.4"),
+        BASE_URL,
+    )
 
     private fun info(
         latest: Int = 6,
         minSupported: Int = 1,
         sha256: String = VALID_SHA,
         sizeBytes: Long = 10_000_000,
-        apkUrl: String = "https://backoffice.example.com/app/spapp-6.apk",
+        apkUrl: String = BASE_URL + "app/releases/6/binary",
+        updateRequired: Boolean = false,
+        updateAvailable: Boolean = true,
     ) = UpdateInfo(
         latestVersionCode = latest,
         latestVersionName = "9.9",
@@ -40,6 +48,8 @@ class CheckForUpdateUseCaseTest {
         sha256 = sha256,
         sizeBytes = sizeBytes,
         minSupportedVersionCode = minSupported,
+        updateRequired = updateRequired,
+        updateAvailable = updateAvailable,
     )
 
     private fun serverSays(result: AppResult<UpdateInfo?>) {
@@ -116,10 +126,42 @@ class CheckForUpdateUseCaseTest {
     }
 
     @Test
-    fun `a non-https url fails open as a check failure`() = runTest {
-        serverSays(AppResult.Success(info(apkUrl = "http://backoffice.example.com/app.apk")))
+    fun `a url on another host fails open as a check failure`() = runTest {
+        // The client attaches its bearer token to the download, so a third-party host would be
+        // handed the operator's session token — https or not.
+        serverSays(AppResult.Success(info(apkUrl = "https://cdn.example.net/app.apk")))
 
         assertTrue(useCase() is AppResult.TransientFailure)
+    }
+
+    @Test
+    fun `a plain-http url on the API's own origin is installable`() = runTest {
+        val published = info(apkUrl = "http://backoffice.example.com/api/v1/app/releases/6/binary")
+        serverSays(AppResult.Success(published))
+
+        assertEquals(AppResult.Success(UpdateStatus.Optional(published)), useCase())
+    }
+
+    @Test
+    fun `a relative url fails open as a check failure`() = runTest {
+        serverSays(AppResult.Success(info(apkUrl = "app/releases/6/binary")))
+
+        assertTrue(useCase() is AppResult.TransientFailure)
+    }
+
+    @Test
+    fun `the server saying an update is required forces it`() = runTest {
+        val published = info(latest = 6, minSupported = 1, updateRequired = true)
+        serverSays(AppResult.Success(published))
+
+        assertEquals(AppResult.Success(UpdateStatus.Forced(published)), useCase())
+    }
+
+    @Test
+    fun `the server saying nothing is available means up to date`() = runTest {
+        serverSays(AppResult.Success(info(latest = 6, updateAvailable = false)))
+
+        assertEquals(AppResult.Success(UpdateStatus.UpToDate), useCase())
     }
 
     @Test
@@ -146,6 +188,7 @@ class CheckForUpdateUseCaseTest {
     }
 
     private companion object {
+        const val BASE_URL = "http://backoffice.example.com/api/v1/"
         const val VALID_SHA = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6"
     }
 }

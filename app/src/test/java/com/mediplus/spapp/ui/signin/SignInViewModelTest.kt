@@ -5,6 +5,7 @@ import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.DefaultErrorMapper
 import com.mediplus.spapp.data.repository.AuthRepository
+import com.mediplus.spapp.data.repository.DeviceRepository
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.Operator
 import com.mediplus.spapp.domain.model.Session
@@ -37,6 +38,7 @@ class SignInViewModelTest {
     val mainRule = MainDispatcherRule(UnconfinedTestDispatcher())
 
     private val repo = mockk<AuthRepository>()
+    private val deviceRepo = mockk<DeviceRepository>()
     private val sessionState = MutableStateFlow(SessionState.None)
     private lateinit var vm: SignInViewModel
 
@@ -45,7 +47,8 @@ class SignInViewModelTest {
     @Before
     fun setUp() {
         every { repo.sessionState() } returns sessionState
-        vm = SignInViewModel(repo, DefaultErrorMapper(), CurrentAppVersion(code = 1, name = "1.0"))
+        coEvery { deviceRepo.register() } returns AppResult.Success("dev-1")
+        vm = SignInViewModel(repo, deviceRepo, DefaultErrorMapper(), CurrentAppVersion(code = 1, name = "1.0"))
     }
 
     @Test
@@ -120,7 +123,7 @@ class SignInViewModelTest {
 
     @Test
     fun `injected build version is exposed for display`() {
-        vm = SignInViewModel(repo, DefaultErrorMapper(), CurrentAppVersion(code = 42, name = "2.3"))
+        vm = SignInViewModel(repo, deviceRepo, DefaultErrorMapper(), CurrentAppVersion(code = 42, name = "2.3"))
         val s = vm.uiState.value
         assertEquals("2.3", s.versionName)
         assertEquals(42, s.versionCode)

@@ -2,6 +2,8 @@ package com.mediplus.spapp.core.di
 
 import com.mediplus.spapp.data.repository.AuthRepository
 import com.mediplus.spapp.data.repository.AuthRepositoryImpl
+import com.mediplus.spapp.data.repository.DeviceRepository
+import com.mediplus.spapp.data.repository.DeviceRepositoryImpl
 import com.mediplus.spapp.data.repository.DiagnosticsRepository
 import com.mediplus.spapp.data.repository.DiagnosticsRepositoryImpl
 import com.mediplus.spapp.data.repository.EnrollmentRepository
@@ -26,6 +28,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAuthRepository(impl: AuthRepositoryImpl): AuthRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindDeviceRepository(impl: DeviceRepositoryImpl): DeviceRepository
 
     @Binds
     @Singleton

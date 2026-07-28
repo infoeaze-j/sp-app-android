@@ -50,10 +50,14 @@ class AddServiceViewModelTest {
     private val evaluate = mockk<EvaluateVerifiedIdentityUseCase>()
     private val endVisit = mockk<EndPatientVisitUseCase>(relaxed = true)
 
-    private val patient = MemberDetails("1234567", "Jane Doe", "1985-04-12", "ACTIVE", "Gold")
-    private val services = listOf(Service("s1", "Consultation", eligibleForPatient = true, alreadySelected = false))
-    private val currencies = listOf(Currency("ZAR", "Rand (R)"), Currency("USD", "US Dollar ($)"))
-    private val catalog = ServiceCatalog(services, currencies)
+    private val patient = MemberDetails("1234567", "Jane Doe", "1985-04-12", "Gold")
+    private val services =
+        listOf(Service("s1", "CONS", "Consultation", eligibleForPatient = true, alreadyEnrolled = false))
+    private val currencies = listOf(
+        Currency("ZAR", "Rand (R)", minorUnitExponent = 2, isDefault = true),
+        Currency("USD", "US Dollar (${'$'})", minorUnitExponent = 2),
+    )
+    private val catalog = ServiceCatalog(services, currencies, visitDate = "2026-07-20")
 
     private val sessionManager = InMemorySessionManager()
 
@@ -202,7 +206,7 @@ class AddServiceViewModelTest {
     }
 
     @Test
-    fun `the first currency is preselected`() {
+    fun `the currency the back office marked default is preselected`() {
         every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
         coEvery { listServices() } returns AppResult.Success(catalog)
         val vm = buildVm()
@@ -210,8 +214,21 @@ class AddServiceViewModelTest {
         vm.selectService("s1")
 
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
-        assertEquals(Currency("ZAR", "Rand (R)"), phase.selectedCurrency)
+        assertEquals(currencies.first { it.isDefault }, phase.selectedCurrency)
         assertEquals(currencies, phase.currencies)
+    }
+
+    @Test
+    fun `with no default marked, the first currency listed is preselected`() {
+        val undefaulted = currencies.map { it.copy(isDefault = false) }
+        every { evaluate() } returns VerificationEvaluation(true, Outstanding.NONE)
+        coEvery { listServices() } returns AppResult.Success(catalog.copy(currencies = undefaulted))
+        val vm = buildVm()
+
+        vm.selectService("s1")
+
+        val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
+        assertEquals(undefaulted.first(), phase.selectedCurrency)
     }
 
     @Test
@@ -261,10 +278,10 @@ class AddServiceViewModelTest {
         val vm = buildVm()
         vm.selectService("s1")
 
-        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar (${'$'})", minorUnitExponent = 2))
 
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
-        assertEquals("USD", phase.selectedCurrency.value)
+        assertEquals("USD", phase.selectedCurrency.code)
     }
 
     @Test
@@ -301,7 +318,7 @@ class AddServiceViewModelTest {
         coEvery { addService(any(), any(), any(), any()) } returns AppResult.Success(confirmed())
         val vm = buildVm()
         vm.selectService("s1")
-        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar (${'$'})", minorUnitExponent = 2))
 
         vm.amountEntryChanged(text ="99,50")
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
@@ -371,7 +388,7 @@ class AddServiceViewModelTest {
         coEvery { listServices() } returns AppResult.Success(catalog)
         val vm = buildVm()
         vm.selectService("s1")
-        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar (${'$'})", minorUnitExponent = 2))
         vm.amountEntryChanged(text ="99.50")
 
         vm.confirmAmount()
@@ -380,7 +397,7 @@ class AddServiceViewModelTest {
         assertEquals(patient, phase.patient)
         assertEquals("Consultation", phase.selected.description)
         assertEquals(Money(9_950), phase.amount)
-        assertEquals("USD", phase.currency.value)
+        assertEquals("USD", phase.currency.code)
     }
 
     @Test
@@ -406,7 +423,7 @@ class AddServiceViewModelTest {
         coEvery { listServices() } returns AppResult.Success(catalog)
         val vm = buildVm()
         vm.selectService("s1")
-        vm.amountEntryChanged(currency =Currency("USD", "US Dollar ($)"))
+        vm.amountEntryChanged(currency =Currency("USD", "US Dollar (${'$'})", minorUnitExponent = 2))
         vm.amountEntryChanged(text ="99.5")
         vm.confirmAmount()
 
@@ -414,7 +431,7 @@ class AddServiceViewModelTest {
 
         val phase = vm.uiState.value.phase as AddServicePhase.EnteringAmount
         assertEquals("99.50", phase.amountText)
-        assertEquals("USD", phase.selectedCurrency.value)
+        assertEquals("USD", phase.selectedCurrency.code)
         assertEquals(services, phase.services)
         coVerify(exactly = 0) { addService(any(), any(), any(), any()) }
     }

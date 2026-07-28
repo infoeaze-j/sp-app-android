@@ -1,5 +1,11 @@
 # Contract: Authentication & Session API
 
+> **Superseded — do not implement from this file.** The back office has since published its real
+> contract as `docs/openapi.json`, and the app is aligned to that. Paths, field names and status
+> codes below are the provisional shapes this feature was designed against and are now wrong in
+> places (login now answers 201 with a `SessionResource`, and the freshness window arrives as `policy.verificationTtlSeconds`). What still holds is the *client-side* reasoning — which outcomes are
+> business rejections, which are transient, and what must never be reported as success.
+
 **Feature**: 001-identity-verification-enrollment | **Consumer**: FaceVerify Android app | **Direction**: app → back office
 
 Provisional contract for operator sign-in and session lifecycle (FR-001–FR-006). Field names/paths

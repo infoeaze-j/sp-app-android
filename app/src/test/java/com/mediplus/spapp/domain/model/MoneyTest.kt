@@ -7,6 +7,10 @@ import org.junit.Test
 /**
  * Money.parse is the only gate between operator keystrokes and what is transmitted, so the
  * invalid column matters as much as the valid one: anything it lets through is charged.
+ *
+ * The minor-unit exponent is the back office's to state (`currencies[].minorUnitExponent`), and
+ * these cases pin down that it is honoured rather than assumed: scaling by 100 regardless of
+ * currency is wrong for JPY (0) and for KWD (3), and getting it wrong charges 100× or 1/10×.
  */
 class MoneyTest {
 
@@ -87,6 +91,50 @@ class MoneyTest {
         listOf("150", "150.5", "0.01", "1234567890.99").forEach { input ->
             val parsed = requireNonNull(Money.parse(input), input)
             assertEquals(parsed, Money.parse(parsed.format()))
+        }
+    }
+
+    // ---- currency minor units ----
+
+    @Test
+    fun `a zero-exponent currency parses whole units and takes no decimal separator`() {
+        assertEquals(Money(150), Money.parse("150", minorUnitExponent = 0))
+        assertNull(Money.parse("150.5", minorUnitExponent = 0))
+        assertNull(Money.parse("150.00", minorUnitExponent = 0))
+    }
+
+    @Test
+    fun `a zero-exponent currency formats without a decimal point`() {
+        assertEquals("150", Money(150).format(minorUnitExponent = 0))
+    }
+
+    @Test
+    fun `a three-exponent currency accepts three decimal places and pads short ones`() {
+        assertEquals(Money(150_500), Money.parse("150.5", minorUnitExponent = 3))
+        assertEquals(Money(150_505), Money.parse("150.505", minorUnitExponent = 3))
+        assertNull(Money.parse("150.5055", minorUnitExponent = 3))
+        assertEquals("150.505", Money(150_505).format(minorUnitExponent = 3))
+    }
+
+    @Test
+    fun `an out-of-range exponent is clamped rather than throwing`() {
+        assertEquals(Money.parse("150", minorUnitExponent = 0), Money.parse("150", minorUnitExponent = -1))
+        assertEquals(Money(150).format(minorUnitExponent = 0), Money(150).format(minorUnitExponent = -1))
+        assertEquals(Money(1).format(minorUnitExponent = 4), Money(1).format(minorUnitExponent = 99))
+    }
+
+    @Test
+    fun `the digit cap tightens as the exponent grows, so nothing overflows`() {
+        assertNull(Money.parse("1".repeat(15), minorUnitExponent = 3))
+        assertEquals(Money(11_111_111_111_111_000), Money.parse("1".repeat(14), minorUnitExponent = 3))
+    }
+
+    @Test
+    fun `format round-trips through parse at every exponent`() {
+        listOf(0, 2, 3).forEach { exponent ->
+            listOf(Money(1), Money(150), Money(150_505)).forEach { money ->
+                assertEquals(money, Money.parse(money.format(exponent), exponent))
+            }
         }
     }
 

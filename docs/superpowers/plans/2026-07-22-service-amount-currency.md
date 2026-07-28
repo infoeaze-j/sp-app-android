@@ -492,7 +492,7 @@ Expected: PASS — the whole suite, including the two new contract tests.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add app/src docs/openapi.yaml
+git add app/src docs/openapi.json
 git commit -m "feat: return currencies alongside services as a ServiceCatalog"
 ```
 
@@ -1325,7 +1325,7 @@ Expected: PASS — full suite green, including `the enroll body carries the curr
 - [ ] **Step 12: Commit**
 
 ```bash
-git add app/src docs/openapi.yaml
+git add app/src docs/openapi.json
 git commit -m "feat: send currency and amountCents on the enrollment request"
 ```
 

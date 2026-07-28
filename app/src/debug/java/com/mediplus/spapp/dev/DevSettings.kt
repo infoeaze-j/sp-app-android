@@ -5,9 +5,10 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 
-/** Persisted dev configuration snapshot. Defaults = happy path, fake ON, 500ms latency. */
+/** Persisted dev configuration snapshot. Defaults = happy path, every fake ON, 500ms latency. */
 data class DevSettings(
     val fakeEnabled: Boolean = true,
+    val fakeSeams: Map<FakeSeam, Boolean> = FakeSeam.entries.associateWith { true },
     val auth: AuthScenario = AuthScenario.SUCCESS,
     val card: CardScenario = CardScenario.SUCCESS,
     val camera: CameraScenario = CameraScenario.SUCCESS,
@@ -20,7 +21,13 @@ data class DevSettings(
     val diagnostics: DiagnosticsScenario = DiagnosticsScenario.OFF,
     val latencyMillis: Long = 500L,
     val verificationWindowSeconds: Long = 300L,
-)
+) {
+    /**
+     * Whether [seam] should route to its fake right now: the master toggle AND the seam's own
+     * toggle. An unknown seam counts as on, so a newly added seam is faked until told otherwise.
+     */
+    fun isFakeActive(seam: FakeSeam): Boolean = fakeEnabled && fakeSeams[seam] != false
+}
 
 /** DataStore keys for dev settings. Namespaced to avoid clashing with app prefs. */
 object DevPrefKeys {
@@ -37,6 +44,9 @@ object DevPrefKeys {
     val DIAGNOSTICS = stringPreferencesKey("dev_scenario_diagnostics")
     val LATENCY_MS = longPreferencesKey("dev_latency_ms")
     val WINDOW_SECONDS = longPreferencesKey("dev_verification_window_seconds")
+
+    /** One key per seam. Absent means "faked", so a seam added later starts on. */
+    fun seam(seam: FakeSeam) = booleanPreferencesKey("dev_fake_seam_${seam.name}")
 }
 
 private inline fun <reified E : Enum<E>> String?.toEnumOr(default: E): E =
@@ -47,6 +57,7 @@ fun Preferences.toDevSettings(): DevSettings {
     val defaults = DevSettings()
     return DevSettings(
         fakeEnabled = this[DevPrefKeys.FAKE_ENABLED] ?: defaults.fakeEnabled,
+        fakeSeams = FakeSeam.entries.associateWith { this[DevPrefKeys.seam(it)] ?: true },
         auth = this[DevPrefKeys.AUTH].toEnumOr(defaults.auth),
         card = this[DevPrefKeys.CARD].toEnumOr(defaults.card),
         camera = this[DevPrefKeys.CAMERA].toEnumOr(defaults.camera),

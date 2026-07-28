@@ -1,5 +1,6 @@
 package com.mediplus.spapp.dev.repository
 
+import com.mediplus.spapp.BuildConfig
 import com.mediplus.spapp.core.di.UpdateCacheDir
 import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
@@ -19,7 +20,8 @@ import javax.inject.Inject
  * Fake self-update backend: publishes a build one versionCode above the running one (forced when
  * the scenario says so), and simulates the download in paced chunks so the progress UI is visible
  * on a bare emulator. The published payload deliberately passes the real gating in
- * CheckForUpdateUseCase (valid sha shape, https url, positive size).
+ * CheckForUpdateUseCase (valid sha shape, positive size, and a URL on the API's own origin — which
+ * is why it is built from `BuildConfig.BASE_URL` rather than hard-coded).
  */
 class FakeUpdateRepository @Inject constructor(
     private val store: DevSettingsStore,
@@ -70,10 +72,12 @@ class FakeUpdateRepository @Inject constructor(
     private fun published(minSupported: Int) = UpdateInfo(
         latestVersionCode = currentVersion.code + 1,
         latestVersionName = "${currentVersion.name}-next",
-        apkUrl = "https://fake.backoffice.dev/app/spapp-next.apk",
+        apkUrl = "${BuildConfig.BASE_URL}app/releases/${currentVersion.code + 1}/binary",
         sha256 = FAKE_SHA,
         sizeBytes = FAKE_SIZE_BYTES,
         minSupportedVersionCode = minSupported,
+        updateRequired = minSupported > currentVersion.code,
+        updateAvailable = true,
     )
 
     private fun writeDummyApk(info: UpdateInfo): File {

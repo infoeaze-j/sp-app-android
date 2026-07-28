@@ -8,8 +8,9 @@ import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.data.remote.MemberApi
 import com.mediplus.spapp.data.remote.MemberDto
+import com.mediplus.spapp.data.remote.MemberVerificationResource
 import com.mediplus.spapp.data.remote.VerifyMemberRequest
-import com.mediplus.spapp.data.remote.VerifyMemberResponse
+import com.mediplus.spapp.domain.model.MemberCapabilities
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
@@ -49,23 +50,24 @@ class MemberRepositoryImpl @Inject constructor(
     }
 }
 
-private fun VerifyMemberResponse.toVerification() = MemberVerification(
+private fun MemberVerificationResource.toVerification() = MemberVerification(
     status = if (status.equals("VALID", ignoreCase = true)) {
         MemberVerification.Status.VALID
     } else {
         MemberVerification.Status.INVALID
     },
     reason = reason,
-    memberVerified = memberVerified,
-    memberResolved = memberResolved,
     referenceOnFile = referenceOnFile,
     member = member?.toDomain(),
+    capabilities = MemberCapabilities(
+        canVerifyFace = capabilities.canVerifyFace,
+        canEnroll = capabilities.canEnroll,
+    ),
 )
 
 private fun MemberDto.toDomain() = MemberDetails(
     memberNumber = memberNumber,
     fullName = fullName,
     dateOfBirth = dateOfBirth,
-    membershipStatus = membershipStatus,
     plan = plan,
 )

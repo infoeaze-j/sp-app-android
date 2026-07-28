@@ -170,7 +170,8 @@ class AddServiceViewModel @Inject constructor(
     fun selectService(serviceId: String) {
         val ready = _uiState.value.phase as? AddServicePhase.Ready ?: return
         val service = ready.services.firstOrNull { it.serviceId == serviceId } ?: return
-        val currency = currencies.firstOrNull() ?: return
+        // The back office marks one currency as the default; fall back to the first it listed.
+        val currency = currencies.firstOrNull { it.isDefault } ?: currencies.firstOrNull() ?: return
         _uiState.value = AddServiceUiState(
             AddServicePhase.EnteringAmount(
                 services = ready.services,
@@ -211,7 +212,7 @@ class AddServiceViewModel @Inject constructor(
                     currencies = currencies,
                     selected = phase.selected,
                     selectedCurrency = phase.currency,
-                    amountText = phase.amount.format(),
+                    amountText = phase.amount.format(phase.currency.minorUnitExponent),
                 ),
             )
             else -> return
@@ -228,7 +229,7 @@ class AddServiceViewModel @Inject constructor(
      */
     fun confirmAmount() {
         val phase = _uiState.value.phase as? AddServicePhase.EnteringAmount ?: return
-        val amount = Money.parse(phase.amountText) ?: return
+        val amount = Money.parse(phase.amountText, phase.selectedCurrency.minorUnitExponent) ?: return
         pendingServiceId = phase.selected.serviceId
         pendingCurrency = phase.selectedCurrency
         pendingAmount = amount
@@ -272,7 +273,7 @@ class AddServiceViewModel @Inject constructor(
         val key = idempotencyKey ?: return
         _uiState.value = AddServiceUiState(AddServicePhase.Submitting)
         viewModelScope.launch {
-            val result = addService(serviceId, currency.value, amount, key)
+            val result = addService(serviceId, currency.code, amount, key)
             _uiState.value = AddServiceUiState(
                 reduceSubmit(result, errorMapper) { evaluate().outstanding },
             )

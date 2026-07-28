@@ -55,7 +55,7 @@ internal fun AddServiceSummaryDrawer(
         SummaryField(R.string.addservice_summary_service_label, phase.selected.description)
         SectionHeading(R.string.addservice_summary_charge_heading)
         SummaryField(R.string.addservice_currency_label, phase.currency.label)
-        SummaryField(R.string.addservice_amount_label, phase.amount.format())
+        SummaryField(R.string.addservice_amount_label, phase.amount.format(phase.currency.minorUnitExponent))
     }
 }
 
@@ -82,8 +82,7 @@ private fun PatientSection(patient: MemberDetails?) {
     }
     SummaryField(R.string.card_field_name, patient.fullName)
     SummaryField(R.string.card_field_number, patient.memberNumber)
-    SummaryField(R.string.card_field_dob, patient.dateOfBirth)
-    SummaryField(R.string.card_field_status, patient.membershipStatus)
+    patient.dateOfBirth?.let { SummaryField(R.string.card_field_dob, it) }
     patient.plan?.let { SummaryField(R.string.card_field_plan, it) }
 }
 

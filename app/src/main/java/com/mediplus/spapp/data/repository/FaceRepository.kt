@@ -7,10 +7,10 @@ import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
-import com.mediplus.spapp.data.remote.CaptureMetaDto
+import com.mediplus.spapp.data.remote.CaptureDto
 import com.mediplus.spapp.data.remote.FaceApi
-import com.mediplus.spapp.data.remote.FaceVerifyRequest
-import com.mediplus.spapp.data.remote.FaceVerifyResponse
+import com.mediplus.spapp.data.remote.VerificationResource
+import com.mediplus.spapp.data.remote.VerifyFaceRequest
 import com.mediplus.spapp.domain.model.FaceDecision
 import com.mediplus.spapp.domain.model.FaceLockoutState
 import com.mediplus.spapp.domain.model.LivenessResult
@@ -38,7 +38,7 @@ class FaceRepositoryImpl @Inject constructor(
                 ?: return AppResult.TransientFailure(AppError.Transient(TransientKind.UNKNOWN))
             return apiCall(
                 dispatcher,
-                { api.verify(FaceVerifyRequest(memberNumber, image, CaptureMetaDto(hasLivenessChallengeResponse = true))) },
+                { api.verify(VerifyFaceRequest(memberNumber, image, CaptureDto(hasLivenessChallengeResponse = true))) },
             ) { response ->
                 val body = response.body()
                 when {
@@ -59,14 +59,15 @@ class FaceRepositoryImpl @Inject constructor(
     }
 }
 
-private fun FaceVerifyResponse.toDecision() = FaceDecision(
+private fun VerificationResource.toDecision() = FaceDecision(
     decisionPass = decision.equals("PASS", ignoreCase = true),
     liveness = if (liveness.equals("PASS", ignoreCase = true)) LivenessResult.PASSED else LivenessResult.FAILED,
     sameSubject = sameSubject,
-    reason = reason,
     lockout = FaceLockoutState(
         lockedOut = lockout.lockedOut,
         remainingAttempts = lockout.remainingAttempts,
         cooldownUntilMillis = lockout.cooldownUntil?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() },
     ),
+    // Blank ids are dropped: enrollment must fail closed rather than spend an empty token.
+    verificationId = verificationId?.takeIf { it.isNotBlank() },
 )

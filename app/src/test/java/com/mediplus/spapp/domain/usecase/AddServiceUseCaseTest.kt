@@ -6,6 +6,7 @@ import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.core.time.TimeProvider
 import com.mediplus.spapp.data.repository.EnrollmentRepository
 import com.mediplus.spapp.domain.model.Enrollment
+import com.mediplus.spapp.domain.model.EnrollmentRequest
 import com.mediplus.spapp.domain.model.EnrollmentStatus
 import com.mediplus.spapp.domain.model.Money
 import com.mediplus.spapp.domain.model.Service
@@ -39,9 +40,16 @@ class AddServiceUseCaseTest {
         useCase = AddServiceUseCase(repository, sessionManager, evaluate)
     }
 
-    private fun markVerified() {
+    private fun markVerified(verificationId: String? = "ver-1") {
         sessionManager.updateVerifiedIdentity {
-            VerifiedIdentity("P1", memberVerified = true, faceVerified = true, sameSubject = true, verifiedAt = 1_000)
+            VerifiedIdentity(
+                memberNumber = "P1",
+                memberVerified = true,
+                faceVerified = true,
+                sameSubject = true,
+                verifiedAt = 1_000,
+                verificationId = verificationId,
+            )
         }
         sessionManager.setVerificationWindow(900.seconds)
     }
@@ -49,7 +57,7 @@ class AddServiceUseCaseTest {
     private fun confirmed(key: String) = Enrollment(
         enrollmentId = "E1",
         memberNumber = "P1",
-        service = Service("svc", "", eligibleForPatient = true, alreadySelected = false),
+        service = Service("svc", "SVC", "", eligibleForPatient = true, alreadyEnrolled = false),
         idempotencyKey = key,
         status = EnrollmentStatus.Confirmed("E1"),
         timestampMillis = null,
@@ -70,7 +78,7 @@ class AddServiceUseCaseTest {
     fun `verified identity submits and confirms`() = runTest {
         markVerified()
         coEvery {
-            repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1")
+            repository.enroll("P1", EnrollmentRequest("svc", "ver-1", "ZAR", Money(15_000), "key1"))
         } returns AppResult.Success(confirmed("key1"))
 
         val result = useCase("svc", "ZAR", Money(15_000), "key1")
@@ -79,22 +87,34 @@ class AddServiceUseCaseTest {
     }
 
     @Test
+    fun `a verified identity with no verification id is blocked, never submitted`() = runTest {
+        // The face step's single-use token is what the back office spends; without one there is
+        // nothing to enroll against, so this fails here rather than as a 422 on the wire.
+        markVerified(verificationId = null)
+
+        val result = useCase("svc", "ZAR", Money(15_000), "key1")
+
+        assertEquals(BusinessCode.NOT_CURRENTLY_VERIFIED, (result as AppResult.BusinessRejection).error.code)
+        verify { repository wasNot Called }
+    }
+
+    @Test
     fun `submits every argument through to the repository unchanged`() = runTest {
         markVerified()
         coEvery {
-            repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1")
+            repository.enroll("P1", EnrollmentRequest("svc", "ver-1", "ZAR", Money(15_000), "key1"))
         } returns AppResult.Success(confirmed("key1"))
 
         useCase("svc", "ZAR", Money(15_000), "key1")
         useCase("svc", "ZAR", Money(15_000), "key1") // retry, identical in every argument
 
-        coVerify(exactly = 2) { repository.enroll("P1", "svc", "ZAR", Money(15_000), "key1") }
+        coVerify(exactly = 2) { repository.enroll("P1", EnrollmentRequest("svc", "ver-1", "ZAR", Money(15_000), "key1")) }
     }
 
     @Test
     fun `timeout is never reported as success`() = runTest {
         markVerified()
-        coEvery { repository.enroll(any(), any(), any(), any(), any()) } returns AppResult.Timeout
+        coEvery { repository.enroll(any(), any()) } returns AppResult.Timeout
 
         val result = useCase("svc", "ZAR", Money(15_000), "key1")
 

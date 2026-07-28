@@ -39,7 +39,9 @@ android {
         testInstrumentationRunner = "com.mediplus.spapp.HiltTestRunner"
 
         // Configurable back-office base URL. Overridable per build type (e.g. MockWebServer in CI).
-        buildConfigField("String", "BASE_URL", "\"https://backoffice.example.com/\"")
+        // Must end in the API version prefix the spec's server URL carries — every Retrofit path is
+        // relative to it, and a trailing slash is what keeps the last segment from being dropped.
+        buildConfigField("String", "BASE_URL", "\"https://10.21.2.82:8080/api/v1/\"")
     }
 
     signingConfigs {
@@ -55,7 +57,8 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "BASE_URL", "\"https://backoffice.example.com/\"")
+            // Local Docker back office on the LAN (plain HTTP; see network_security_config.xml).
+            buildConfigField("String", "BASE_URL", "\"http://10.21.2.82:8080/api/v1/\"")
             enableUnitTestCoverage = true
         }
         release {

@@ -11,6 +11,7 @@ import com.mediplus.spapp.dev.CurrencyScenario
 import com.mediplus.spapp.dev.DevSettingsStore
 import com.mediplus.spapp.dev.DiagnosticsScenario
 import com.mediplus.spapp.dev.EnrollScenario
+import com.mediplus.spapp.dev.FakeSeam
 import com.mediplus.spapp.dev.FaceScenario
 import com.mediplus.spapp.dev.MemberScenario
 import com.mediplus.spapp.dev.ServicesScenario
@@ -32,6 +33,7 @@ class DevSettingsViewModel @Inject constructor(
         store.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DevSettings())
 
     fun setFakeEnabled(enabled: Boolean) = launchEdit { store.setFakeEnabled(enabled) }
+    fun setFakeSeam(seam: FakeSeam, enabled: Boolean) = launchEdit { store.setFakeSeam(seam, enabled) }
     fun setAuth(scenario: AuthScenario) = launchEdit { store.setAuth(scenario) }
     fun setCard(scenario: CardScenario) = launchEdit { store.setCard(scenario) }
     fun setCamera(scenario: CameraScenario) = launchEdit { store.setCamera(scenario) }

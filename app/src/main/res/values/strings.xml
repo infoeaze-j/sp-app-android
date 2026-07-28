@@ -55,7 +55,6 @@
     <string name="card_field_name">Name</string>
     <string name="card_field_number">Card number</string>
     <string name="card_field_dob">Date of birth</string>
-    <string name="card_field_status">Membership</string>
     <string name="card_field_plan">Plan</string>
     <string name="card_confirm_button">Looks correct</string>
     <string name="card_submit_button">Check membership</string>

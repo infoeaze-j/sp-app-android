@@ -6,9 +6,10 @@ import com.mediplus.spapp.core.network.apiCall
 import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.TransientKind
-import com.mediplus.spapp.data.remote.AppVersionResponse
+import com.mediplus.spapp.data.remote.LatestReleaseResponse
 import com.mediplus.spapp.data.remote.UpdateApi
 import com.mediplus.spapp.core.result.BusinessCode
+import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.DownloadedApk
 import com.mediplus.spapp.domain.model.UpdateInfo
 import kotlinx.coroutines.CoroutineDispatcher
@@ -30,8 +31,9 @@ import javax.inject.Inject
 interface UpdateRepository {
 
     /**
-     * Fetches the newest published build. `Success(null)` means the back office has nothing to
-     * offer — including a 404 from a backend that has not deployed the endpoint yet — and is
+     * Fetches the newest published build, telling the back office which build is asking so it can
+     * compute the "must update" verdict itself. `Success(null)` means there is nothing to offer —
+     * `{"latest": null}`, or a 404 from a backend that has not deployed the endpoint yet — and is
      * treated as up to date (fail open).
      */
     suspend fun fetchVersionInfo(): AppResult<UpdateInfo?>
@@ -58,6 +60,7 @@ class UpdateRepositoryImpl @Inject constructor(
     private val api: UpdateApi,
     @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
     @param:UpdateCacheDir private val cacheDir: File,
+    private val currentVersion: CurrentAppVersion,
 ) : UpdateRepository {
 
     override suspend fun clearDownloads(): Unit = withContext(dispatcher) {
@@ -138,11 +141,12 @@ class UpdateRepositoryImpl @Inject constructor(
         }
 
     override suspend fun fetchVersionInfo(): AppResult<UpdateInfo?> =
-        apiCall(dispatcher, { api.checkVersion() }) { response ->
+        apiCall(dispatcher, { api.latestRelease(currentVersion.code) }) { response ->
             val body = response.body()
             when {
                 response.isSuccessful && body != null -> AppResult.Success(body.toDomain())
-                // Not deployed yet — nothing published is a fact, not a failure (fail open).
+                // The spec always answers 200, so a 404 means the endpoint is not deployed yet.
+                // Either way, nothing published is a fact, not a failure (fail open).
                 response.code() == HttpURLConnection.HTTP_NOT_FOUND -> AppResult.Success(null)
                 response.code() in SERVER_ERROR_RANGE ->
                     AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
@@ -166,11 +170,17 @@ class UpdateRepositoryImpl @Inject constructor(
 /** The raw outcome of streaming a body to disk, before verification. */
 private data class StreamedApk(val bytes: Long, val shaHex: String)
 
-private fun AppVersionResponse.toDomain() = UpdateInfo(
-    latestVersionCode = latestVersionCode,
-    latestVersionName = latestVersionName,
-    apkUrl = apkUrl,
-    sha256 = sha256,
-    sizeBytes = sizeBytes,
-    minSupportedVersionCode = minSupportedVersionCode,
-)
+/** `{"latest": null}` — nothing published for this fleet — is the normal empty answer, not an error. */
+private fun LatestReleaseResponse.toDomain(): UpdateInfo? = latest?.let {
+    UpdateInfo(
+        latestVersionCode = it.versionCode,
+        latestVersionName = it.versionName,
+        apkUrl = it.url,
+        sha256 = it.sha256,
+        sizeBytes = it.sizeBytes,
+        minSupportedVersionCode = it.minSupportedVersionCode,
+        updateRequired = updateRequired,
+        updateAvailable = updateAvailable,
+        releaseNotes = it.releaseNotes,
+    )
+}

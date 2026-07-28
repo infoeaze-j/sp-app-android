@@ -7,6 +7,7 @@ import com.mediplus.spapp.domain.model.LivenessResult
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,14 +26,28 @@ class FakeFaceRepositoryTest {
         assertTrue("frame must be cleared after verify (FR-017)", f.isCleared)
     }
 
+    /**
+     * The fake journey only reaches the enrollment step if the fake face check issues a verification
+     * id, because `AddServiceUseCase` refuses to submit without one. This is that link.
+     */
     @Test
-    fun `liveness failure returns a failed decision`() = runTest {
+    fun `pass issues the verification id enrollment spends`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(face = FaceScenario.PASS, latencyMillis = 0L))
+
+        val decision = (FakeFaceRepository(store).verify("X123", frame()) as AppResult.Success).data
+
+        assertEquals(FakeData.verificationId, decision.verificationId)
+    }
+
+    @Test
+    fun `liveness failure returns a failed decision and issues no verification id`() = runTest {
         val store = TestDevSettingsStore(DevSettings(face = FaceScenario.FAIL_LIVENESS, latencyMillis = 0L))
 
         val decision = (FakeFaceRepository(store).verify("X123", frame()) as AppResult.Success).data
 
         assertFalse(decision.decisionPass)
         assertEquals(LivenessResult.FAILED, decision.liveness)
+        assertNull(decision.verificationId)
     }
 
     @Test

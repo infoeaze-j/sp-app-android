@@ -6,28 +6,50 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 /**
- * Device diagnostics telemetry: poll for a request, then report a snapshot
- * (docs/superpowers/specs/2026-07-24-device-diagnostics-telemetry-design.md).
+ * Device diagnostics telemetry — `diagnostics.pending` and `diagnostics.report` in
+ * docs/openapi.json (design:
+ * docs/superpowers/specs/2026-07-24-device-diagnostics-telemetry-design.md).
  *
- * App-invented placeholder — reconcile with the back office when it publishes its shape. Both calls
- * are authenticated; the bearer token rides via AuthInterceptor. DTOs never leave this package.
+ * Both calls are authenticated (the bearer token rides via
+ * [com.mediplus.spapp.core.network.AuthInterceptor]) and both require the registered device id,
+ * which [com.mediplus.spapp.core.network.DeviceIdInterceptor] attaches as `X-Device-Id`. The poll
+ * always answers 200: "nothing pending" is the normal answer and must not look like a routing
+ * failure, since the client swallows poll failures silently. Reporting is idempotent, so a device
+ * that retries because it never saw the 202 creates no second row. DTOs never leave this package.
  */
 interface DiagnosticsApi {
 
-    @GET("diagnostics/poll")
-    suspend fun poll(): Response<DiagnosticsPollResponse>
+    @GET("diagnostics/requests/pending")
+    suspend fun pending(): Response<PendingDiagnosticsResponse>
 
-    @POST("diagnostics")
-    suspend fun report(@Body body: DiagnosticsReport): Response<Unit>
+    @POST("diagnostics/requests/{diagnosticsRequest}/report")
+    suspend fun report(
+        @Path("diagnosticsRequest") requestId: String,
+        @Body body: ReportDiagnosticsRequest,
+    ): Response<Unit>
 }
 
 @Serializable
-data class DiagnosticsPollResponse(val requestId: String)
+data class PendingDiagnosticsResponse(val request: DiagnosticsRequestDto? = null)
 
 @Serializable
-data class DiagnosticsReport(val requestId: String, val snapshot: DeviceSnapshotDto)
+data class DiagnosticsRequestDto(
+    val id: String,
+    val reason: String? = null,
+    val requestedAt: String? = null,
+    val expiresAt: String? = null,
+)
+
+/**
+ * The report body. `reportedAt` is optional in the spec and deliberately left unset: the only
+ * clock the app injects is monotonic (freshness), so the server's own receipt timestamp is the
+ * more trustworthy record of when a snapshot arrived.
+ */
+@Serializable
+data class ReportDiagnosticsRequest(val snapshot: DeviceSnapshotDto)
 
 @Serializable
 data class DeviceSnapshotDto(

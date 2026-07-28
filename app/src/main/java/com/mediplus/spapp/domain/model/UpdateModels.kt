@@ -3,9 +3,13 @@ package com.mediplus.spapp.domain.model
 import java.io.File
 
 /**
- * What the back office says the newest build is, as served by `GET /app/version`
+ * What the back office says the newest build is, as served by `GET /app/releases/latest`
  * (see docs/superpowers/specs/2026-07-24-self-update-design.md). [sha256] is the hex digest of the
  * APK bytes at [apkUrl]; [sizeBytes] is authoritative for both progress totals and the size check.
+ *
+ * [updateRequired] and [updateAvailable] are computed server-side so the "must update" rule lives
+ * in one place. [minSupportedVersionCode] is still carried, and still checked, so a server that
+ * omits the verdicts degrades to the client's own comparison rather than to nothing.
  */
 data class UpdateInfo(
     val latestVersionCode: Int,
@@ -14,6 +18,9 @@ data class UpdateInfo(
     val sha256: String,
     val sizeBytes: Long,
     val minSupportedVersionCode: Int,
+    val updateRequired: Boolean = false,
+    val updateAvailable: Boolean = true,
+    val releaseNotes: String? = null,
 )
 
 /**

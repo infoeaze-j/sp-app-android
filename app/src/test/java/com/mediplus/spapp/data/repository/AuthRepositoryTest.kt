@@ -5,10 +5,10 @@ import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.data.remote.AuthApi
-import com.mediplus.spapp.data.remote.LoginResponse
 import com.mediplus.spapp.data.remote.OperatorDto
 import com.mediplus.spapp.data.remote.ProviderDto
-import com.mediplus.spapp.data.remote.SessionConfigDto
+import com.mediplus.spapp.data.remote.SessionPolicyDto
+import com.mediplus.spapp.data.remote.SessionResource
 import com.mediplus.spapp.domain.model.SessionState
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -44,11 +44,11 @@ class AuthRepositoryTest {
         repo = AuthRepositoryImpl(api, sessionManager, dispatcher)
     }
 
-    private fun loginResponse() = LoginResponse(
+    private fun loginResponse() = SessionResource(
         token = "tok",
         expiresAt = "2026-07-20T12:34:56Z",
-        operator = OperatorDto("op-1", "Sam", listOf("verify")),
-        config = SessionConfigDto(verificationWindowSeconds = 900),
+        operator = OperatorDto(id = "op-1", identifier = "sam", displayName = "Sam", permissions = listOf("verify")),
+        policy = SessionPolicyDto(verificationTtlSeconds = 900),
     )
 
     @Test
@@ -64,15 +64,53 @@ class AuthRepositoryTest {
     }
 
     @Test
-    fun `401 maps to invalid credentials and creates no session`() = runTest(dispatcher) {
+    fun `422 and 401 both map to invalid credentials and create no session`() = runTest(dispatcher) {
+        // The spec reports a bad credential on the unauthenticated login route as a 422 validation
+        // failure; a 401 says the same thing and is accepted for a back office that still sends one.
+        coEvery { api.login(any()) } returns Response.error(422, "".toResponseBody(null))
+        val validation = repo.signIn("sam", "wrong")
+        assertEquals(
+            BusinessCode.INVALID_CREDENTIALS,
+            (validation as AppResult.BusinessRejection).error.code,
+        )
+
         coEvery { api.login(any()) } returns Response.error(401, "".toResponseBody(null))
-
-        val result = repo.signIn("sam", "wrong")
-
-        assertTrue(result is AppResult.BusinessRejection)
-        assertEquals(BusinessCode.INVALID_CREDENTIALS, (result as AppResult.BusinessRejection).error.code)
-        assertEquals(null, sessionManager.session.value)
+        val unauthorized = repo.signIn("sam", "wrong")
+        assertEquals(
+            BusinessCode.INVALID_CREDENTIALS,
+            (unauthorized as AppResult.BusinessRejection).error.code,
+        )
+        assertNull(sessionManager.session.value)
     }
+
+    @Test
+    fun `a 201 is a successful sign-in`() = runTest(dispatcher) {
+        coEvery { api.login(any()) } returns Response.success(201, loginResponse())
+
+        assertTrue(repo.signIn("sam", "pw") is AppResult.Success)
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
+    fun `the operator identifier rides onto the session`() = runTest(dispatcher) {
+        coEvery { api.login(any()) } returns Response.success(loginResponse())
+
+        repo.signIn("sam", "pw")
+
+        assertEquals("sam", sessionManager.session.value?.operator?.identifier)
+    }
+
+    @Test
+    fun `a session without a policy leaves no freshness window, which reads as stale`() =
+        runTest(dispatcher) {
+            coEvery { api.login(any()) } returns Response.success(
+                loginResponse().copy(policy = SessionPolicyDto()),
+            )
+
+            repo.signIn("sam", "pw")
+
+            assertNull(sessionManager.verificationWindow.value)
+        }
 
     @Test
     fun `423 and 429 map to account locked`() = runTest(dispatcher) {
@@ -123,12 +161,22 @@ class AuthRepositoryTest {
     @Test
     fun `login maps a provider name onto the session`() = runTest(dispatcher) {
         coEvery { api.login(any()) } returns Response.success(
-            loginResponse().copy(provider = ProviderDto(name = "Riverside Clinic")),
+            loginResponse().copy(
+                provider = ProviderDto(
+                    id = "p-1",
+                    code = "RIV",
+                    name = "Riverside Clinic",
+                    timezone = "Africa/Johannesburg",
+                ),
+            ),
         )
 
         repo.signIn("sam", "pw")
 
-        assertEquals("Riverside Clinic", sessionManager.session.value?.provider?.name)
+        val provider = sessionManager.session.value?.provider
+        assertEquals("Riverside Clinic", provider?.name)
+        assertEquals("RIV", provider?.code)
+        assertEquals("Africa/Johannesburg", provider?.timezone)
     }
 
     @Test

@@ -26,19 +26,18 @@ class FakeFaceRepository @Inject constructor(
             return when (settings.face) {
                 FaceScenario.PASS -> AppResult.Success(FakeData.faceDecisionPass)
                 FaceScenario.FAIL_NO_MATCH -> AppResult.Success(
-                    fail(liveness = LivenessResult.PASSED, sameSubject = false, reason = "No match"),
+                    fail(liveness = LivenessResult.PASSED, sameSubject = false),
                 )
                 FaceScenario.FAIL_LIVENESS -> AppResult.Success(
-                    fail(liveness = LivenessResult.FAILED, sameSubject = true, reason = "Liveness failed"),
+                    fail(liveness = LivenessResult.FAILED, sameSubject = true),
                 )
                 FaceScenario.SUBJECT_MISMATCH -> AppResult.Success(
-                    fail(liveness = LivenessResult.PASSED, sameSubject = false, reason = "Different subject"),
+                    fail(liveness = LivenessResult.PASSED, sameSubject = false),
                 )
                 FaceScenario.LOCKED_OUT -> AppResult.Success(
                     fail(
                         liveness = LivenessResult.PASSED,
                         sameSubject = false,
-                        reason = "Locked out",
                         lockout = FaceLockoutState(lockedOut = true, remainingAttempts = 0, cooldownUntilMillis = null),
                     ),
                 )
@@ -50,16 +49,16 @@ class FakeFaceRepository @Inject constructor(
         }
     }
 
+    /** A rejected attempt issues no verification id — there is nothing for enrollment to spend. */
     private fun fail(
         liveness: LivenessResult,
         sameSubject: Boolean,
-        reason: String,
         lockout: FaceLockoutState = FaceLockoutState(lockedOut = false, remainingAttempts = 2, cooldownUntilMillis = null),
     ) = FaceDecision(
         decisionPass = false,
         liveness = liveness,
         sameSubject = sameSubject,
-        reason = reason,
         lockout = lockout,
+        verificationId = null,
     )
 }

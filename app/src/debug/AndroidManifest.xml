@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <!-- android:networkSecurityConfig merges into the main <application>, enabling
+         cleartext HTTP to the local Docker back office for debug builds only. -->
+    <application android:networkSecurityConfig="@xml/network_security_config">
         <!-- Keep the Dev launcher on the app's previous icon so it stays visually
-             distinct from the main app after the main icon was replaced. -->
+             distinct from the main app after the main icon was replaced.
+             Its own taskAffinity keeps it in a separate task from MainActivity —
+             otherwise both LAUNCHER entries share the package-name affinity and
+             tapping either icon just resumes whichever task is already running. -->
         <activity
             android:name="com.mediplus.spapp.dev.ui.DevSettingsActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_dev"
             android:roundIcon="@mipmap/ic_launcher_dev_round"
-            android:label="Service Provider App Dev">
+            android:label="Service Provider App Dev"
+            android:taskAffinity="${applicationId}.dev">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

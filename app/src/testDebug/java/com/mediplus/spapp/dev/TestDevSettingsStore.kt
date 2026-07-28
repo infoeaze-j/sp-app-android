@@ -13,6 +13,9 @@ class TestDevSettingsStore(initial: DevSettings = DevSettings(latencyMillis = 0L
     override val settings: Flow<DevSettings> = state
     override suspend fun current(): DevSettings = state.value
     override suspend fun setFakeEnabled(enabled: Boolean) { state.value = state.value.copy(fakeEnabled = enabled) }
+    override suspend fun setFakeSeam(seam: FakeSeam, enabled: Boolean) {
+        state.value = state.value.copy(fakeSeams = state.value.fakeSeams + (seam to enabled))
+    }
     override suspend fun setAuth(scenario: AuthScenario) { state.value = state.value.copy(auth = scenario) }
     override suspend fun setCard(scenario: CardScenario) { state.value = state.value.copy(card = scenario) }
     override suspend fun setCamera(scenario: CameraScenario) { state.value = state.value.copy(camera = scenario) }

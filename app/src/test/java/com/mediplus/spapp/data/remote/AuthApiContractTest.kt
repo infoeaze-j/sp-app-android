@@ -1,6 +1,8 @@
 package com.mediplus.spapp.data.remote
 
+import com.mediplus.spapp.core.device.DeviceIdStore
 import com.mediplus.spapp.core.network.AuthInterceptor
+import com.mediplus.spapp.core.network.DeviceIdInterceptor
 import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.domain.model.Operator
 import com.mediplus.spapp.domain.model.Session
@@ -15,6 +17,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -23,9 +26,12 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.create
 
 /**
- * T017 — Auth API contract against MockWebServer (FR-005, FR-029):
- *  - valid login parses a session; 401 login → refused; logout is callable,
+ * T017 — Auth API contract against MockWebServer (FR-005, FR-029), realigned to the
+ * `SessionResource` in docs/openapi.json:
+ *  - a 201 login parses the whole resource (operator, provider, policy),
+ *  - a 422 login is refused with no session; `GET /auth/session` re-reads the same resource,
  *  - a 401 on a *protected* call flips the session to Invalidated (via [AuthInterceptor]),
+ *  - the registered device id rides along as `X-Device-Id`,
  *  - the session token never appears in logged output (redaction).
  */
 class AuthApiContractTest {
@@ -33,6 +39,7 @@ class AuthApiContractTest {
     private lateinit var server: MockWebServer
     private lateinit var api: AuthApi
     private lateinit var sessionManager: InMemorySessionManager
+    private lateinit var deviceIdStore: DeviceIdStore
     private val logBuffer = StringBuilder()
 
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
@@ -42,6 +49,7 @@ class AuthApiContractTest {
         server = MockWebServer()
         server.start()
         sessionManager = InMemorySessionManager()
+        deviceIdStore = DeviceIdStore()
 
         val logging = HttpLoggingInterceptor { line -> logBuffer.appendLine(line) }.apply {
             level = HttpLoggingInterceptor.Level.HEADERS
@@ -49,6 +57,7 @@ class AuthApiContractTest {
         }
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(sessionManager))
+            .addInterceptor(DeviceIdInterceptor(deviceIdStore))
             .addInterceptor(logging)
             .build()
 
@@ -66,40 +75,68 @@ class AuthApiContractTest {
     }
 
     @Test
-    fun `valid login parses a session`() = runTest {
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """
-                {"token":"tok-123","expiresAt":"2026-07-20T12:34:56Z",
-                 "operator":{"operatorId":"op-1","displayName":"Sam","permissions":["verify"]},
-                 "config":{"verificationWindowSeconds":900}}
-                """.trimIndent(),
-            ),
-        )
+    fun `a 201 login parses the whole session resource`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(201).setBody(SESSION_BODY))
 
         val response = api.login(LoginRequest("sam", "pw"))
 
         assertTrue(response.isSuccessful)
         val body = response.body()!!
         assertEquals("tok-123", body.token)
-        assertEquals("op-1", body.operator.operatorId)
-        assertEquals(900L, body.config?.verificationWindowSeconds)
+        assertEquals("op-1", body.operator.id)
+        assertEquals("sam", body.operator.identifier)
+        assertEquals(listOf("verify"), body.operator.permissions)
+        assertEquals("Mercy Hospital", body.provider.name)
+        assertEquals("Africa/Johannesburg", body.provider.timezone)
+        assertEquals(900L, body.policy.verificationTtlSeconds)
+        assertEquals(5, body.policy.face.maxAttempts)
     }
 
     @Test
-    fun `invalid login returns 401 and no session`() = runTest {
-        server.enqueue(MockResponse().setResponseCode(401))
+    fun `a login response without provider or policy still parses`() = runTest {
+        // Both are `required` in the spec, but a sign-in must not fail on their absence: the
+        // subtitle simply goes unshown and a missing TTL reads as immediately stale (FR-026).
+        server.enqueue(
+            MockResponse().setResponseCode(201).setBody(
+                """{"token":"tok-123","operator":{"id":"op-1"}}""",
+            ),
+        )
+
+        val body = api.login(LoginRequest("sam", "pw")).body()!!
+
+        assertEquals("", body.provider.name)
+        assertNull(body.policy.verificationTtlSeconds)
+    }
+
+    @Test
+    fun `an invalid credential is a 422 and leaves no session`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(422).setBody(
+                """{"message":"These credentials do not match our records.","errors":{"identifier":["Invalid."]}}""",
+            ),
+        )
 
         val response = api.login(LoginRequest("sam", "wrong"))
 
-        assertEquals(401, response.code())
+        assertEquals(422, response.code())
         assertEquals(SessionState.None, sessionManager.sessionState.value)
     }
 
     @Test
+    fun `the session endpoint re-reads the same resource`() = runTest {
+        sessionManager.set(activeSession("tok-xyz"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(SESSION_BODY))
+
+        val body = api.session().body()!!
+
+        assertEquals("op-1", body.operator.id)
+        assertEquals("/auth/session", server.takeRequest().path)
+    }
+
+    @Test
     fun `401 on a protected call invalidates the session`() = runTest {
-        sessionManager.set(Session("tok-xyz", Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active))
-        server.enqueue(MockResponse().setResponseCode(401))
+        sessionManager.set(activeSession("tok-xyz"))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"message":"Unauthenticated."}"""))
 
         api.session()
 
@@ -109,13 +146,48 @@ class AuthApiContractTest {
     }
 
     @Test
+    fun `a registered device id rides along as X-Device-Id`() = runTest {
+        sessionManager.set(activeSession("tok-xyz"))
+        deviceIdStore.set("dev-42")
+        server.enqueue(MockResponse().setResponseCode(200).setBody(SESSION_BODY))
+
+        api.session()
+
+        assertEquals("dev-42", server.takeRequest().getHeader("X-Device-Id"))
+    }
+
+    @Test
+    fun `no device id means no header rather than a blank one`() = runTest {
+        sessionManager.set(activeSession("tok-xyz"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(SESSION_BODY))
+
+        api.session()
+
+        assertNull(server.takeRequest().getHeader("X-Device-Id"))
+    }
+
+    @Test
     fun `session token is never written to logs`() = runTest {
-        sessionManager.set(Session("supersecret-token", Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active))
-        server.enqueue(MockResponse().setResponseCode(200))
+        sessionManager.set(activeSession("supersecret-token"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(SESSION_BODY))
 
         api.session()
 
         val logs = logBuffer.toString()
         assertFalse("token leaked into logs: $logs", logs.contains("supersecret-token"))
+    }
+
+    private fun activeSession(token: String) =
+        Session(token, Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active)
+
+    private companion object {
+        val SESSION_BODY = """
+            {"token":"tok-123","expiresAt":"2026-07-20T12:34:56Z",
+             "operator":{"id":"op-1","identifier":"sam","displayName":"Sam","permissions":["verify"]},
+             "provider":{"id":"p-1","code":"MERCY","name":"Mercy Hospital","timezone":"Africa/Johannesburg"},
+             "policy":{"verificationTtlSeconds":900,"sessionTtlSeconds":28800,
+                       "face":{"maxAttempts":5,"lockoutSeconds":300}},
+             "serverTime":"2026-07-20T12:00:00Z"}
+        """.trimIndent()
     }
 }

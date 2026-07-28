@@ -12,11 +12,12 @@ import javax.inject.Inject
 
 /**
  * Turns a scanned card number into a verified-or-rejected outcome (FR-007, FR-008). A card is
- * member-verified ONLY when the back office returns VALID + memberVerified for a resolved member.
- * Any rejection surfaces a specific reason.
+ * member-verified ONLY when the back office returns VALID for a member it could resolve.
  *
  * Unlike the document flow this replaces, there is no local pre-check: a member card carries no
- * expiry date, so membership validity is entirely the back office's to decide.
+ * expiry date, so membership validity is entirely the back office's to decide. The reported
+ * capabilities are carried through untouched rather than gated on here — they describe what the
+ * server will allow next, and the server is the one that enforces them.
  */
 class VerifyMemberUseCase @Inject constructor(
     private val memberRepository: MemberRepository,
@@ -32,12 +33,10 @@ class VerifyMemberUseCase @Inject constructor(
         memberNumber: MemberNumber,
         verification: MemberVerification,
     ): AppResult<MemberVerification> {
-        // Without resolved details there is nothing to key /face/verify or /patients/... on.
-        if (!verification.memberResolved || verification.member == null) {
-            return AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
-        }
-        val verified = verification.status == MemberVerification.Status.VALID && verification.memberVerified
-        if (!verified) {
+        // Without resolved details there is nothing to key /face/verifications or /members/... on.
+        val member = verification.member
+            ?: return AppResult.BusinessRejection(AppError.Business(BusinessCode.PATIENT_NOT_FOUND))
+        if (verification.status != MemberVerification.Status.VALID) {
             return AppResult.BusinessRejection(
                 AppError.Business(BusinessCode.MEMBER_INVALID, serverReason = verification.reason),
             )
@@ -49,7 +48,7 @@ class VerifyMemberUseCase @Inject constructor(
             VerifiedIdentity(
                 memberNumber = memberNumber.value,
                 memberVerified = true,
-                patient = verification.member,
+                patient = member,
             )
         }
         return AppResult.Success(verification)

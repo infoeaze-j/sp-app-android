@@ -15,6 +15,7 @@ import com.mediplus.spapp.dev.repository.SwitchingAuthRepository
 import com.mediplus.spapp.dev.repository.SwitchingEnrollmentRepository
 import com.mediplus.spapp.dev.repository.SwitchingFaceRepository
 import com.mediplus.spapp.dev.repository.SwitchingMemberRepository
+import com.mediplus.spapp.domain.model.EnrollmentRequest
 import com.mediplus.spapp.domain.model.MemberVerification
 import com.mediplus.spapp.domain.model.Money
 import io.mockk.coEvery
@@ -36,7 +37,7 @@ class SwitchingRepositoryTest {
 
     private val realMember = mockk<MemberRepositoryImpl>().also {
         coEvery { it.verify(any()) } returns AppResult.Success(
-            MemberVerification(MemberVerification.Status.VALID, "REAL", true, true, true, null),
+            MemberVerification(MemberVerification.Status.VALID, "REAL", referenceOnFile = true, member = null),
         )
     }
 
@@ -177,10 +178,10 @@ class SwitchingRepositoryTest {
         val fake = spyk(FakeEnrollmentRepository(store))
         val switching = SwitchingEnrollmentRepository(real, fake, store)
 
-        switching.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1")
+        switching.enroll("X123", EnrollmentRequest("svc-blood", "ver-1", "ZAR", Money(15_000), "key-1"))
 
-        coVerify(exactly = 1) { fake.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1") }
-        coVerify(exactly = 0) { real.enroll(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { fake.enroll("X123", EnrollmentRequest("svc-blood", "ver-1", "ZAR", Money(15_000), "key-1")) }
+        coVerify(exactly = 0) { real.enroll(any(), any()) }
     }
 
     @Test
@@ -190,10 +191,10 @@ class SwitchingRepositoryTest {
         val fake = spyk(FakeEnrollmentRepository(store))
         val switching = SwitchingEnrollmentRepository(real, fake, store)
 
-        switching.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1")
+        switching.enroll("X123", EnrollmentRequest("svc-blood", "ver-1", "ZAR", Money(15_000), "key-1"))
 
-        coVerify(exactly = 1) { real.enroll("X123", "svc-blood", "ZAR", Money(15_000), "key-1") }
-        coVerify(exactly = 0) { fake.enroll(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { real.enroll("X123", EnrollmentRequest("svc-blood", "ver-1", "ZAR", Money(15_000), "key-1")) }
+        coVerify(exactly = 0) { fake.enroll(any(), any()) }
     }
 
     @Test

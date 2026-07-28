@@ -7,6 +7,7 @@ import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.DefaultErrorMapper
+import com.mediplus.spapp.domain.model.MemberCapabilities
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
@@ -37,10 +38,10 @@ class MemberScanViewModelTest {
     private val host = NfcHost(mockk<Activity>(relaxed = true))
     private val number = MemberNumber.parse("1234567")!!
 
-    private val details = MemberDetails("1234567", "Jane Doe", "1985-04-12", "ACTIVE", "Gold")
+    private val details = MemberDetails("1234567", "Jane Doe", "1985-04-12", "Gold")
     private val verification = MemberVerification(
-        MemberVerification.Status.VALID, null, memberVerified = true,
-        memberResolved = true, referenceOnFile = true, member = details,
+        MemberVerification.Status.VALID, reason = null, referenceOnFile = true, member = details,
+        capabilities = MemberCapabilities(canVerifyFace = true, canEnroll = true),
     )
 
     @Before

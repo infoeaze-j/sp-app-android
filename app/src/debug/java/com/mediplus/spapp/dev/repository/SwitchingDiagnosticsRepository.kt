@@ -6,9 +6,10 @@ import com.mediplus.spapp.data.repository.DiagnosticsRepository
 import com.mediplus.spapp.data.repository.DiagnosticsRepositoryImpl
 import com.mediplus.spapp.dev.DevSettingsStore
 import com.mediplus.spapp.dev.DiagnosticsScenario
+import com.mediplus.spapp.dev.FakeSeam
 import javax.inject.Inject
 
-/** Debug-only router: canned scenario when the master toggle is on, else the real backend. */
+/** Debug-only router: canned scenario while the DIAGNOSTICS seam is faked, else the real backend. */
 class SwitchingDiagnosticsRepository @Inject constructor(
     private val real: DiagnosticsRepositoryImpl,
     private val store: DevSettingsStore,
@@ -27,7 +28,7 @@ class SwitchingDiagnosticsRepository @Inject constructor(
 
     private suspend fun pick(): DiagnosticsRepository {
         val settings = store.current()
-        if (!settings.fakeEnabled) return real
+        if (!settings.isFakeActive(FakeSeam.DIAGNOSTICS)) return real
         return fake?.takeIf { fakeScenario == settings.diagnostics }
             ?: FakeDiagnosticsRepository(settings.diagnostics).also {
                 fake = it

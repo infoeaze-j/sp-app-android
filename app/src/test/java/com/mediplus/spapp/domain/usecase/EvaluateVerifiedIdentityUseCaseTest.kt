@@ -83,7 +83,7 @@ class EvaluateVerifiedIdentityUseCaseTest {
      */
     @Test
     fun `a verified evaluation names the patient it verified`() {
-        val patient = MemberDetails("P1", "Jane Doe", "1985-04-12", "ACTIVE", "Gold")
+        val patient = MemberDetails("P1", "Jane Doe", "1985-04-12", "Gold")
         val manager = session().apply {
             updateVerifiedIdentity {
                 VerifiedIdentity(
