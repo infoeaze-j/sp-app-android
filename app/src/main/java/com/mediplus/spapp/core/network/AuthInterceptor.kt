@@ -32,7 +32,15 @@ class AuthInterceptor @Inject constructor(
         val response = chain.proceed(request)
         // Only a 401 on a request that actually carried a session token means the session was
         // invalidated. A 401 on sign-in is "invalid credentials", not a session loss (FR-004 vs FR-005).
-        if (hadToken && response.code == HttpURLConnection.HTTP_UNAUTHORIZED) {
+        //
+        // The token is re-read and compared because a 401 can arrive late: the session it was sent
+        // for may already have been replaced (the operator re-signed in while a slow request was in
+        // flight) or deliberately ended (they logged out). Ending whatever session happens to be
+        // current would bounce a freshly signed-in operator back to sign-in, or turn a chosen
+        // log out into a "session ended" notice. Only the session that actually got the 401 ends.
+        if (hadToken && response.code == HttpURLConnection.HTTP_UNAUTHORIZED &&
+            sessionManager.session.value?.token == token
+        ) {
             sessionManager.markSessionInvalidated()
         }
         return response

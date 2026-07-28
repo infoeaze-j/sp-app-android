@@ -12,8 +12,10 @@ import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -158,6 +160,33 @@ class AuthApiContractTest {
     }
 
     @Test
+    fun `a late 401 from a stale token does not kill a newer session`() = runTest {
+        // The operator re-signs in while a request carrying the old token is still in flight — the
+        // slow revalidation on resume is the realistic case. The dispatcher stands in for that race:
+        // it swaps the session before answering, so the 401 arrives against a session that is no
+        // longer the one it was sent for.
+        sessionManager.set(activeSession("tok-old"))
+        server.dispatcher = swapSessionThen(activeSession("tok-new"), MockResponse().setResponseCode(401))
+
+        api.session()
+
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+        assertEquals("tok-new", sessionManager.session.value?.token)
+    }
+
+    @Test
+    fun `a late 401 after sign-out does not raise a session-ended notice`() = runTest {
+        // Same race, deliberate ending: clearAll() leaves None. Flipping that to Invalidated would
+        // show the operator "session ended" after they chose to log out (FR-004a).
+        sessionManager.set(activeSession("tok-old"))
+        server.dispatcher = clearSessionThen(MockResponse().setResponseCode(401))
+
+        api.session()
+
+        assertEquals(SessionState.None, sessionManager.sessionState.value)
+    }
+
+    @Test
     fun `a registered device id rides along as X-Device-Id`() = runTest {
         sessionManager.set(activeSession("tok-xyz"))
         deviceIdStore.set("dev-42")
@@ -191,6 +220,22 @@ class AuthApiContractTest {
 
     private fun activeSession(token: String) =
         Session(token, Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active)
+
+    /** Replaces the live session mid-flight, then answers — simulating a re-sign-in during a request. */
+    private fun swapSessionThen(next: Session, response: MockResponse) = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            sessionManager.set(next)
+            return response
+        }
+    }
+
+    /** Signs out mid-flight, then answers — simulating a log out during a request. */
+    private fun clearSessionThen(response: MockResponse) = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            sessionManager.clearAll()
+            return response
+        }
+    }
 
     private companion object {
         val SESSION_BODY = """
