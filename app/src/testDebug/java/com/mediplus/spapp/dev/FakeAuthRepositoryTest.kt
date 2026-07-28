@@ -4,6 +4,7 @@ import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.session.InMemorySessionManager
+import com.mediplus.spapp.data.repository.SessionCheck
 import com.mediplus.spapp.dev.repository.FakeAuthRepository
 import com.mediplus.spapp.domain.model.SessionState
 import kotlinx.coroutines.test.runTest
@@ -48,5 +49,14 @@ class FakeAuthRepositoryTest {
         val result = repo(store, InMemorySessionManager()).signIn("demo", "demo")
 
         assertTrue((result as AppResult.TransientFailure).error is AppError.Transient)
+    }
+
+    @Test
+    fun `revalidateSession always reports the fake back office as valid`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(latencyMillis = 0L))
+
+        val result = repo(store, InMemorySessionManager()).revalidateSession()
+
+        assertEquals(SessionCheck.Valid, result)
     }
 }

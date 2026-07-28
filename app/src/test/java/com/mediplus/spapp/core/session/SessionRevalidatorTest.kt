@@ -8,6 +8,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -37,9 +38,10 @@ class SessionRevalidatorTest {
 
     @Test
     fun `foregrounding with an active session revalidates exactly once`() = runTest {
+        val session = sessionManager(SessionState.Active)
         val revalidator = SessionRevalidator(
             authRepository,
-            sessionManager(SessionState.Active),
+            session,
             StandardTestDispatcher(testScheduler),
         )
 
@@ -47,6 +49,12 @@ class SessionRevalidatorTest {
         runCurrent()
 
         coVerify(exactly = 1) { authRepository.revalidateSession() }
+        // The design's other load-bearing invariant: SessionRevalidator itself never mutates session
+        // state — only AuthInterceptor acts on a 401. sessionManager is relaxed, so a stray mutator
+        // call would otherwise succeed silently.
+        verify(exactly = 0) { session.markSessionInvalidated() }
+        verify(exactly = 0) { session.markSessionExpired() }
+        verify(exactly = 0) { session.clearAll() }
     }
 
     @Test

@@ -152,9 +152,9 @@ conservative option in every case.
 
 ## Current state to be aware of
 
-- As of 2026-07-24 detekt is **still red on `main`** (48 weighted issues, all predating recent work:
-  `Color.kt` magic numbers, `NfcModels` naming, line length, `VerifyFaceUseCase` return count). Check
-  the baseline before assuming your change caused a failure.
+- As of 2026-07-28 detekt is **still red on `main`** (16 weighted issues, all predating recent work:
+  `NfcModels` naming, line length, `VerifyFaceUseCase` return count). Check the baseline before
+  assuming your change caused a failure.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time `GET /app/releases/latest?versionCode=N` (unauthenticated, always 200, fail-open),
   SHA-256-verified streaming download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
@@ -194,9 +194,12 @@ conservative option in every case.
   the existing "session ended" notice on resume instead of three patient-facing steps later.
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
-  tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the
+  tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, the
   real `AndroidDeviceDiagnostics` reader against real hardware sensors (battery/thermal/network
-  transitions).
+  transitions), and `SessionRevalidator.bind()` actually firing — no Robolectric here (same
+  precedent as `DiagnosticsPoller.bind()`), so the real check is a device with the `AUTH` seam
+  turned OFF in Dev Settings: sign in, background, reopen, confirm `GET /auth/session` in logcat
+  (the default fake-`AUTH` settings can't tell a firing revalidator from a silent one).
 - Driving the emulator headlessly: `adb exec-out screencap -p > file.png` **corrupts the PNG** under
   PowerShell — use `adb shell screencap -p /sdcard/x.png` then `adb pull`. Git Bash mangles
   `/sdcard/...` paths, so run adb from PowerShell.

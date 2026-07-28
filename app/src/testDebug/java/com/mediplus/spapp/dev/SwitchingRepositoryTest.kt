@@ -113,6 +113,32 @@ class SwitchingRepositoryTest {
         coVerify(exactly = 0) { fake.signOut() }
     }
 
+    @Test
+    fun `auth revalidateSession delegates to fake when fake is enabled`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(fakeEnabled = true, latencyMillis = 0L))
+        val real = mockk<AuthRepositoryImpl>(relaxed = true)
+        val fake = spyk(FakeAuthRepository(store, InMemorySessionManager()))
+        val switching = SwitchingAuthRepository(real, fake, store)
+
+        switching.revalidateSession()
+
+        coVerify(exactly = 1) { fake.revalidateSession() }
+        coVerify(exactly = 0) { real.revalidateSession() }
+    }
+
+    @Test
+    fun `auth revalidateSession delegates to real when fake is disabled`() = runTest {
+        val store = TestDevSettingsStore(DevSettings(fakeEnabled = false, latencyMillis = 0L))
+        val real = mockk<AuthRepositoryImpl>(relaxed = true)
+        val fake = spyk(FakeAuthRepository(store, InMemorySessionManager()))
+        val switching = SwitchingAuthRepository(real, fake, store)
+
+        switching.revalidateSession()
+
+        coVerify(exactly = 1) { real.revalidateSession() }
+        coVerify(exactly = 0) { fake.revalidateSession() }
+    }
+
     // ---- Face ----
 
     private fun frame() = TransientFrame(byteArrayOf(1, 2, 3))

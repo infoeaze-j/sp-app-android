@@ -102,6 +102,30 @@ class SwitchingSeamRoutingTest {
         coVerify(exactly = 0) { real.signIn(any(), any()) }
     }
 
+    @Test
+    fun `revalidateSession uses the real impl when only the auth seam is off`() = runTest {
+        val store = store(FakeSeam.AUTH)
+        val real = mockk<AuthRepositoryImpl>(relaxed = true)
+        val fake = spyk(FakeAuthRepository(store, InMemorySessionManager()))
+
+        SwitchingAuthRepository(real, fake, store).revalidateSession()
+
+        coVerify(exactly = 1) { real.revalidateSession() }
+        coVerify(exactly = 0) { fake.revalidateSession() }
+    }
+
+    @Test
+    fun `revalidateSession stays faked when a different seam is off`() = runTest {
+        val store = store(FakeSeam.FACE)
+        val real = mockk<AuthRepositoryImpl>(relaxed = true)
+        val fake = spyk(FakeAuthRepository(store, InMemorySessionManager()))
+
+        SwitchingAuthRepository(real, fake, store).revalidateSession()
+
+        coVerify(exactly = 1) { fake.revalidateSession() }
+        coVerify(exactly = 0) { real.revalidateSession() }
+    }
+
     // ---- Device registration ----
 
     @Test

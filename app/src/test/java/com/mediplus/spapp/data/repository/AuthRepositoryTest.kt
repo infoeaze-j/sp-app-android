@@ -242,6 +242,7 @@ class AuthRepositoryTest {
         // AuthApi is mocked here, so there is no interceptor in the chain and only the classification
         // is asserted — the repository must not invalidate anything itself.
         assertEquals(SessionCheck.Ended, repo.revalidateSession())
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
     }
 
     @Test
