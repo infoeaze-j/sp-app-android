@@ -6,6 +6,7 @@ import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.core.session.SessionManager
 import com.mediplus.spapp.data.repository.AuthRepository
+import com.mediplus.spapp.data.repository.SessionCheck
 import com.mediplus.spapp.dev.AuthScenario
 import com.mediplus.spapp.dev.DevSettingsStore
 import com.mediplus.spapp.dev.FakeData
@@ -44,6 +45,13 @@ class FakeAuthRepository @Inject constructor(
         sessionManager.clearAll()
         return AppResult.Success(Unit)
     }
+
+    /**
+     * The fake back office never expires a session, so revalidation always says it stands. Session
+     * loss is exercised in a debug build through Dev Settings' "force expire" action, which drives
+     * [SessionManager] directly.
+     */
+    override suspend fun revalidateSession(): SessionCheck = SessionCheck.Valid
 
     override fun sessionState(): StateFlow<SessionState> = sessionManager.sessionState
 }

@@ -4,6 +4,7 @@ import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.core.session.SessionManager
 import com.mediplus.spapp.data.repository.AuthRepository
+import com.mediplus.spapp.data.repository.SessionCheck
 import com.mediplus.spapp.domain.model.Operator
 import com.mediplus.spapp.domain.model.Provider
 import com.mediplus.spapp.domain.model.Session
@@ -102,6 +103,9 @@ private class FakeAuthRepository(
         sessionManager.clearAll()
         return AppResult.Success(Unit)
     }
+
+    override suspend fun revalidateSession(): SessionCheck =
+        throw UnsupportedOperationException("not exercised by these tests")
 
     override fun sessionState(): StateFlow<SessionState> = sessionManager.sessionState
 }

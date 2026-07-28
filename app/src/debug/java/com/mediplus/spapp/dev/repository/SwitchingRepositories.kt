@@ -12,6 +12,7 @@ import com.mediplus.spapp.data.repository.FaceRepository
 import com.mediplus.spapp.data.repository.FaceRepositoryImpl
 import com.mediplus.spapp.data.repository.MemberRepository
 import com.mediplus.spapp.data.repository.MemberRepositoryImpl
+import com.mediplus.spapp.data.repository.SessionCheck
 import com.mediplus.spapp.data.repository.UpdateRepository
 import com.mediplus.spapp.data.repository.UpdateRepositoryImpl
 import com.mediplus.spapp.dev.DevSettingsStore
@@ -41,6 +42,8 @@ class SwitchingAuthRepository @Inject constructor(
         pick().signIn(identifier, secret)
 
     override suspend fun signOut(): AppResult<Unit> = pick().signOut()
+
+    override suspend fun revalidateSession(): SessionCheck = pick().revalidateSession()
 
     // Both delegate to the same singleton SessionManager, so either is fine; use the real one.
     override fun sessionState(): StateFlow<SessionState> = real.sessionState()

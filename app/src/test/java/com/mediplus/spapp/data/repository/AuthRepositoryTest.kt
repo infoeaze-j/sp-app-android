@@ -9,6 +9,8 @@ import com.mediplus.spapp.data.remote.OperatorDto
 import com.mediplus.spapp.data.remote.ProviderDto
 import com.mediplus.spapp.data.remote.SessionPolicyDto
 import com.mediplus.spapp.data.remote.SessionResource
+import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Session
 import com.mediplus.spapp.domain.model.SessionState
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -49,6 +51,17 @@ class AuthRepositoryTest {
         expiresAt = "2026-07-20T12:34:56Z",
         operator = OperatorDto(id = "op-1", identifier = "sam", displayName = "Sam", permissions = listOf("verify")),
         policy = SessionPolicyDto(verificationTtlSeconds = 900),
+    )
+
+    /**
+     * A live session, set directly rather than via `signIn`, so the revalidation tests do not depend
+     * on the login path.
+     */
+    private fun activeSession() = Session(
+        token = "tok",
+        operator = Operator("op-1", "Sam"),
+        expiresAt = null,
+        state = SessionState.Active,
     )
 
     @Test
@@ -209,5 +222,61 @@ class AuthRepositoryTest {
 
         assertEquals(null, sessionManager.session.value)
         assertEquals(SessionState.None, sessionManager.sessionState.value)
+    }
+
+    @Test
+    fun `revalidate - a 200 says the session is valid`() = runTest(dispatcher) {
+        sessionManager.set(activeSession())
+        coEvery { api.session() } returns Response.success(loginResponse())
+
+        assertEquals(SessionCheck.Valid, repo.revalidateSession())
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
+    fun `revalidate - a 401 says the session has ended`() = runTest(dispatcher) {
+        sessionManager.set(activeSession())
+        coEvery { api.session() } returns Response.error(401, "".toResponseBody(null))
+
+        // The actual invalidation is AuthInterceptor's job, proven end to end in AuthApiContractTest.
+        // AuthApi is mocked here, so there is no interceptor in the chain and only the classification
+        // is asserted — the repository must not invalidate anything itself.
+        assertEquals(SessionCheck.Ended, repo.revalidateSession())
+    }
+
+    @Test
+    fun `revalidate - a 500 is unknown and leaves the session alone`() = runTest(dispatcher) {
+        sessionManager.set(activeSession())
+        coEvery { api.session() } returns Response.error(500, "".toResponseBody(null))
+
+        assertEquals(SessionCheck.Unknown, repo.revalidateSession())
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
+    fun `revalidate - an unexpected status is unknown, not an ending`() = runTest(dispatcher) {
+        sessionManager.set(activeSession())
+        coEvery { api.session() } returns Response.error(418, "".toResponseBody(null))
+
+        assertEquals(SessionCheck.Unknown, repo.revalidateSession())
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
+    fun `revalidate - an IO failure is unknown and leaves the session alone`() = runTest(dispatcher) {
+        sessionManager.set(activeSession())
+        coEvery { api.session() } throws IOException("offline")
+
+        assertEquals(SessionCheck.Unknown, repo.revalidateSession())
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
+    fun `revalidate - a socket timeout is unknown and leaves the session alone`() = runTest(dispatcher) {
+        sessionManager.set(activeSession())
+        coEvery { api.session() } throws SocketTimeoutException("slow")
+
+        assertEquals(SessionCheck.Unknown, repo.revalidateSession())
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
     }
 }

@@ -134,6 +134,18 @@ class AuthApiContractTest {
     }
 
     @Test
+    fun `a 200 on the session endpoint leaves the session Active`() = runTest {
+        sessionManager.set(activeSession("tok-xyz"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(SESSION_BODY))
+
+        api.session()
+
+        // Paired with `401 on a protected call invalidates the session` below, this is the end-to-end
+        // proof that revalidation routes correctly: a healthy session survives, a dead one does not.
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
     fun `401 on a protected call invalidates the session`() = runTest {
         sessionManager.set(activeSession("tok-xyz"))
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"message":"Unauthenticated."}"""))

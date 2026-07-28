@@ -22,12 +22,44 @@ import javax.inject.Inject
 import kotlin.time.Duration.Companion.seconds
 
 /**
+ * What one revalidation learned
+ * (docs/superpowers/specs/2026-07-28-session-revalidation-on-resume-design.md).
+ *
+ * Only [Ended] means the session is over, and by the time it is returned
+ * [com.mediplus.spapp.core.network.AuthInterceptor] has already acted on it. Modelling the
+ * third case as its own value rather than folding it into a nullable or a `Boolean` is the point:
+ * fail-open stops being a rule someone has to remember and becomes a case the compiler makes you name.
+ */
+enum class SessionCheck {
+    /** A 2xx. The session stands. */
+    Valid,
+
+    /** An explicit 401. The session has already been invalidated by the interceptor (FR-004, FR-004a). */
+    Ended,
+
+    /** 5xx, an unexpected status, or a transport failure. The session is left completely alone. */
+    Unknown,
+}
+
+/**
  * The stable auth seam (contracts/client-interfaces.md). Maps back-office responses to
  * [AppResult] and feeds the [SessionManager]; the ViewModel/UI never touch the wire shape.
  */
 interface AuthRepository {
     suspend fun signIn(identifier: String, secret: String): AppResult<Session>
     suspend fun signOut(): AppResult<Unit>
+
+    /**
+     * Ask the back office whether this session is still live (FR-004). Called on every foregrounding
+     * by [com.mediplus.spapp.core.session.SessionRevalidator] so an expiry is discovered before the
+     * operator involves a patient, rather than passively at the next protected call.
+     *
+     * Never mutates session state: a 401 is acted on by
+     * [com.mediplus.spapp.core.network.AuthInterceptor] — one rule, one place — and anything that is
+     * not a definite answer returns [SessionCheck.Unknown] so a flaky connection can never force a
+     * re-login.
+     */
+    suspend fun revalidateSession(): SessionCheck
     fun sessionState(): StateFlow<SessionState>
 }
 
@@ -70,6 +102,22 @@ class AuthRepositoryImpl @Inject constructor(
         runCatching { apiCall(dispatcher, { api.logout() }) { AppResult.Success(Unit) } }
         sessionManager.clearAll()
         return AppResult.Success(Unit)
+    }
+
+    override suspend fun revalidateSession(): SessionCheck {
+        val result = apiCall(dispatcher, { api.session() }) { response ->
+            when {
+                response.isSuccessful -> AppResult.Success(SessionCheck.Valid)
+                // AuthInterceptor has already invalidated the session by the time we get here; this
+                // value is returned so callers and tests can assert on it, not so anything must act.
+                response.code() == HttpURLConnection.HTTP_UNAUTHORIZED ->
+                    AppResult.Success(SessionCheck.Ended)
+                else -> AppResult.Success(SessionCheck.Unknown)
+            }
+        }
+        // apiCall maps a socket timeout to Timeout and any other IO failure to TransientFailure. Both
+        // mean "we learned nothing", which is exactly Unknown — the session is left untouched.
+        return (result as? AppResult.Success)?.data ?: SessionCheck.Unknown
     }
 
     override fun sessionState(): StateFlow<SessionState> = sessionManager.sessionState
