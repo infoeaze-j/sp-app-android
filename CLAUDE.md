@@ -136,7 +136,7 @@ bare id string or an object. All of it fails towards the safe answer rather than
 
 ### Open decisions from the 2026-07-28 spec realignment
 
-Three questions the realignment surfaced and deliberately did **not** answer. Each is a product or
+Two questions the realignment surfaced and deliberately did **not** answer. Each is a product or
 server call, not a coding one; nothing is blocked on them, and the current behaviour is the
 conservative option in every case.
 
@@ -145,16 +145,7 @@ conservative option in every case.
    unauthenticated by design (it runs before anyone signs in). A *forced* update therefore has no
    token to present and will 401. Today that surfaces as a retryable failure rather than a loop.
    Fix is either: move the update prompt behind sign-in, or have the server exempt the binary.
-2. **`GET /auth/session` is aligned but unwired.** Designed but not built — see
-   `docs/superpowers/specs/2026-07-28-session-revalidation-on-resume-design.md`. In short: it would
-   **not** give resumability across an app close (the token lives only in `InMemorySessionManager`
-   and `PrefsDataStore` persists none, so process death ends the session and there is nothing to
-   revalidate). What it buys is *timing* — expiry is currently discovered passively and late, when
-   the next protected call 401s, possibly after the operator has already tapped a card and captured
-   a face. **It must fail open**: only an explicit 401 counts as expiry. Note the design also
-   records that `DiagnosticsPoller` already catches most of these expiries *by accident*, and why
-   that is not something to rely on.
-3. **`MemberVerification.capabilities` is carried but not gated on.** `canVerifyFace`/`canEnroll`
+2. **`MemberVerification.capabilities` is carried but not gated on.** `canVerifyFace`/`canEnroll`
    are parsed and available; the journey does not branch on them, because `canVerifyFace` is one of
    the fields the spec mis-types as `string` and a parsing quirk defaulting it to `false` would
    block every card. The server stays the enforcer. Revisit once a live response confirms the type.
@@ -191,6 +182,16 @@ conservative option in every case.
   (battery/network/storage/memory/display/build/app/locale/thermal/uptime — no hardware IDs, no
   location) and POSTs it to `/diagnostics/requests/{id}/report`, deduping on the last-handled id.
   Best-effort throughout (all failures swallowed; no `UiMessage`, no screen).
+- **Session revalidation on resume** (design: `docs/superpowers/specs/2026-07-28-session-revalidation-on-resume-design.md`):
+  `SessionRevalidator` (a second `ProcessLifecycleOwner` observer, bound beside `DiagnosticsPoller` in
+  `SpApp.onCreate()`) calls `GET /auth/session` on every foregrounding, but only when
+  `sessionState == Active`. `AuthRepository.revalidateSession()` returns `SessionCheck.Valid`/`Ended`/`Unknown`
+  and **never mutates session state** — a 401 is acted on by `AuthInterceptor`, which stays the single
+  owner of that rule, and everything else (5xx, unexpected status, `IOException`, timeout) is `Unknown`
+  and leaves the session untouched. Fail-open is deliberate: a flaky clinic connection must never force
+  a re-login. This is **not** session persistence — the token still lives only in `InMemorySessionManager`,
+  so process death still ends the session. No new screen, string or `UiMessage`; the operator just reaches
+  the existing "session ended" notice on resume instead of three patient-facing steps later.
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
   tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the

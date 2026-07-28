@@ -1,9 +1,9 @@
 # Session revalidation on resume — design
 
 **Date:** 2026-07-28
-**Status:** Proposed — not implemented
+**Status:** Implemented — 2026-07-28
 **Endpoint:** `GET /auth/session` (`auth.session` in `docs/openapi.json`)
-**Tracked as:** open decision #2 in `CLAUDE.md`
+**Tracked as:** was open decision #2 in `CLAUDE.md`; closed on implementation
 
 ## Problem
 
