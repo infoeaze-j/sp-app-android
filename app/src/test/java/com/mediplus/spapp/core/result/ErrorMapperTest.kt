@@ -98,6 +98,22 @@ class ErrorMapperTest {
     }
 
     @Test
+    fun `a dropped update download reads as its own thing, not a timeout`() {
+        // The whole point of the kind: a dropped download used to surface as "Outcome not
+        // confirmed", which invites the operator to go re-check something. Nothing was installed.
+        val interrupted = mapper.toUserMessage(AppError.Transient(TransientKind.DOWNLOAD_INTERRUPTED))
+
+        assertEquals(R.string.err_download_interrupted_title, interrupted.titleRes)
+        assertEquals(R.string.err_download_interrupted_body, interrupted.bodyRes)
+        assertEquals(R.string.action_retry, interrupted.actionRes)
+        assertNotEquals(mapper.toUserMessage(AppError.Timeout).bodyRes, interrupted.bodyRes)
+        assertNotEquals(
+            mapper.toUserMessage(AppError.Transient(TransientKind.NO_CONNECTIVITY)).bodyRes,
+            interrupted.bodyRes,
+        )
+    }
+
+    @Test
     fun `an unreadable card offers manual entry rather than a bare retry`() {
         val message = mapper.toUserMessage(AppError.Business(BusinessCode.CARD_UNREADABLE))
 

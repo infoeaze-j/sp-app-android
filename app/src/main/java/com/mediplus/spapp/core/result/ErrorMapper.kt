@@ -166,6 +166,11 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_server_body,
             R.string.action_retry,
         )
+        TransientKind.DOWNLOAD_INTERRUPTED -> UiMessage(
+            R.string.err_download_interrupted_title,
+            R.string.err_download_interrupted_body,
+            R.string.action_retry,
+        )
         TransientKind.UNKNOWN -> genericMessage()
     }
 

@@ -77,6 +77,12 @@ enum class BusinessCode {
     GENERIC,
 }
 
-enum class TransientKind { NO_CONNECTIVITY, SERVER_ERROR, UNKNOWN }
+/**
+ * [DOWNLOAD_INTERRUPTED] is the self-update download losing its connection part-way through. It is
+ * deliberately distinct from [NO_CONNECTIVITY]: nothing is ambiguous about a dropped download —
+ * nothing was installed, and the bytes already on disk may be resumable — so it reads neither as a
+ * bare connectivity complaint nor as [AppResult.Timeout]'s "outcome unknown".
+ */
+enum class TransientKind { NO_CONNECTIVITY, SERVER_ERROR, DOWNLOAD_INTERRUPTED, UNKNOWN }
 
 enum class SessionErrorKind { EXPIRED, INVALIDATED, NONE }

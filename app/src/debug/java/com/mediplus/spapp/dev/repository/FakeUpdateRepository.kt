@@ -29,6 +29,9 @@ class FakeUpdateRepository @Inject constructor(
     @param:UpdateCacheDir private val cacheDir: File,
 ) : UpdateRepository {
 
+    /** How far the last interrupted attempt got, so the next one resumes rather than restarts. */
+    private var resumedStep = 0
+
     override suspend fun fetchVersionInfo(): AppResult<UpdateInfo?> {
         val settings = store.current()
         delay(settings.latencyMillis)
@@ -51,13 +54,18 @@ class FakeUpdateRepository @Inject constructor(
         onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
     ): AppResult<DownloadedApk> {
         val settings = store.current()
-        for (step in 1..STEPS) {
+        // Mirrors the real repository: a second attempt picks up where the interrupted one stopped,
+        // so the resumed-progress UI is exercisable on a bare emulator with no back office at all.
+        val resumeStep = resumedStep
+        for (step in resumeStep + 1..STEPS) {
             delay(settings.latencyMillis / STEPS)
-            if (settings.update == UpdateScenario.DOWNLOAD_FAILS && step > STEPS / 2) {
-                return AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY))
+            if (settings.update == UpdateScenario.DOWNLOAD_FAILS && step > STEPS / 2 && resumeStep == 0) {
+                resumedStep = step - 1
+                return AppResult.TransientFailure(AppError.Transient(TransientKind.DOWNLOAD_INTERRUPTED))
             }
             onProgress(info.sizeBytes * step / STEPS, info.sizeBytes)
         }
+        resumedStep = 0
         return if (settings.update == UpdateScenario.HASH_MISMATCH) {
             AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
         } else {
@@ -65,7 +73,7 @@ class FakeUpdateRepository @Inject constructor(
         }
     }
 
-    override suspend fun clearDownloads() {
+    override suspend fun pruneObsoleteDownloads() {
         cacheDir.listFiles()?.forEach { it.delete() }
     }
 

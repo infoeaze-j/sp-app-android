@@ -8,8 +8,10 @@ import java.io.File
  * APK bytes at [apkUrl]; [sizeBytes] is authoritative for both progress totals and the size check.
  *
  * [updateRequired] and [updateAvailable] are computed server-side so the "must update" rule lives
- * in one place. [minSupportedVersionCode] is still carried, and still checked, so a server that
- * omits the verdicts degrades to the client's own comparison rather than to nothing.
+ * in one place. [minSupportedVersionCode] is no longer part of the published payload; it is still
+ * carried and still checked so that a server which omits the verdicts degrades to the client's own
+ * comparison rather than to nothing, but against the current contract it parses to 0 and never
+ * decides anything.
  */
 data class UpdateInfo(
     val latestVersionCode: Int,
@@ -25,7 +27,7 @@ data class UpdateInfo(
 
 /**
  * The gated verdict on an [UpdateInfo] relative to the running build. Only [Forced] blocks the
- * journey; the server controls the split via `minSupportedVersionCode`.
+ * journey; the server controls the split via the `updateRequired` verdict it computes.
  */
 sealed interface UpdateStatus {
 

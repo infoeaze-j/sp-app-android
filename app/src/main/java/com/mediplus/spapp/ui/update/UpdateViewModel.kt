@@ -82,7 +82,9 @@ class UpdateViewModel @Inject constructor(
         viewModelScope.launch { backupStore.pruneStaleBackups(currentVersion.code) }
         viewModelScope.launch {
             installer.abandonStaleSessions()
-            updateRepository.clearDownloads()
+            // Narrow by design: a partial download for a build still on offer survives this, which
+            // is what lets an interrupted transfer resume after a restart rather than start over.
+            updateRepository.pruneObsoleteDownloads()
         }
         viewModelScope.launch { runCheck() }
     }

@@ -3,6 +3,7 @@ package com.mediplus.spapp.dev
 import com.mediplus.spapp.BuildConfig
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
+import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.dev.repository.FakeUpdateRepository
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.UpdateInfo
@@ -101,7 +102,7 @@ class FakeUpdateRepositoryTest {
     }
 
     @Test
-    fun `DOWNLOAD_FAILS fails mid-stream as transient`() = runTest {
+    fun `DOWNLOAD_FAILS fails mid-stream as an interrupted download`() = runTest {
         setScenario(UpdateScenario.DOWNLOAD_FAILS)
         val progress = mutableListOf<Pair<Long, Long>>()
 
@@ -109,9 +110,33 @@ class FakeUpdateRepositoryTest {
             progress.add(sofar to total)
         }
 
-        assertTrue(result is AppResult.TransientFailure)
+        assertEquals(
+            TransientKind.DOWNLOAD_INTERRUPTED,
+            (result as AppResult.TransientFailure).error.kind,
+        )
         assertTrue("some progress must be visible before the failure", progress.isNotEmpty())
         assertTrue("progress must not complete", progress.last().first < progress.last().second)
+    }
+
+    @Test
+    fun `DOWNLOAD_FAILS resumes from where it stopped on the next attempt`() = runTest {
+        // The dev stack has to be able to show the resumed-progress UI on a bare emulator, so the
+        // fake mirrors the real repository's behaviour rather than restarting from zero.
+        setScenario(UpdateScenario.DOWNLOAD_FAILS)
+        val repository = fake()
+        val info = publishedInfo()
+        val firstAttempt = mutableListOf<Pair<Long, Long>>()
+        repository.downloadAndVerify(info) { sofar, total -> firstAttempt.add(sofar to total) }
+        val resumed = mutableListOf<Pair<Long, Long>>()
+
+        val result = repository.downloadAndVerify(info) { sofar, total -> resumed.add(sofar to total) }
+
+        assertTrue("the retry must succeed, not fail again", result is AppResult.Success)
+        assertTrue(
+            "the retry must pick up above where the first attempt stopped",
+            resumed.first().first > firstAttempt.last().first,
+        )
+        assertEquals("progress must still complete", resumed.last().second, resumed.last().first)
     }
 
     @Test

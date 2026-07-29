@@ -121,7 +121,7 @@ class SwitchingUpdateRepository @Inject constructor(
         onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
     ): AppResult<DownloadedApk> = pick().downloadAndVerify(info, onProgress)
 
-    override suspend fun clearDownloads() = pick().clearDownloads()
+    override suspend fun pruneObsoleteDownloads() = pick().pruneObsoleteDownloads()
 
     private suspend fun pick(): UpdateRepository =
         if (store.current().isFakeActive(FakeSeam.UPDATE)) fake else real

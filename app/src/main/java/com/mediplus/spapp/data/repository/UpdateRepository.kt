@@ -1,4 +1,4 @@
-package com.mediplus.spapp.data.repository
+﻿package com.mediplus.spapp.data.repository
 
 import com.mediplus.spapp.core.di.IoDispatcher
 import com.mediplus.spapp.core.di.UpdateCacheDir
@@ -15,7 +15,9 @@ import com.mediplus.spapp.domain.model.UpdateInfo
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
+import retrofit2.Response
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -25,8 +27,8 @@ import java.security.MessageDigest
 import javax.inject.Inject
 
 /**
- * Access to the self-update backend: the version check and (later) the APK download. Like every
- * repository, callers see only [AppResult] and domain models.
+ * Access to the self-update backend: the version check and the APK download. Like every repository,
+ * callers see only [AppResult] and domain models.
  */
 interface UpdateRepository {
 
@@ -43,6 +45,12 @@ interface UpdateRepository {
      * returned for a file whose SHA-256 and byte count both match [info]; any mismatch deletes the
      * file and reports [com.mediplus.spapp.core.result.BusinessCode.UPDATE_CORRUPTED].
      * [onProgress] receives (bytesSoFar, totalBytes), throttled to whole-percent changes.
+     *
+     * A download interrupted part-way through **keeps** what it wrote, and a later call resumes from
+     * there with a range request. Resuming is opportunistic: a server that answers 200 instead of
+     * 206 has ignored the range, and the transfer silently restarts from zero. Nothing about this is
+     * trusted — the digest over the whole finished file is what decides, so a prefix that turns out
+     * to belong to different bytes can only ever fail verification, never install.
      */
     suspend fun downloadAndVerify(
         info: UpdateInfo,
@@ -50,10 +58,14 @@ interface UpdateRepository {
     ): AppResult<DownloadedApk>
 
     /**
-     * Deletes leftover downloads from earlier runs. Called once at launch: nothing is resumable
-     * across a process restart (a fresh attempt re-downloads), so leftovers are only waste.
+     * Deletes downloads that can never be installed — anything at or below the running build, plus
+     * any file whose name does not parse. Called once at launch, and deliberately narrower than
+     * "delete everything": a partial download for a build still on offer is the thing resume exists
+     * to reuse, so it has to survive a process restart. Discarding partials for *other* pending
+     * builds is left to [downloadAndVerify], which is the only place that knows which build is
+     * actually being fetched.
      */
-    suspend fun clearDownloads()
+    suspend fun pruneObsoleteDownloads()
 }
 
 class UpdateRepositoryImpl @Inject constructor(
@@ -63,82 +75,60 @@ class UpdateRepositoryImpl @Inject constructor(
     private val currentVersion: CurrentAppVersion,
 ) : UpdateRepository {
 
-    override suspend fun clearDownloads(): Unit = withContext(dispatcher) {
-        cacheDir.listFiles()?.forEach { it.delete() }
+    override suspend fun pruneObsoleteDownloads(): Unit = withContext(dispatcher) {
+        cacheDir.listFiles()?.forEach { file ->
+            val code = versionCodeOf(file.name)
+            if (code == null || code <= currentVersion.code) file.delete()
+        }
     }
 
     // The streaming body escapes apiCall's map lambda, so this hand-rolls the same transport
-    // classification (SocketTimeoutException -> Timeout, IOException -> NO_CONNECTIVITY).
+    // classification — except that a dropped download is not ambiguous the way a dropped request is.
+    // Nothing was installed and the bytes on disk may still be useful, so it is a plain transient
+    // failure rather than AppResult.Timeout's "outcome unknown".
     override suspend fun downloadAndVerify(
         info: UpdateInfo,
         onProgress: suspend (bytesSoFar: Long, totalBytes: Long) -> Unit,
     ): AppResult<DownloadedApk> = withContext(dispatcher) {
         val target = File(cacheDir, "update-v${info.latestVersionCode}.apk")
+        // Partials for a build that is no longer the one on offer. This is the only place that
+        // knows which build is actually being fetched, which is why the launch-time prune can't.
+        cacheDir.listFiles()?.forEach { if (it != target) it.delete() }
         try {
-            val response = api.downloadApk(info.apkUrl)
-            val body = response.body()
-            if (!response.isSuccessful || body == null) {
-                AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
-            } else {
-                verified(info, target, body.use { streamTo(target, it, info.sizeBytes, onProgress) })
-            }
-        } catch (_: SocketTimeoutException) {
-            target.delete()
-            AppResult.Timeout
+            // A server that refuses our offset can still serve the whole file, so spend a second
+            // request here rather than making the operator tap Retry for something we can fix.
+            attempt(info, target, resumableBytes(target, info.sizeBytes), onProgress)
+                ?: attempt(info, target, 0L, onProgress)
+                ?: AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
+        } catch (e: SocketTimeoutException) {
+            interrupted(e)
         } catch (e: IOException) {
-            target.delete()
-            AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY, e))
+            interrupted(e)
         }
     }
 
-    private suspend fun streamTo(
+    /**
+     * One request. Returns null to mean "the server would not serve that offset" — only possible
+     * when [resumeFrom] is positive, so the caller's retry from zero cannot recurse.
+     */
+    private suspend fun attempt(
+        info: UpdateInfo,
         target: File,
-        body: ResponseBody,
-        totalBytes: Long,
+        resumeFrom: Long,
         onProgress: suspend (Long, Long) -> Unit,
-    ): StreamedApk {
-        val digest = MessageDigest.getInstance("SHA-256")
-        cacheDir.mkdirs()
-        val written = body.byteStream().use { input ->
-            target.outputStream().use { output ->
-                copyChunks(input, output, digest, totalBytes, onProgress)
-            }
+    ): AppResult<DownloadedApk>? {
+        val response = api.downloadApk(info.apkUrl, if (resumeFrom > 0) "bytes=$resumeFrom-" else null)
+        if (resumeFrom > 0 && response.code() == HTTP_RANGE_NOT_SATISFIABLE) return null
+        val body = response.body()
+        if (!response.isSuccessful || body == null) {
+            return AppResult.TransientFailure(AppError.Transient(TransientKind.SERVER_ERROR))
         }
-        onProgress(written, totalBytes)
-        return StreamedApk(bytes = written, shaHex = digest.digest().toHex())
+        // 200 in answer to a range request means the server ignored it and is sending the whole
+        // file; anything we already had is not part of this body, so start over at zero.
+        val startAt = if (servesRangeFrom(response, resumeFrom)) resumeFrom else 0L
+        val plan = TransferPlan(totalBytes = info.sizeBytes, startAt = startAt, onProgress = onProgress)
+        return verified(info, target, body.use { streamTo(target, it, plan) })
     }
-
-    private suspend fun copyChunks(
-        input: InputStream,
-        output: OutputStream,
-        digest: MessageDigest,
-        totalBytes: Long,
-        onProgress: suspend (Long, Long) -> Unit,
-    ): Long {
-        val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
-        var written = 0L
-        var lastPercent = -1
-        while (true) {
-            val read = input.read(buffer)
-            if (read == -1) return written
-            digest.update(buffer, 0, read)
-            output.write(buffer, 0, read)
-            written += read
-            val percent = percentOf(written, totalBytes)
-            if (percent != lastPercent) {
-                lastPercent = percent
-                onProgress(written, totalBytes)
-            }
-        }
-    }
-
-    private fun verified(info: UpdateInfo, target: File, streamed: StreamedApk): AppResult<DownloadedApk> =
-        if (streamed.bytes == info.sizeBytes && streamed.shaHex.equals(info.sha256, ignoreCase = true)) {
-            AppResult.Success(DownloadedApk(target, info.latestVersionCode))
-        } else {
-            target.delete()
-            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
-        }
 
     override suspend fun fetchVersionInfo(): AppResult<UpdateInfo?> =
         apiCall(dispatcher, { api.latestRelease(currentVersion.code) }) { response ->
@@ -157,18 +147,8 @@ class UpdateRepositoryImpl @Inject constructor(
 
     private companion object {
         val SERVER_ERROR_RANGE = 500..599
-        const val DOWNLOAD_CHUNK_BYTES = 64 * 1024
-        const val PERCENT = 100
-
-        fun percentOf(written: Long, total: Long): Int =
-            if (total > 0) ((written * PERCENT) / total).toInt() else 0
-
-        fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
     }
 }
-
-/** The raw outcome of streaming a body to disk, before verification. */
-private data class StreamedApk(val bytes: Long, val shaHex: String)
 
 /** `{"latest": null}` — nothing published for this fleet — is the normal empty answer, not an error. */
 private fun LatestReleaseResponse.toDomain(): UpdateInfo? = latest?.let {

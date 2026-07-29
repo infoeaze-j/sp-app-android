@@ -114,3 +114,53 @@ Device-gated (manual checklist): real commit + OS dialog, signature-mismatch fai
 unknown-sources round-trip, MediaStore on 29+ vs legacy ≤ 28, backup surviving uninstall plus the
 Files-app revert drill, relaunch after `MY_PACKAGE_REPLACED`, installer-of-record after the first
 self-update.
+
+---
+
+## Revision — 2026-07-29: resumable download + a distinct interrupted message
+
+Two contract changes landed in `docs/openapi.json` and are folded in here.
+`GET /app/releases/{release}/binary` became **`security: []`** — the server took the "exempt the
+binary" option, so a forced update before sign-in no longer has a token it cannot supply. It is now
+marked `@Headers(NO_AUTH_HEADER_LINE)` like the check. `minSupportedVersionCode` was **removed**
+from the `latest` payload; `ReleaseDto` defaults it to 0, which makes the client's floor comparison
+inert and leaves the server-computed `updateRequired` as the sole forcing signal. Both the field and
+the fallback are kept as the degradation path for a server that omits the verdicts.
+
+The same-origin rule on `apkUrl` survives with a new justification: no bearer token rides along any
+more, but the URL is named by the very response we are deciding whether to trust, and same-origin
+means the client never has to judge an arbitrary host.
+
+**Resume.** An interrupted transfer keeps its partial; the next attempt sends `Range: bytes=N-` and
+re-digests the prefix off local disk before appending. It is opportunistic and self-verifying:
+
+| Response | Action |
+|---|---|
+| `206` | Append at the offset. A `Content-Range` that starts elsewhere is not honoured. |
+| `200` | Server ignored the range — truncate the prefix and stream the whole file. |
+| `416` | Prefix is stale; retry from zero inside the same call, no second operator tap. |
+
+The SHA-256 + size check over the finished file is what makes every one of those decisions safe: a
+prefix belonging to different bytes can only fail verification, and that path deletes the file, so a
+bad prefix cannot loop. `Accept-Encoding` is pinned to `identity`, because OkHttp's transparent gzip
+drops `Content-Length` and would desynchronise every offset.
+
+Resume survives a process restart, so `clearDownloads()` became `pruneObsoleteDownloads()`: it
+deletes only builds at or below the running one. Discarding partials for other *pending* builds
+moved into `downloadAndVerify`, the only place that knows which build is being fetched — the
+launch-time prune runs concurrently with the check and cannot know yet. Byte-moving lives in
+`data/repository/ApkTransfer.kt`, leaving `UpdateRepositoryImpl` to classify responses.
+
+**The message.** A dropped download now maps to `TransientKind.DOWNLOAD_INTERRUPTED` →
+"Download interrupted", instead of `AppResult.Timeout` → "Outcome not confirmed / re-check before
+retrying". `Timeout` means the outcome is unknown; a dropped download has no such ambiguity —
+nothing was installed. The copy deliberately does not promise resuming, because that only happens
+when the server answers `206` and a `UiMessage` carries no format arguments to say which.
+
+Testing: `UpdateApiContractTest` grew resume cases (206 append, 200 fallback, 416 retry, wrong
+`Content-Range`, oversized prefix, corrupt prefix, header assertions) and inverted the two that
+asserted the old contract — the binary now goes out unauthenticated, and an interrupted download
+*keeps* its partial. `FakeUpdateRepository` tracks a resume offset so the resumed-progress UI is
+exercisable on a bare emulator. Still device-gated: a real range-capable back office (the published
+spec declares only 200 for the binary, so the 200-fallback path may be the only one live traffic
+ever takes) and a real drop/restore/restart cycle under a forced update.

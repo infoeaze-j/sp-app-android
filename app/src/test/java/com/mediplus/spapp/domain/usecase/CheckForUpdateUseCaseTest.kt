@@ -172,6 +172,30 @@ class CheckForUpdateUseCaseTest {
         assertEquals(AppResult.Success(UpdateStatus.Optional(published)), useCase())
     }
 
+    // ---- The floor is gone from the published payload; the server verdict has to carry it alone ----
+
+    @Test
+    fun `an absent floor still forces when the server says the update is required`() = runTest {
+        // minSupportedVersionCode was dropped from the contract, so it parses to 0. The client's own
+        // comparison goes inert, and updateRequired must be the whole of the forcing decision.
+        serverSays(AppResult.Success(info(minSupported = 0, updateRequired = true)))
+
+        assertEquals(
+            AppResult.Success(UpdateStatus.Forced(info(minSupported = 0, updateRequired = true))),
+            useCase(),
+        )
+    }
+
+    @Test
+    fun `an absent floor leaves an unrequired update optional rather than forcing it`() = runTest {
+        serverSays(AppResult.Success(info(minSupported = 0, updateRequired = false)))
+
+        assertEquals(
+            AppResult.Success(UpdateStatus.Optional(info(minSupported = 0, updateRequired = false))),
+            useCase(),
+        )
+    }
+
     @Test
     fun `transient failures pass through unchanged`() = runTest {
         val failure = AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY))

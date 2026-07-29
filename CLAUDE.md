@@ -106,10 +106,12 @@ settings. Tests for this stack live in `app/src/testDebug/` (not `test/`).
   `LoggingRedactionTest` guard this.
 - **Only endpoints the contract authenticates get a token.** `AuthInterceptor` attaches the bearer
   token to everything *except* requests marked `@Headers(NO_AUTH_HEADER_LINE)`, which it strips
-  before proceeding. That is exactly the two endpoints `docs/openapi.json` spells `security: []`:
-  `POST /auth/login` and `GET /app/releases/latest`. Note the deliberate split in the self-update
-  pair — the release *check* is unauthenticated, the release *binary* inherits the bearer
-  requirement, which is why `apkUrl` must stay same-origin. On login this is load-bearing rather
+  before proceeding. That is exactly the endpoints `docs/openapi.json` spells `security: []`:
+  `POST /auth/login`, `GET /app/releases/latest` **and, since 2026-07-29,
+  `GET /app/releases/{release}/binary`** — the server opened the binary up so a client that has
+  missed a required release can update before it is able to sign in. `apkUrl` must still stay
+  same-origin, now because the URL is named by the very response we are deciding whether to trust,
+  not because a token rides along. On login this is load-bearing rather
   than tidiness: the interceptor reads *any* 401 on a request that carried a token as a session
   loss, so an authenticated sign-in gets 401'd by the back office, is reported to the operator as
   "session expired", and eats the attempt. Add the marker to any new unauthenticated endpoint
@@ -146,15 +148,18 @@ bare id string or an object. All of it fails towards the safe answer rather than
 
 ### Open decisions from the 2026-07-28 spec realignment
 
-Two questions the realignment surfaced and deliberately did **not** answer. Each is a product or
-server call, not a coding one; nothing is blocked on them, and the current behaviour is the
-conservative option in every case.
+~~1. **The APK download is authenticated, but the update check runs before sign-in.**~~
+**Resolved 2026-07-29 by the server**, which took the "exempt the binary" option:
+`GET /app/releases/{release}/binary` is now `security: []`, so a forced update before sign-in has
+nothing to present and nothing to 401 on. The client marks it `@Headers(NO_AUTH_HEADER_LINE)`.
+The same contract revision also **dropped `minSupportedVersionCode`** from the `latest` payload —
+`ReleaseDto` defaults it to 0, which makes `CheckForUpdateUseCase`'s floor comparison inert and
+leaves the server-computed `updateRequired` as the sole forcing signal. The field and the fallback
+are kept deliberately, as the degradation path for a server that omits the verdicts.
 
-1. **The APK download is authenticated, but the update check runs before sign-in.**
-   `GET /app/releases/{release}/binary` requires the bearer token; the launch-time check is
-   unauthenticated by design (it runs before anyone signs in). A *forced* update therefore has no
-   token to present and will 401. Today that surfaces as a retryable failure rather than a loop.
-   Fix is either: move the update prompt behind sign-in, or have the server exempt the binary.
+One question remains open. It is a product or server call, not a coding one; nothing is blocked on
+it, and the current behaviour is the conservative option.
+
 2. **`MemberVerification.capabilities` is carried but not gated on.** `canVerifyFace`/`canEnroll`
    are parsed and available; the journey does not branch on them, because `canVerifyFace` is one of
    the fields the spec mis-types as `string` and a parsing quirk defaulting it to `false` would
@@ -162,9 +167,11 @@ conservative option in every case.
 
 ## Current state to be aware of
 
-- As of 2026-07-28 detekt is **still red on `main`** (16 weighted issues, all predating recent work:
-  `NfcModels` naming, line length, `VerifyFaceUseCase` return count). Check the baseline before
-  assuming your change caused a failure.
+- As of 2026-07-29 detekt is **still red on `main`** — **13** weighted issues, measured against a
+  clean `HEAD` worktree, all predating recent work (`LongParameterList` ×4, `LongMethod` ×2,
+  `TooManyFunctions` on `UpdateViewModel`, `TooGenericExceptionCaught` ×2, `MaxLineLength` ×2,
+  `VerifyFaceUseCase` return count). Check the baseline before assuming your change caused a
+  failure; the easiest way is `git worktree add --detach <tmp> HEAD` and run the CLI over that.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time `GET /app/releases/latest?versionCode=N` (unauthenticated, always 200, fail-open),
   SHA-256-verified streaming download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
@@ -176,10 +183,24 @@ conservative option in every case.
   cert can never rotate for an installed app), write `keystore.properties`, and back the keystore up
   off-machine. Do this before the first field rollout — updates only install over a same-key build, so
   any device that got an earlier debug-signed build needs a one-time manual reinstall to cross over.
-  `apkUrl` must stay same-origin with `BASE_URL` — `CheckForUpdateUseCase` now *enforces* that
-  (a build on any other host is refused, https or not, because the bearer token rides along); every
-  release must bump `versionCode`. The authenticated-binary-before-sign-in problem is open decision
-  #1 above.
+  `apkUrl` must stay same-origin with `BASE_URL` — `CheckForUpdateUseCase` *enforces* that (a build
+  on any other host is refused, https or not, so the response naming the URL cannot also choose the
+  host it comes from); every release must bump `versionCode`.
+- **The APK download resumes** (2026-07-29). An interrupted transfer keeps what it wrote and the
+  next attempt sends `Range: bytes=N-`, re-digesting the prefix off disk before appending. It is
+  opportunistic and self-verifying: `206` appends, `200` means the server ignored the range so the
+  prefix is truncated and the transfer restarts, `416` retries from zero inside the same call. None
+  of it is trusted — the SHA-256 over the finished file is what decides, and a failed digest deletes
+  the file so a bad prefix can never loop. `Accept-Encoding` is pinned to `identity` on the download
+  because OkHttp's transparent gzip would desynchronise every offset. The transfer mechanics live in
+  `data/repository/ApkTransfer.kt`, apart from the repository's response-classification job.
+  Consequently `clearDownloads()` is now `pruneObsoleteDownloads()` and deletes only builds at or
+  below the running one; discarding partials for *other* pending builds happens in
+  `downloadAndVerify`, the only place that knows which build is being fetched. A dropped download
+  reports `TransientKind.DOWNLOAD_INTERRUPTED` ("Download interrupted"), **not** `AppResult.Timeout`
+  — nothing about a dropped download is ambiguous, so the old "Outcome not confirmed / re-check
+  before retrying" was actively misleading. The message deliberately does not promise resuming,
+  since that only happens when the server answers `206` and a `UiMessage` has no format arguments.
 - **Device registration** (`POST /devices/register`): a client-generated `installId` UUID is minted
   and persisted once by `PrefsDataStore`, `SignInViewModel` registers best-effort right after a
   successful sign-in, and `DeviceIdInterceptor` attaches the returned id as `X-Device-Id` on every

@@ -57,7 +57,7 @@ class UpdateViewModelTest {
     @Before
     fun setUp() {
         apkFile = tempFolder.newFile("update-v7.apk")
-        coJustRun { repository.clearDownloads() }
+        coJustRun { repository.pruneObsoleteDownloads() }
         coJustRun { installer.abandonStaleSessions() }
         coJustRun { backupStore.pruneStaleBackups(any()) }
         coEvery { installer.canRequestInstalls() } returns true
@@ -121,7 +121,7 @@ class UpdateViewModelTest {
         assertEquals(UpdatePhase.Idle, vm.phase.value)
         coVerify(exactly = 1) { backupStore.pruneStaleBackups(5) }
         coVerify(exactly = 1) { installer.abandonStaleSessions() }
-        coVerify(exactly = 1) { repository.clearDownloads() }
+        coVerify(exactly = 1) { repository.pruneObsoleteDownloads() }
     }
 
     @Test

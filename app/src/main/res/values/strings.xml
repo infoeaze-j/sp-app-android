@@ -148,6 +148,11 @@
     <string name="err_timeout_title">Outcome not confirmed</string>
     <string name="err_timeout_body">We didn\'t get a confirmation. Nothing was assumed to have succeeded — re-check before retrying.</string>
 
+    <!-- Deliberately silent about resuming: the download only continues where it stopped when the
+         server honours a range request, and a UiMessage carries no format arguments to say which. -->
+    <string name="err_download_interrupted_title">Download interrupted</string>
+    <string name="err_download_interrupted_body">The connection dropped before the update finished downloading. Try again when the connection is stable.</string>
+
     <string name="err_session_ended_title">Session ended</string>
     <string name="err_session_ended_body">Your session is no longer active. Sign in again to continue; earlier steps must be repeated.</string>
 

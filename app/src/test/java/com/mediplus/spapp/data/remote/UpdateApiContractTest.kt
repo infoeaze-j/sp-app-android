@@ -178,9 +178,10 @@ class UpdateApiContractTest {
     // ---- Which half of the endpoint pair carries the token ----
 
     /**
-     * The spec splits the pair: `app.releases.latest` is `security: []`, the binary inherits the
-     * global bearer requirement. Both tests run through a real [AuthInterceptor] with a live
-     * session, because that is the only place the difference is observable.
+     * The spec marks **both** halves of the pair `security: []` — the binary was opened up so a
+     * client that has missed a required release can update before it is able to sign in. Both tests
+     * run through a real [AuthInterceptor] with a live session, because a session in memory is the
+     * only condition under which the interceptor would otherwise attach a token.
      */
     private fun authedApi(sessionManager: SessionManager): UpdateApi = Retrofit.Builder()
         .baseUrl(server.url("/"))
@@ -205,9 +206,9 @@ class UpdateApiContractTest {
     }
 
     @Test
-    fun `the binary download still carries the bearer token`() = runTest {
-        // The asymmetry is deliberate: published builds must not be publicly harvestable, which is
-        // also why the apkUrl has to stay same-origin with the API.
+    fun `the binary download goes out unauthenticated even with a live session`() = runTest {
+        // A forced update runs before sign-in, so there is no token to present. Attaching one
+        // anyway would also hand AuthInterceptor a 401 it would read as a session loss.
         val sessionManager = InMemorySessionManager()
         sessionManager.set(
             Session("tok-live", Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active),
@@ -216,7 +217,9 @@ class UpdateApiContractTest {
 
         authedApi(sessionManager).downloadApk(server.url("/app/releases/7/binary").toString())
 
-        assertEquals("Bearer tok-live", server.takeRequest().getHeader("Authorization"))
+        val recorded = server.takeRequest()
+        assertNull("the binary is `security: []`", recorded.getHeader("Authorization"))
+        assertNull("the no-auth marker must not reach the wire", recorded.getHeader("X-No-Auth"))
     }
 
     // ---- APK download + verification ----
@@ -260,7 +263,9 @@ class UpdateApiContractTest {
     }
 
     @Test
-    fun `the binary download is authenticated, so an unauthorised one stays retryable`() = runTest {
+    fun `an unexpected 401 on the unauthenticated binary stays retryable`() = runTest {
+        // The endpoint is `security: []`, so a 401 here is a server bug rather than a session
+        // problem. It must not crash and must not be read as anything but retryable.
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"message":"Unauthenticated."}"""))
 
         val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
@@ -309,7 +314,7 @@ class UpdateApiContractTest {
     }
 
     @Test
-    fun `a mid-stream disconnect stays transient and deletes the partial file`() = runTest {
+    fun `a mid-stream disconnect is reported as interrupted and keeps the partial`() = runTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -319,18 +324,167 @@ class UpdateApiContractTest {
 
         val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
 
-        assertTrue("expected TransientFailure, got $result", result is AppResult.TransientFailure)
-        assertFalse("partial file must not remain on disk", downloadedFile().exists())
+        assertEquals(
+            TransientKind.DOWNLOAD_INTERRUPTED,
+            (result as AppResult.TransientFailure).error.kind,
+        )
+        assertTrue("the partial is what the next attempt resumes from", downloadedFile().exists())
     }
 
     @Test
-    fun `clearing downloads removes leftovers from earlier runs`() = runTest {
+    fun `pruning keeps a partial for a build still on offer and drops the rest`() = runTest {
+        // Running build is 5, so 4 and 5 can never be installed again; 6 may still be the offer.
+        File(cacheDir, "update-v4.apk").writeBytes(ByteArray(10))
+        File(cacheDir, "update-v5.apk").writeBytes(ByteArray(10))
         File(cacheDir, "update-v6.apk").writeBytes(ByteArray(10))
-        File(cacheDir, "update-v7.apk").writeBytes(ByteArray(10))
+        File(cacheDir, "stray.tmp").writeBytes(ByteArray(10))
 
-        repository.clearDownloads()
+        repository.pruneObsoleteDownloads()
 
-        assertEquals(emptyList<File>(), cacheDir.listFiles().orEmpty().toList())
+        assertEquals(
+            listOf("update-v6.apk"),
+            cacheDir.listFiles().orEmpty().map { it.name }.sorted(),
+        )
+    }
+
+    // ---- Resume ----
+
+    /** Serves `[from, total)` as a well-formed 206, the way a range-capable server would. */
+    private fun enqueuePartialFrom(bytes: ByteArray, from: Int) {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                .setHeader("Content-Range", "bytes $from-${bytes.size - 1}/${bytes.size}")
+                .setBody(Buffer().write(bytes, from, bytes.size - from)),
+        )
+    }
+
+    private fun writePartial(byteCount: Int) {
+        downloadedFile().writeBytes(apkBytes.copyOf(byteCount))
+    }
+
+    @Test
+    fun `a fresh download sends no range and pins identity encoding`() = runTest {
+        enqueueApk(apkBytes)
+
+        repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        val recorded = server.takeRequest()
+        assertNull("nothing on disk to resume from", recorded.getHeader("Range"))
+        assertEquals(
+            "transparent gzip would desynchronise every resume offset",
+            "identity",
+            recorded.getHeader("Accept-Encoding"),
+        )
+    }
+
+    @Test
+    fun `a partial is resumed with a range request and verifies once appended`() = runTest {
+        writePartial(PARTIAL_SIZE)
+        enqueuePartialFrom(apkBytes, PARTIAL_SIZE)
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals("bytes=$PARTIAL_SIZE-", server.takeRequest().getHeader("Range"))
+        assertTrue("expected Success, got $result", result is AppResult.Success)
+        assertArrayEquals(apkBytes, downloadedFile().readBytes())
+    }
+
+    @Test
+    fun `a resumed download reports progress from the offset, never from zero`() = runTest {
+        writePartial(PARTIAL_SIZE)
+        enqueuePartialFrom(apkBytes, PARTIAL_SIZE)
+        val progress = mutableListOf<Pair<Long, Long>>()
+
+        repository.downloadAndVerify(infoFor(apkBytes)) { sofar, total -> progress.add(sofar to total) }
+
+        assertEquals("progress starts where the partial ended", PARTIAL_SIZE.toLong(), progress.first().first)
+        assertEquals("progress must end complete", apkBytes.size.toLong(), progress.last().first)
+        assertTrue("progress must be monotonic", progress.zipWithNext().all { (a, b) -> a.first <= b.first })
+    }
+
+    @Test
+    fun `a server that ignores the range restarts cleanly from zero`() = runTest {
+        // The shippable case: the spec declares only 200 for the binary, so this is what a back
+        // office with no range support does, and it must still produce a correct install.
+        writePartial(PARTIAL_SIZE)
+        enqueueApk(apkBytes)
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals("bytes=$PARTIAL_SIZE-", server.takeRequest().getHeader("Range"))
+        assertTrue("expected Success, got $result", result is AppResult.Success)
+        assertArrayEquals("the stale prefix must be truncated, not prepended", apkBytes, downloadedFile().readBytes())
+    }
+
+    @Test
+    fun `a range the server cannot satisfy is retried from zero without a second tap`() = runTest {
+        writePartial(PARTIAL_SIZE)
+        server.enqueue(MockResponse().setResponseCode(416))
+        enqueueApk(apkBytes)
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals("bytes=$PARTIAL_SIZE-", server.takeRequest().getHeader("Range"))
+        assertNull("the retry must ask for the whole file", server.takeRequest().getHeader("Range"))
+        assertTrue("expected Success, got $result", result is AppResult.Success)
+        assertArrayEquals(apkBytes, downloadedFile().readBytes())
+    }
+
+    @Test
+    fun `a 206 starting at the wrong offset fails verification rather than corrupting the file`() = runTest {
+        writePartial(PARTIAL_SIZE)
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(206)
+                // Claims an offset we did not ask for; the body cannot be appended to our prefix.
+                .setHeader("Content-Range", "bytes 0-${apkBytes.size - 1}/${apkBytes.size}")
+                .setBody(Buffer().write(apkBytes, PARTIAL_SIZE, apkBytes.size - PARTIAL_SIZE)),
+        )
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals(
+            BusinessCode.UPDATE_CORRUPTED,
+            (result as AppResult.BusinessRejection).error.code,
+        )
+        assertFalse("a file that failed the digest must never survive", downloadedFile().exists())
+    }
+
+    @Test
+    fun `a partial at or beyond the declared size is discarded instead of resumed`() = runTest {
+        downloadedFile().writeBytes(ByteArray(apkBytes.size + 1))
+        enqueueApk(apkBytes)
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertNull("an oversized prefix is not a prefix", server.takeRequest().getHeader("Range"))
+        assertTrue("expected Success, got $result", result is AppResult.Success)
+    }
+
+    @Test
+    fun `a prefix belonging to different bytes cannot survive verification`() = runTest {
+        // The digest is the backstop that makes opportunistic resume safe at all.
+        downloadedFile().writeBytes(ByteArray(PARTIAL_SIZE) { 0 })
+        enqueuePartialFrom(apkBytes, PARTIAL_SIZE)
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals(
+            BusinessCode.UPDATE_CORRUPTED,
+            (result as AppResult.BusinessRejection).error.code,
+        )
+        assertFalse("deleting here is what stops the same failure repeating", downloadedFile().exists())
+    }
+
+    @Test
+    fun `a partial for a superseded build is discarded when a new one starts`() = runTest {
+        File(cacheDir, "update-v6.apk").writeBytes(ByteArray(10))
+        enqueueApk(apkBytes)
+
+        repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertFalse("only the build being fetched keeps its partial", File(cacheDir, "update-v6.apk").exists())
     }
 
     @Test
@@ -348,5 +502,7 @@ class UpdateApiContractTest {
     private companion object {
         const val SHA = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6"
         const val APK_SIZE = 300_000
+        /** Deliberately not a multiple of the 64 KB copy buffer, so resume cannot land on a seam. */
+        const val PARTIAL_SIZE = 100_001
     }
 }

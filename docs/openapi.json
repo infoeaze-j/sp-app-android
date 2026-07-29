@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "FaceVerify Back Office",
+    "title": "Mediplus Service Provider",
     "version": "1.0.0",
-    "description": "The authoritative back office for the FaceVerify checkout app.\n\n**Errors.** Every failure uses one envelope and carries a stable,\nmachine-readable code. Clients branch on `error.code` \u2014 never on\nprose, and never on the HTTP status alone.\n\n```json\n{ \"error\": { \"code\": \"VERIFICATION_STALE\", \"message\": \"\u2026\", \"details\": {} } }\n```\n\n**Authentication.** `POST /auth/login` returns an opaque bearer\ntoken. Send it as `Authorization: Bearer <token>` on every other\ncall. The token is memory-only on the client and must never be\nlogged.\n\n**Devices.** Register once with `POST /devices/register` and send\nthe returned id as `X-Device-Id` on subsequent calls. Diagnostics\nrequires it; everywhere else it is recorded for the audit trail\nwhen present."
+    "description": "The authoritative back office for the Mediplus checkout app.\n\n**Errors.** Every failure uses one envelope and carries a stable,\nmachine-readable code. Clients branch on `error.code` \u2014 never on\nprose, and never on the HTTP status alone.\n\n```json\n{ \"error\": { \"code\": \"VERIFICATION_STALE\", \"message\": \"\u2026\", \"details\": {} } }\n```\n\n**Authentication.** `POST /auth/login` returns an opaque bearer\ntoken. Send it as `Authorization: Bearer <token>` on every other\ncall. The token is memory-only on the client and must never be\nlogged.\n\n**Devices.** Register once with `POST /devices/register` and send\nthe returned id as `X-Device-Id` on subsequent calls. Diagnostics\nrequires it; everywhere else it is recorded for the audit trail\nwhen present."
   },
   "servers": [
     {
@@ -53,12 +53,9 @@
                             "versionName": {
                               "type": "string"
                             },
-                            "minSupportedVersionCode": {
-                              "type": "integer"
-                            },
                             "url": {
                               "type": "string",
-                              "description": "Same origin as the API by construction: the client attaches\nits bearer token to this request, and a third-party host\nwould therefore receive the session token."
+                              "description": "Same origin as the API by construction, so the client never\nhas to trust a host this response could have named freely."
                             },
                             "sha256": {
                               "type": "string"
@@ -82,7 +79,6 @@
                           "required": [
                             "versionCode",
                             "versionName",
-                            "minSupportedVersionCode",
                             "url",
                             "sha256",
                             "sizeBytes",
@@ -127,7 +123,7 @@
     "/app/releases/{release}/binary": {
       "get": {
         "operationId": "app.releases.binary",
-        "description": "Authenticated, so published builds are not publicly harvestable, and\nstreamed in chunks so a 40 MB APK never sits in PHP's memory.",
+        "description": "Unauthenticated, because a client that has missed a required release has\nto be able to update before it can sign in. Streamed in chunks so a 40 MB\nAPK never sits in PHP's memory.",
         "summary": "GET /app/releases/{release}/binary",
         "tags": [
           "AppRelease"
@@ -152,11 +148,9 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/AuthenticationException"
           }
-        }
+        },
+        "security": []
       }
     },
     "/auth/login": {

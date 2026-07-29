@@ -14,9 +14,11 @@ import javax.inject.Inject
 /**
  * Turns the published version facts into a gated [UpdateStatus] for the running build.
  *
- * The back office now computes `updateRequired` / `updateAvailable` itself, so the "must update"
- * rule lives in one place; the client's own version comparison stays as the floor beneath it, which
- * is what keeps a server that omits the verdicts working.
+ * The back office computes `updateRequired` / `updateAvailable` itself, so the "must update" rule
+ * lives in one place. `minSupportedVersionCode` has since been dropped from the published payload,
+ * which makes the floor comparison below inert against the live contract (an absent field parses to
+ * 0, and no build is below 0) — it is kept as the fallback that keeps a server which omits the
+ * verdicts working, not as a second opinion on one that supplies them.
  *
  * Fail-open is the rule everywhere: nothing published, an undeployed endpoint, or a degenerate
  * payload (blank/malformed sha, non-positive size, off-origin url) must never leave a device stuck.
@@ -53,8 +55,10 @@ class CheckForUpdateUseCase @Inject constructor(
 
     /**
      * The APK must come from the API's own origin, which the spec states it does by construction.
-     * This is not a TLS preference: the client attaches its bearer token to the download, so any
-     * other host — https or not — would be handed the operator's session token.
+     * This is not a TLS preference. The download is unauthenticated now, so no session token rides
+     * along, but the rule still earns its place: the URL is named by the very response we are
+     * deciding whether to trust, and honouring an arbitrary host would let that response point the
+     * device at anyone's binary. Same-origin means the client never has to make that judgement.
      */
     private fun isSameOriginAsApi(url: String): Boolean {
         val apiOrigin = originOf(baseUrl) ?: return false
