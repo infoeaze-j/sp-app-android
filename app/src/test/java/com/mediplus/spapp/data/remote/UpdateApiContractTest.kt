@@ -1,10 +1,16 @@
 package com.mediplus.spapp.data.remote
 
+import com.mediplus.spapp.core.network.AuthInterceptor
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
+import com.mediplus.spapp.core.session.InMemorySessionManager
+import com.mediplus.spapp.core.session.SessionManager
 import com.mediplus.spapp.data.repository.UpdateRepositoryImpl
 import com.mediplus.spapp.domain.model.CurrentAppVersion
+import com.mediplus.spapp.domain.model.Operator
+import com.mediplus.spapp.domain.model.Session
+import com.mediplus.spapp.domain.model.SessionState
 import com.mediplus.spapp.domain.model.UpdateInfo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -20,6 +26,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -166,6 +173,50 @@ class UpdateApiContractTest {
         server.enqueue(MockResponse().setBodyDelay(3, TimeUnit.SECONDS).setBody("{}"))
 
         assertEquals(AppResult.Timeout, repository.fetchVersionInfo())
+    }
+
+    // ---- Which half of the endpoint pair carries the token ----
+
+    /**
+     * The spec splits the pair: `app.releases.latest` is `security: []`, the binary inherits the
+     * global bearer requirement. Both tests run through a real [AuthInterceptor] with a live
+     * session, because that is the only place the difference is observable.
+     */
+    private fun authedApi(sessionManager: SessionManager): UpdateApi = Retrofit.Builder()
+        .baseUrl(server.url("/"))
+        .client(OkHttpClient.Builder().addInterceptor(AuthInterceptor(sessionManager)).build())
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+        .create()
+
+    @Test
+    fun `the release check goes out unauthenticated`() = runTest {
+        val sessionManager = InMemorySessionManager()
+        sessionManager.set(
+            Session("tok-live", Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"latest":null}"""))
+
+        authedApi(sessionManager).latestRelease(versionCode = 5)
+
+        val recorded = server.takeRequest()
+        assertNull("the release check is `security: []`", recorded.getHeader("Authorization"))
+        assertNull("the no-auth marker must not reach the wire", recorded.getHeader("X-No-Auth"))
+    }
+
+    @Test
+    fun `the binary download still carries the bearer token`() = runTest {
+        // The asymmetry is deliberate: published builds must not be publicly harvestable, which is
+        // also why the apkUrl has to stay same-origin with the API.
+        val sessionManager = InMemorySessionManager()
+        sessionManager.set(
+            Session("tok-live", Operator("op-1", "Sam"), expiresAt = null, state = SessionState.Active),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(Buffer().write(ByteArray(4))))
+
+        authedApi(sessionManager).downloadApk(server.url("/app/releases/7/binary").toString())
+
+        assertEquals("Bearer tok-live", server.takeRequest().getHeader("Authorization"))
     }
 
     // ---- APK download + verification ----

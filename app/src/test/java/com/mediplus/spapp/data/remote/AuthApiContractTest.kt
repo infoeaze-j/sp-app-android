@@ -125,6 +125,33 @@ class AuthApiContractTest {
     }
 
     @Test
+    fun `sign-in goes out unauthenticated even with a session still in memory`() = runTest {
+        // docs/openapi.json declares `auth.login` with `security: []` — it is the one endpoint that
+        // must carry no bearer token. Sending one makes the back office answer 401, and a 401 on a
+        // request that carried a token reads as a session loss (see the test below).
+        sessionManager.set(activeSession("tok-stale"))
+        server.enqueue(MockResponse().setResponseCode(201).setBody(SESSION_BODY))
+
+        api.login(LoginRequest("sam", "pw"))
+
+        val recorded = server.takeRequest()
+        assertNull("sign-in must not be authenticated", recorded.getHeader("Authorization"))
+        assertNull("the no-auth marker is internal and must not reach the wire", recorded.getHeader("X-No-Auth"))
+    }
+
+    @Test
+    fun `a 401 on sign-in is a credential rejection, not a session loss`() = runTest {
+        // FR-005, not FR-004. A stale session in memory must not turn a rejected credential into a
+        // "session ended" notice that also throws away the operator's sign-in attempt.
+        sessionManager.set(activeSession("tok-stale"))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"message":"Unauthenticated."}"""))
+
+        api.login(LoginRequest("sam", "wrong"))
+
+        assertEquals(SessionState.Active, sessionManager.sessionState.value)
+    }
+
+    @Test
     fun `the session endpoint re-reads the same resource`() = runTest {
         sessionManager.set(activeSession("tok-xyz"))
         server.enqueue(MockResponse().setResponseCode(200).setBody(SESSION_BODY))

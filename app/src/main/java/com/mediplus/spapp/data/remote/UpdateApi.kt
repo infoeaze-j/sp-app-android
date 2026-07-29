@@ -1,9 +1,11 @@
 package com.mediplus.spapp.data.remote
 
+import com.mediplus.spapp.core.network.NO_AUTH_HEADER_LINE
 import kotlinx.serialization.Serializable
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.Query
 import retrofit2.http.Streaming
 import retrofit2.http.Url
@@ -21,6 +23,7 @@ import retrofit2.http.Url
 interface UpdateApi {
 
     /** @param versionCode the running build, so the server can compute `updateRequired` itself. */
+    @Headers(NO_AUTH_HEADER_LINE)
     @GET("app/releases/latest")
     suspend fun latestRelease(@Query("versionCode") versionCode: Int): Response<LatestReleaseResponse>
 

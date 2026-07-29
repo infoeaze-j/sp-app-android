@@ -104,6 +104,16 @@ settings. Tests for this stack live in `app/src/testDebug/` (not `test/`).
 - **Never log or persist identity/biometric data.** A captured frame is a `TransientFrame` that is
   zeroed in a `finally` the moment a decision returns or the flow aborts; `FaceFrameDisposalTest` and
   `LoggingRedactionTest` guard this.
+- **Only endpoints the contract authenticates get a token.** `AuthInterceptor` attaches the bearer
+  token to everything *except* requests marked `@Headers(NO_AUTH_HEADER_LINE)`, which it strips
+  before proceeding. That is exactly the two endpoints `docs/openapi.json` spells `security: []`:
+  `POST /auth/login` and `GET /app/releases/latest`. Note the deliberate split in the self-update
+  pair — the release *check* is unauthenticated, the release *binary* inherits the bearer
+  requirement, which is why `apkUrl` must stay same-origin. On login this is load-bearing rather
+  than tidiness: the interceptor reads *any* 401 on a request that carried a token as a session
+  loss, so an authenticated sign-in gets 401'd by the back office, is reported to the operator as
+  "session expired", and eats the attempt. Add the marker to any new unauthenticated endpoint
+  rather than special-casing it in the interceptor.
 - **Dispatchers are injected**, never referenced directly — `@IoDispatcher`, `@DefaultDispatcher`,
   `@MainDispatcher` from `DispatchersModule`. Unit tests use `MainDispatcherRule`.
 - **Every flow state is explicit.** ViewModels expose a sealed `…Phase` interface covering loading,
@@ -215,5 +225,11 @@ conservative option in every case.
   for you). `adb` is not on PATH — it lives at `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe`.
   Both launcher icons match `category.LAUNCHER`, so `monkey -p …` may open **Dev Settings** instead
   of the app; start the journey explicitly with `am start -n com.mediplus.spapp/.MainActivity`.
+  That form creates a task whose base intent carries no `MAIN`/`LAUNCHER`, which Android then can't
+  match against a launcher tap — before `MainActivity` was made `singleTask` (2026-07-29) every
+  later tap on the icon stacked a *new* `MainActivity` on the same task, and since the process (and
+  the in-memory session) survived, the operator was silently returned to sign-in mid-journey with a
+  live session. To reproduce field launch behaviour exactly, add `-a android.intent.action.MAIN
+  -c android.intent.category.LAUNCHER`.
   A `Failure calling service package: Broken pipe (32)` install error means the emulator died
   mid-install, not that anything is wrong with the APK.

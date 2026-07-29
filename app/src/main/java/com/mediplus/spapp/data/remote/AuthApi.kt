@@ -1,9 +1,11 @@
 package com.mediplus.spapp.data.remote
 
+import com.mediplus.spapp.core.network.NO_AUTH_HEADER_LINE
 import kotlinx.serialization.Serializable
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.POST
 
 /**
@@ -16,6 +18,8 @@ import retrofit2.http.POST
  */
 interface AuthApi {
 
+    /** `security: []` in the spec — the one call that must go out with no bearer token. */
+    @Headers(NO_AUTH_HEADER_LINE)
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<SessionResource>
 
