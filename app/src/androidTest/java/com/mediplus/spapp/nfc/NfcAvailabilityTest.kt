@@ -3,9 +3,8 @@ package com.mediplus.spapp.nfc
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.mediplus.spapp.core.nfc.NdefMemberCardReader
+import com.mediplus.spapp.core.nfc.UidMemberCardReader
 import com.mediplus.spapp.domain.model.NfcAvailability
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,7 +20,7 @@ class NfcAvailabilityTest {
     @Test
     fun isAvailable_returnsAValidState() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val reader = NdefMemberCardReader(context, Dispatchers.IO)
+        val reader = UidMemberCardReader(context)
 
         val availability = reader.isAvailable()
 

@@ -24,7 +24,7 @@ import android.os.StatFs
 import android.os.Environment
 
 /**
- * The real [DeviceDiagnostics]. Device-gated like [com.mediplus.spapp.core.nfc.NdefMemberCardReader]:
+ * The real [DeviceDiagnostics]. Device-gated like [com.mediplus.spapp.core.nfc.UidMemberCardReader]:
  * exercised on hardware/emulator, not in the JVM suite.
  */
 class AndroidDeviceDiagnostics @Inject constructor(

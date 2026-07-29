@@ -202,11 +202,21 @@ conservative option in every case.
   a re-login. This is **not** session persistence — the token still lives only in `InMemorySessionManager`,
   so process death still ends the session. No new screen, string or `UiMessage`; the operator just reaches
   the existing "session ended" notice on resume instead of three patient-facing steps later.
-- Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
-  camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
-  tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the
-  real `AndroidDeviceDiagnostics` reader against real hardware sensors (battery/thermal/network
-  transitions).
+- **The member card is read by UID, not NDEF — verified on-device 2026-07-29** (Sunmi V3, real card,
+  whole fake stack off). The clinic's card stock is MIFARE Classic 1K carrying **no NDEF message**:
+  `techList` is `NfcA, MifareClassic` only, sectors 0–4 are factory-blank under the default key, and
+  sectors 5–15 are locked with proprietary keys belonging to some other system. So `Ndef.get(tag)`
+  was always null and every tap failed as `CARD_UNREADABLE`. `NdefMemberCardReader` was **deleted**;
+  `UidMemberCardReader` + `CardUid` now decode the tag UID as an unsigned big-endian decimal
+  (`25 D5 6B C9` → `634743753`), which already satisfies the server's `^[0-9]{7,32}$`. The reader
+  sets `FLAG_READER_SKIP_NDEF_CHECK` deliberately: on this stock the platform NDEF check costs
+  ~400ms and drops the tag (`Check NDEF Failed - status = 3`, then "Tag lost, restarting polling
+  loop"). Note a UID is clonable and is not an authenticator — the card only *selects* a member, and
+  the back office plus the live face check remain what actually verify identity.
+- Device-gated and still unverified: non-happy-path camera scenarios, a comma-decimal locale
+  (`en-ZA`) pass over the amount keypad, the instrumented tests, LeakCanary clean-run, the
+  performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the real `AndroidDeviceDiagnostics`
+  reader against real hardware sensors (battery/thermal/network transitions).
 - **`SessionRevalidator.bind()` is verified on-device as of 2026-07-29** (emulator, whole fake stack
   off, real back office). Both halves of the guard hold: signed out, a background→foreground cycle
   makes *no* HTTP call at all; signed in, three consecutive cycles each fired exactly one

@@ -1,7 +1,7 @@
 package com.mediplus.spapp.dev
 
 import android.app.Activity
-import com.mediplus.spapp.core.nfc.NdefMemberCardReader
+import com.mediplus.spapp.core.nfc.UidMemberCardReader
 import com.mediplus.spapp.core.nfc.NfcHost
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.dev.nfc.FakeMemberCardReader
@@ -17,7 +17,7 @@ import org.junit.Test
 class SwitchingMemberCardReaderTest {
 
     private val host = NfcHost(mockk<Activity>(relaxed = true))
-    private val real = mockk<NdefMemberCardReader>(relaxed = true)
+    private val real = mockk<UidMemberCardReader>(relaxed = true)
 
     private fun reader(fakeEnabled: Boolean): Pair<SwitchingMemberCardReader, TestDevSettingsStore> {
         val store = TestDevSettingsStore(DevSettings(fakeEnabled = fakeEnabled, latencyMillis = 0L))

@@ -1,7 +1,7 @@
 package com.mediplus.spapp.dev.nfc
 
 import com.mediplus.spapp.core.nfc.MemberCardReader
-import com.mediplus.spapp.core.nfc.NdefMemberCardReader
+import com.mediplus.spapp.core.nfc.UidMemberCardReader
 import com.mediplus.spapp.core.nfc.NfcHost
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.dev.DevSettingsStore
@@ -12,7 +12,7 @@ import javax.inject.Inject
 
 /** Debug-only router: emulate the card tap while the CARD seam is faked, else use real NFC. */
 class SwitchingMemberCardReader @Inject constructor(
-    private val real: NdefMemberCardReader,
+    private val real: UidMemberCardReader,
     private val fake: FakeMemberCardReader,
     private val store: DevSettingsStore,
 ) : MemberCardReader {

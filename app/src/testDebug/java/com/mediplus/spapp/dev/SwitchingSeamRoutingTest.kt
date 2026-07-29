@@ -7,7 +7,7 @@ import com.mediplus.spapp.core.camera.TransientFrame
 import com.mediplus.spapp.core.device.DeviceIdStore
 import com.mediplus.spapp.core.diagnostics.AndroidDeviceDiagnostics
 import com.mediplus.spapp.core.diagnostics.UptimeState
-import com.mediplus.spapp.core.nfc.NdefMemberCardReader
+import com.mediplus.spapp.core.nfc.UidMemberCardReader
 import com.mediplus.spapp.core.nfc.NfcHost
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.session.InMemorySessionManager
@@ -210,7 +210,7 @@ class SwitchingSeamRoutingTest {
     @Test
     fun `the card reader uses real NFC when only the card seam is off`() = runTest {
         val store = store(FakeSeam.CARD)
-        val real = mockk<NdefMemberCardReader>(relaxed = true)
+        val real = mockk<UidMemberCardReader>(relaxed = true)
         val host = NfcHost(mockk<Activity>(relaxed = true))
 
         SwitchingMemberCardReader(real, FakeMemberCardReader(store), store).awaitAndRead(host)
