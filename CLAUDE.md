@@ -194,12 +194,26 @@ conservative option in every case.
   the existing "session ended" notice on resume instead of three patient-facing steps later.
 - Device-gated and still unverified: `NdefMemberCardReader` against real card stock, non-happy-path
   camera scenarios, a comma-decimal locale (`en-ZA`) pass over the amount keypad, the instrumented
-  tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, the
+  tests, LeakCanary clean-run, the performance numbers in `docs/PERFORMANCE_AND_LEAKS.md`, and the
   real `AndroidDeviceDiagnostics` reader against real hardware sensors (battery/thermal/network
-  transitions), and `SessionRevalidator.bind()` actually firing — no Robolectric here (same
-  precedent as `DiagnosticsPoller.bind()`), so the real check is a device with the `AUTH` seam
-  turned OFF in Dev Settings: sign in, background, reopen, confirm `GET /auth/session` in logcat
-  (the default fake-`AUTH` settings can't tell a firing revalidator from a silent one).
+  transitions).
+- **`SessionRevalidator.bind()` is verified on-device as of 2026-07-29** (emulator, whole fake stack
+  off, real back office). Both halves of the guard hold: signed out, a background→foreground cycle
+  makes *no* HTTP call at all; signed in, three consecutive cycles each fired exactly one
+  `GET /auth/session` → 200. Re-running it is manual — there is no Robolectric here (same precedent
+  as `DiagnosticsPoller.bind()`), and the default fake-`AUTH` settings can't tell a firing
+  revalidator from a silent one, so the check needs the `AUTH` seam turned OFF in Dev Settings.
+- On login, `DiagnosticsPoller`'s first poll races `POST /devices/register` and loses:
+  `GET /diagnostics/requests/pending` returns **403** because `X-Device-Id` isn't set yet. Harmless
+  today — diagnostics is best-effort and every later poll (which is device-registered) returns 200 —
+  but it means the login-time poll is effectively always wasted on a device's first-ever sign-in.
 - Driving the emulator headlessly: `adb exec-out screencap -p > file.png` **corrupts the PNG** under
   PowerShell — use `adb shell screencap -p /sdcard/x.png` then `adb pull`. Git Bash mangles
   `/sdcard/...` paths, so run adb from PowerShell.
+- Installing by hand needs `adb install -r -t`: AGP marks `intermediates/apk/debug/app-debug.apk`
+  **testOnly**, so without `-t` it fails `INSTALL_FAILED_TEST_ONLY` (Android Studio passes the flag
+  for you). `adb` is not on PATH — it lives at `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe`.
+  Both launcher icons match `category.LAUNCHER`, so `monkey -p …` may open **Dev Settings** instead
+  of the app; start the journey explicitly with `am start -n com.mediplus.spapp/.MainActivity`.
+  A `Failure calling service package: Broken pipe (32)` install error means the emulator died
+  mid-install, not that anything is wrong with the APK.
