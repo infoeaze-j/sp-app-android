@@ -37,10 +37,19 @@
         android:theme="@style/Theme.SpApp"
         tools:targetApi="34">
 
+        <!-- singleTask, not the default: this is a single-Activity app, so a second MainActivity
+             instance is never wanted. Android only reuses a task when the incoming intent matches
+             the task's root intent, so a task started any way other than by tapping the launcher
+             icon (`adb am start -n`, a shortcut, another app) gets a *new* MainActivity stacked on
+             top at every later launcher tap. The process — and with it the in-memory session —
+             survives, but the new Activity brings a new NavHost that starts at sign-in: the
+             operator is dropped back to the sign-in screen mid-journey with their session still
+             live. singleTask makes that unreachable by construction. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.SpApp"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
