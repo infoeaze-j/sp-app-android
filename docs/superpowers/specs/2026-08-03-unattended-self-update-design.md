@@ -1,0 +1,252 @@
+# Unattended self-update — design
+
+**Date:** 2026-08-03
+**Status:** Designed — not yet implemented
+**Builds on:** `docs/superpowers/specs/2026-07-24-self-update-design.md` (the foreground flow)
+**Endpoints:** `GET /app/releases/latest`, `GET /app/releases/{release}/binary` (both `security: []`)
+
+## Problem
+
+A fleet of Sunmi V2s and V3 units passes through the office once. That single pass is the only
+practical opportunity to load the app. Everything after it — every fix, every contract change the
+back office makes — has to arrive over the air, on devices nobody in the business will physically
+touch again.
+
+The self-update mechanism shipped on 2026-07-24 cannot do that. It is driven entirely from the UI:
+`UpdateViewModel.init` runs the check, `viewModelScope` owns download, backup and install, and
+`UpdateHost` renders it. **If nobody opens the app, no update ever happens.** A device that is
+switched on each morning and only used for the occasional patient journey may go weeks without the
+update path executing, and a device that is powered on but idle will never update at all.
+
+Two further facts, discovered while auditing the path for this design, would have stopped a rollout
+regardless of any code change. They are recorded here because they gate everything below:
+
+1. **No release signing key exists.** There is no `keystore.properties` and no `.jks` in the tree.
+   `app/build.gradle.kts:70` falls back to debug signing when that file is absent, so a release APK
+   built today is signed with the build machine's `~/.android/debug.keystore`. Any device that
+   leaves the office with such a build can never receive a properly-signed update
+   (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`); the only repair is a manual uninstall and reinstall, per
+   device, in the field.
+2. **The release back-office URL is a private LAN address** — `https://10.21.2.82:8080/api/v1/`
+   (`app/build.gradle.kts:44`). A device on a clinic network or mobile data cannot reach it.
+   `CheckForUpdateUseCase` additionally enforces that `apkUrl` is same-origin with `BASE_URL`, so
+   the public host must also serve the APK bytes.
+
+Neither is a coding problem, and neither is in scope for this design. Both must be resolved before
+the first device leaves the building.
+
+## Requirement
+
+After the app has been launched once by a human on a device, published updates must install without
+anyone opening it again — silently where the platform permits, and with a single operator tap where
+it does not. A device that is rebooted and left alone must still end up on the current build.
+
+## Non-goal: this does not remove the first manual launch
+
+Android places a newly installed app in the *stopped state*. A stopped app receives no broadcasts at
+all — not `BOOT_COMPLETED`, not anything — and cannot be started by any implicit mechanism until a
+human launches it once. There is no permission, flag or API that avoids this; it is the platform's
+anti-malware rule.
+
+The office pass must therefore include "install, then tap the icon once". After that first launch
+the app is eligible for background wakeups permanently, including across reboots. Force-stopping the
+app from Settings returns it to the stopped state; swiping it off the recents list does not.
+
+## Current state
+
+- `UpdateRepository`, `ApkTransfer`, `CheckForUpdateUseCase` and `MediaStoreApkBackupStore` are all
+  already free of UI and lifecycle assumptions. They are headless-safe as written.
+- `UpdateViewModel` owns all orchestration and is the only caller of those pieces. It is already
+  carrying a `TooManyFunctions` detekt issue on `main`.
+- `PackageInstallerApkInstaller` deliberately does not request a confirmation-free install; its KDoc
+  (lines 25–28) documents the path and states it is not enabled.
+- `UpdateStatusReceiver` already handles `STATUS_PENDING_USER_ACTION` by launching the system
+  confirmation activity, and `InstallStatusEvent.isTerminal` already treats that status as
+  non-terminal.
+- `DiagnosticsPoller` and `SessionRevalidator` establish the `@Singleton` +
+  `ProcessLifecycleOwner` observer pattern, bound from `SpApp.onCreate()`.
+- WorkManager is not a dependency.
+
+## Design
+
+### 1. `UpdateCoordinator` — one implementation, two callers
+
+Extract the orchestration out of `UpdateViewModel` into a `@Singleton UpdateCoordinator` in
+`core/update`, owning:
+
+- a `Mutex`, so exactly one update attempt runs at a time regardless of who triggered it;
+- `val phase: StateFlow<UpdatePhase>`, the single source of truth the UI renders;
+- `suspend fun runUpdate(presence: Presence)`;
+- the operator intents `UpdateViewModel` exposes today (accept, retry, dismiss, returned-from-settings).
+
+`UpdateViewModel` becomes a thin adapter over it. The worker calls the same `runUpdate`.
+
+**Why a coordinator rather than "the worker owns the work and the UI observes `WorkInfo`."** The
+latter is the more conventional WorkManager shape, but `WorkInfo` progress is an untyped `Data`
+bundle. Routing state through it would break the sealed-`…Phase` convention the codebase enforces
+everywhere, push a platform type into the UI layer, and cost the JVM-testability of the whole flow.
+A singleton with a `StateFlow` keeps one code path, one set of explicit states, and MockK-level
+tests.
+
+This also resolves the standing `TooManyFunctions` issue on `UpdateViewModel` rather than adding
+to it.
+
+### 2. `UpdateWorker`
+
+A `@HiltWorker CoroutineWorker` whose entire body is `coordinator.runUpdate(Presence.Headless)`
+mapped to a `Result`.
+
+- Periodic, 6-hour interval, constrained to `NetworkType.CONNECTED`, exponential backoff.
+- `Result` mapping is deliberate: a `TransientFailure` or `Timeout` from the check or the download
+  returns `Result.retry()` so WorkManager's backoff handles a flaky clinic connection; everything
+  else — up to date, a business rejection, a corrupted APK, or a commit awaiting confirmation —
+  returns `Result.success()`, because the next periodic run is the right retry cadence and hammering
+  a server that gave a definite answer helps nobody.
+- Enqueued as unique periodic work with `ExistingPeriodicWorkPolicy.KEEP` from `SpApp.onCreate()`,
+  beside the existing `bind()` calls. Re-enqueuing on every process start is idempotent and
+  self-heals a schedule the OEM dropped.
+- New dependencies: `androidx.work:work-runtime-ktx` and `androidx.hilt:hilt-work`, plus
+  `HiltWorkerFactory`, `SpApp : Configuration.Provider`, and removal of WorkManager's
+  `androidx.startup` auto-initializer from the merged manifest.
+
+**Reboot.** WorkManager persists its schedule through JobScheduler and reschedules itself on boot,
+so no receiver is strictly required. Because these are custom-OEM Sunmi builds and silently dropped
+background jobs are a well-known OEM failure class, this design also adds
+`RECEIVE_BOOT_COMPLETED` and a minimal receiver that re-enqueues with `KEEP`. It is a few lines of
+insurance against a class of bug that is invisible until the fleet has already gone stale.
+
+### 3. Presence, and the branch that actually matters
+
+The install branch must **not** be a `Build.VERSION.SDK_INT` test. Sunmi ships modified Android; a
+V3 reporting API 33 may still have a `PackageInstaller` that refuses a confirmation-free commit. A
+version check would assume silence, never receive a terminal status, and suspend forever. The
+platform's own answer is the only trustworthy signal.
+
+So: **always request silent, and let the system decide.**
+
+`PackageInstallerApkInstaller.sessionParams()` gains, guarded purely for API availability:
+
+```kotlin
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+}
+```
+
+with `<uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />` —
+a normal permission, auto-granted, inert below API 31.
+
+The system then answers either with a terminal status (it installed; nobody was involved) or with
+`STATUS_PENDING_USER_ACTION` plus a confirmation `Intent`. The only remaining question is whether a
+human is present, which a new `@Singleton ForegroundTracker` answers — another
+`ProcessLifecycleOwner` observer, following `DiagnosticsPoller` exactly.
+
+`UpdateStatusReceiver` branches on that:
+
+- **Foreground** → `startActivity(confirm)`, unchanged from today.
+- **Headless** → post a notification whose `PendingIntent` wraps `confirm`, then publish a terminal
+  event so the suspended `install()` returns `InstallOutcome.AwaitingConfirmation`.
+
+`InstallOutcome` gains `AwaitingConfirmation`; `UpdatePhase` gains `ConfirmationPending`.
+
+**This closes a latent hang.** On API 29+ a background activity launch is normally blocked and
+logged rather than thrown, so the `SecurityException` catch at `UpdateStatusReceiver.kt:51` would
+not fire, `publishLaunchFailure` would not run, and `install()` would suspend indefinitely. The bug
+is unreachable today because installs only occur with the app open. It becomes a guaranteed hang
+the moment a worker drives the flow.
+
+### 4. Keeping the pending session alive
+
+A session waiting on a notification tap must survive. `abandonStaleSessions()` currently abandons
+every session belonging to this app at launch, which would orphan the notification's intent. The
+coordinator records the pending session id and the installer skips it. If the operator opens the app
+rather than tapping the notification, the foreground flow re-checks and re-offers, and the stale
+session is abandoned at that point.
+
+### 5. Reuse an APK that is already downloaded and verified
+
+`resumableBytes()` (`ApkTransfer.kt:68`) deletes any file at or past the declared size, so a
+download that completed but has not been installed is discarded and fetched again in full. That path
+was rare before. It becomes the *common* case here, because "downloaded, waiting for a confirmation
+tap" is exactly the state the headless flow parks in.
+
+Fix: before opening a transfer, if the cached file's byte count and SHA-256 both match what the back
+office published, return `Success` without making a request. The digest remains the sole authority
+on whether those bytes may be installed, so this is a pure saving with no new trust.
+
+### 6. The backup is best-effort, never a gate
+
+`UpdateViewModel.backupAndInstall` currently refuses to install when `backupCurrentApk` fails — "no
+backup, no install, ever". Headless, on a device with a full storage volume, that stops every future
+update permanently with nobody present to notice.
+
+**Decision (2026-08-03): the gate is removed entirely.** The coordinator attempts the backup,
+records the failure, and installs regardless. Rationale: rollback is already a manual procedure
+(uninstall, then install the backup by hand), so its practical value on a field device that nobody
+will touch is limited — while a device silently stranded on a stale build is a real and unrecoverable
+outcome.
+
+This has a consequence that must be followed through, or the change is half-done. On a pre-Android-10
+device — which the V2s may well be — `needsLegacyWritePermission()` is true and `UpdateHost` asks for
+`WRITE_EXTERNAL_STORAGE` before accepting the update. Denying it currently lands in
+`onLegacyWriteDenied()`, which fails the whole attempt with `UPDATE_BACKUP_FAILED`. Under the new
+rule that denial must instead **skip the backup and proceed to install**, exactly as a failed
+`backupCurrentApk` now does. Otherwise a single "Deny" tap would permanently block updates on the
+oldest devices in the fleet, which is precisely the outcome this decision exists to prevent.
+`BusinessCode.UPDATE_BACKUP_FAILED` consequently loses its last blocking caller and is retained only
+as a diagnostic code.
+
+### 7. Notifications
+
+Requires a notification channel, and on API 33 (the V3s) the `POST_NOTIFICATIONS` runtime
+permission, which should be granted during the office pass. If it is denied, the headless path
+degrades to "installs the next time somebody opens the app" — no worse than today's behaviour.
+
+### 8. Permission auto-reset
+
+Android 11+ revokes runtime permissions for unused apps, which could strip `REQUEST_INSTALL_PACKAGES`
+from exactly the idle devices this design targets. A worker running every six hours should count as
+use, but the app should also check `isAutoRevokeWhitelisted` and request the exemption once, at the
+office.
+
+## Unchanged
+
+`UpdateRepository`, `ApkTransfer`, `CheckForUpdateUseCase`, `MediaStoreApkBackupStore`,
+`InstallEventBus`, and the whole `AppResult` / `ErrorMapper` treatment. The containment seams the
+project already enforces are what make this a contained change rather than a rewrite.
+
+## Testing
+
+- `UpdateCoordinatorTest` — inherits the existing `UpdateViewModelTest` cases, plus mutual exclusion
+  under concurrent triggers and both `Presence` values.
+- `UpdateViewModelTest` — reduced to adapter behaviour over a fake coordinator.
+- `UpdateWorkerTest` — `TestListenableWorkerBuilder`, asserting the worker's `Result` mapping
+  (retry on transient, success on every definite answer).
+- Backup-is-not-a-gate — explicit tests that a failed `backupCurrentApk` **and** a denied legacy
+  write permission both still reach `Installing`. These are denial-path tests in the constitution's
+  sense, and they are the ones that would have caught the half-done version of section 6.
+- Installer — session-params construction and the presence branch; the platform call stays behind
+  the seam.
+- `ApkTransfer` — the already-complete-and-verified short circuit.
+- **Bench test on a real V3, and on a real V2s.** Publish `versionCode 5`, leave the device locked
+  and untouched, and confirm the update lands. This is the only evidence that counts, and it must
+  happen before the fleet ships.
+
+## Rollout consequence worth planning for
+
+`UPDATE_PACKAGES_WITHOUT_USER_ACTION` keys off being the *installer of record*. A sideloaded app is
+not — the shell is. The first time the app installs itself, it becomes its own installer of record.
+
+Worst case is therefore "the first update needs one tap; every update afterwards is silent". This
+argues for ending the office pass with **one real self-update performed on the bench**: ship
+`versionCode 4`, publish `5`, and let the device pull it. That both promotes the device to
+silent-capable and proves the entire chain — signing, URL, download, digest, install, relaunch — on
+that specific unit before it leaves.
+
+## Open items
+
+- **V2s Android version is unconfirmed.** The V3s are Android 13 (API 33) and will update silently.
+  If the V2s are below API 31 they will require one operator tap per update, delivered by
+  notification. This changes nothing in the build — the design is capability-driven — but it changes
+  what can be promised to the clinics.
+- **Whether the released `USER_ACTION_NOT_REQUIRED` path is honoured on Sunmi's modified Android 13**
+  can only be settled on a real unit. The design fails safe either way.
