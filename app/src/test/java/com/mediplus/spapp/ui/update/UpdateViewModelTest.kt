@@ -8,6 +8,8 @@ import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.core.update.ApkBackupStore
 import com.mediplus.spapp.core.update.ApkInstaller
 import com.mediplus.spapp.core.update.InstallOutcome
+import com.mediplus.spapp.core.update.RetryTarget
+import com.mediplus.spapp.core.update.UpdatePhase
 import com.mediplus.spapp.data.repository.UpdateRepository
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.DownloadedApk

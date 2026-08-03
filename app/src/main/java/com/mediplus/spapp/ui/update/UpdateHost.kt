@@ -31,6 +31,7 @@ import com.mediplus.spapp.R
 import com.mediplus.spapp.core.ui.components.ActionDrawer
 import com.mediplus.spapp.core.ui.components.DrawerAction
 import com.mediplus.spapp.core.ui.theme.LocalSpacing
+import com.mediplus.spapp.core.update.UpdatePhase
 
 /**
  * Hosts the whole self-update surface above the app chrome (drawn after the Scaffold in NavGraph,
@@ -100,6 +101,8 @@ private fun UpdatePhaseSurface(
         is UpdatePhase.Installing -> UpdateOverlay(stringResource(R.string.update_installing)) {
             CircularProgressIndicator()
         }
+        // Rendered in Task 6, once the phase can actually be produced.
+        is UpdatePhase.ConfirmationPending -> Unit
         UpdatePhase.Restarting -> UpdateOverlay(stringResource(R.string.update_restarting)) {
             CircularProgressIndicator()
         }

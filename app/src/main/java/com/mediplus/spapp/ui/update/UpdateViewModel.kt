@@ -12,6 +12,9 @@ import com.mediplus.spapp.core.result.appErrorOrNull
 import com.mediplus.spapp.core.update.ApkBackupStore
 import com.mediplus.spapp.core.update.ApkInstaller
 import com.mediplus.spapp.core.update.InstallOutcome
+import com.mediplus.spapp.core.update.RESTARTING_SETTLE_MILLIS
+import com.mediplus.spapp.core.update.RetryTarget
+import com.mediplus.spapp.core.update.UpdatePhase
 import com.mediplus.spapp.data.repository.UpdateRepository
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.DownloadedApk
@@ -25,39 +28,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-/** How long the restarting overlay lingers before recovering to Idle when the process survives. */
-private const val RESTARTING_SETTLE_MILLIS = 1_500L
-
-/**
- * Which stage a failed update attempt re-enters. INSTALL keeps the verified download; PERMISSION
- * goes all the way back to the offer, because that is the only phase whose action asks for the
- * legacy storage permission again — and nothing has been downloaded yet.
- */
-enum class RetryTarget { DOWNLOAD, INSTALL, PERMISSION }
-
-/**
- * Every observable state of the self-update flow, explicit per convention. A successful install
- * has no lasting phase: the system kills the process mid-install, so success manifests as process
- * death. [Restarting] renders only when we survive the commit (the fake dev installer, or the rare
- * real case), and then settles back to [Idle] rather than freezing on the overlay.
- */
-sealed interface UpdatePhase {
-    data object Idle : UpdatePhase
-    data class CheckFailed(val message: UiMessage) : UpdatePhase
-    data class UpdateAvailable(val info: UpdateInfo, val forced: Boolean) : UpdatePhase
-    data class PermissionNeeded(val info: UpdateInfo, val forced: Boolean) : UpdatePhase
-    data class Downloading(val bytesSoFar: Long, val totalBytes: Long, val forced: Boolean) : UpdatePhase
-    data class BackingUp(val forced: Boolean) : UpdatePhase
-    data class Installing(val forced: Boolean) : UpdatePhase
-    data object Restarting : UpdatePhase
-    data class Failed(
-        val message: UiMessage,
-        val info: UpdateInfo,
-        val forced: Boolean,
-        val retry: RetryTarget,
-    ) : UpdatePhase
-}
 
 /**
  * Orchestrates the self-update journey: launch-time housekeeping + check, then
