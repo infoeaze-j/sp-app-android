@@ -65,12 +65,24 @@ class CheckForUpdateUseCase @Inject constructor(
         return originOf(url) == apiOrigin
     }
 
+    /**
+     * Scheme + host + port, with an omitted port resolved to the scheme's default so that
+     * `https://host/` and `https://host:443/` compare equal — they name the same origin. This is
+     * load-bearing rather than tidy: `BASE_URL` names no port, while the back office is free to emit
+     * either form in `apkUrl`. Comparing the raw ports would refuse every update, and the refusal
+     * surfaces as [TransientKind.UNKNOWN] — an opaque "try again" the operator can never resolve.
+     */
     private fun originOf(url: String): String? = runCatching {
         val uri = URI(url)
-        uri.host?.let { host -> "${uri.scheme}://$host:${uri.port}" }
+        uri.host?.let { host -> "${uri.scheme}://$host:${effectivePort(uri)}" }
     }.getOrNull()
+
+    private fun effectivePort(uri: URI): Int =
+        if (uri.port != NO_PORT) uri.port else uri.scheme?.let(DEFAULT_PORTS::get) ?: NO_PORT
 
     private companion object {
         val SHA256_HEX = Regex("[0-9a-fA-F]{64}")
+        const val NO_PORT = -1
+        val DEFAULT_PORTS = mapOf("https" to 443, "http" to 80)
     }
 }

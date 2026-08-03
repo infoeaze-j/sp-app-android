@@ -56,6 +56,10 @@ class CheckForUpdateUseCaseTest {
         coEvery { repository.fetchVersionInfo() } returns result
     }
 
+    /** The production shape: https, and a base URL that names no port. */
+    private fun httpsUseCase(baseUrl: String = HTTPS_BASE_URL) =
+        CheckForUpdateUseCase(repository, CurrentAppVersion(code = 5, name = "1.4"), baseUrl)
+
     @Test
     fun `nothing published means up to date`() = runTest {
         serverSays(AppResult.Success(null))
@@ -143,6 +147,36 @@ class CheckForUpdateUseCaseTest {
     }
 
     @Test
+    fun `an apk url naming the default port matches a base url that omits it`() = runTest {
+        // The production base URL names no port (https://bio.infoeaze.com/api/v1/), but the back
+        // office is free to emit the explicit :443 form of the same origin. Refusing it would make
+        // every update un-installable, and isInstallable()'s failure is an opaque retryable error —
+        // so the operator would see "try again" forever with nothing to act on.
+        val published = info(apkUrl = "https://backoffice.example.com:443/api/v1/app/releases/6/binary")
+        serverSays(AppResult.Success(published))
+        val useCase = httpsUseCase()
+
+        assertEquals(AppResult.Success(UpdateStatus.Optional(published)), useCase())
+    }
+
+    @Test
+    fun `an apk url omitting the port matches a base url that names the default`() = runTest {
+        val published = info(apkUrl = "https://backoffice.example.com/api/v1/app/releases/6/binary")
+        serverSays(AppResult.Success(published))
+        val useCase = httpsUseCase(baseUrl = "https://backoffice.example.com:443/api/v1/")
+
+        assertEquals(AppResult.Success(UpdateStatus.Optional(published)), useCase())
+    }
+
+    @Test
+    fun `a url on another host still fails when neither side names a port`() = runTest {
+        serverSays(AppResult.Success(info(apkUrl = "https://cdn.example.net/api/v1/app.apk")))
+        val useCase = httpsUseCase()
+
+        assertTrue(useCase() is AppResult.TransientFailure)
+    }
+
+    @Test
     fun `a relative url fails open as a check failure`() = runTest {
         serverSays(AppResult.Success(info(apkUrl = "app/releases/6/binary")))
 
@@ -213,6 +247,7 @@ class CheckForUpdateUseCaseTest {
 
     private companion object {
         const val BASE_URL = "http://backoffice.example.com/api/v1/"
+        const val HTTPS_BASE_URL = "https://backoffice.example.com/api/v1/"
         const val VALID_SHA = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6"
     }
 }
