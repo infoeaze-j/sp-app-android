@@ -10,8 +10,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * What a version check found: the retry classification, plus the offer itself when there is one.
+ * Handed back directly to the caller so it never has to recover the offer by re-reading
+ * [UpdateCoordinator.phase] — a gesture (e.g. [UpdateCoordinator.dismiss]) landing between the check
+ * and that read could silently turn a fresh offer back into [UpdatePhase.Idle].
+ */
+private data class CheckOutcome(val attempt: UpdateAttempt, val offer: UpdatePhase.UpdateAvailable?)
 
 /**
  * The single owner of the self-update journey
@@ -23,9 +32,17 @@ import javax.inject.Singleton
  * untyped `Data` bundle instead would have broken the sealed-`…Phase` convention, pushed a platform
  * type into the UI layer, and cost the JVM-testability of the whole flow.
  *
- * The mutex is a `tryLock`, not a `withLock`: an overlapping trigger is *skipped*, not queued. Two
- * queued attempts would mean a second full download-and-install immediately after the first, which
- * is never what either caller wants.
+ * [attemptLock] guards every path that reaches [pipeline]. [runUpdate] — the worker's and the
+ * launch-time entry point — takes it with `tryLock`: an overlapping attempt is *skipped*, not
+ * queued, since two queued attempts would mean a second full download-and-install starting
+ * immediately after the first, which nobody wants. [accept], [retry] and [returnedFromSettings] —
+ * the operator's gestures — take it with `withLock` instead: a tap arriving while an attempt is
+ * already in flight (most plausibly the worker's) *queues* behind it rather than racing it into a
+ * second download, a second backup, and a second `installer.install()`. [dismiss] sits outside the
+ * lock entirely: it is not `suspend` and only ever writes [_phase], never reaches [pipeline].
+ *
+ * Because every path that touches [downloaded] holds [attemptLock] first, that field needs no
+ * `@Volatile` — the lock is what makes it safe to read and write as a plain `var`.
  *
  * Launch housekeeping is delegated to [UpdateHousekeeping] rather than inlined here — inlining it
  * would give this constructor seven parameters, exactly detekt's `LongParameterList` threshold.
@@ -46,6 +63,8 @@ class UpdateCoordinator @Inject constructor(
     private val attemptLock = Mutex()
     private val sink = PhaseSink { next -> _phase.value = next }
 
+    // Guarded by attemptLock: every reader and writer reaches this field only after acquiring the
+    // lock, either via runUpdate's tryLock or one of the withLock gestures below.
     private var downloaded: DownloadedApk? = null
 
     /**
@@ -58,12 +77,11 @@ class UpdateCoordinator @Inject constructor(
         try {
             housekeeping.runOnce()
             val checked = runCheck()
-            val offer = _phase.value as? UpdatePhase.UpdateAvailable
             return when {
-                checked != UpdateAttempt.COMPLETED -> checked
-                offer == null -> UpdateAttempt.COMPLETED
+                checked.attempt != UpdateAttempt.COMPLETED -> checked.attempt
+                checked.offer == null -> UpdateAttempt.COMPLETED
                 presence == Presence.Foreground -> UpdateAttempt.COMPLETED
-                else -> advance(offer.info, offer.forced, RetryTarget.DOWNLOAD)
+                else -> advance(checked.offer.info, checked.offer.forced, RetryTarget.DOWNLOAD)
             }
         } finally {
             attemptLock.unlock()
@@ -74,8 +92,10 @@ class UpdateCoordinator @Inject constructor(
     fun needsLegacyWritePermission(): Boolean = backupStore.needsLegacyWritePermission()
 
     suspend fun accept() {
-        val offer = _phase.value as? UpdatePhase.UpdateAvailable ?: return
-        advance(offer.info, offer.forced, RetryTarget.DOWNLOAD)
+        attemptLock.withLock {
+            val offer = _phase.value as? UpdatePhase.UpdateAvailable ?: return@withLock
+            advance(offer.info, offer.forced, RetryTarget.DOWNLOAD)
+        }
     }
 
     fun dismiss() {
@@ -89,32 +109,42 @@ class UpdateCoordinator @Inject constructor(
     }
 
     suspend fun retry() {
-        when (val current = _phase.value) {
-            is UpdatePhase.CheckFailed -> runCheck()
-            is UpdatePhase.Failed -> advance(current.info, current.forced, current.retry)
-            else -> Unit
+        attemptLock.withLock {
+            when (val current = _phase.value) {
+                is UpdatePhase.CheckFailed -> runCheck()
+                is UpdatePhase.Failed -> advance(current.info, current.forced, current.retry)
+                else -> Unit
+            }
         }
     }
 
     suspend fun returnedFromSettings() {
-        val current = _phase.value as? UpdatePhase.PermissionNeeded ?: return
-        if (installer.canRequestInstalls()) advance(current.info, current.forced, RetryTarget.DOWNLOAD)
+        attemptLock.withLock {
+            val current = _phase.value as? UpdatePhase.PermissionNeeded ?: return@withLock
+            advance(current.info, current.forced, RetryTarget.DOWNLOAD)
+        }
     }
 
-    private suspend fun runCheck(): UpdateAttempt {
+    private suspend fun runCheck(): CheckOutcome {
         val result = checkForUpdate()
         if (result !is AppResult.Success) {
             _phase.value = UpdatePhase.CheckFailed(messageFor(errorMapper, result))
-            return attemptFor(result)
+            return CheckOutcome(attemptFor(result), offer = null)
         }
-        _phase.value = when (val status = result.data) {
+        val nextPhase = when (val status = result.data) {
             UpdateStatus.UpToDate -> UpdatePhase.Idle
             is UpdateStatus.Optional -> UpdatePhase.UpdateAvailable(status.info, forced = false)
             is UpdateStatus.Forced -> UpdatePhase.UpdateAvailable(status.info, forced = true)
         }
-        return UpdateAttempt.COMPLETED
+        _phase.value = nextPhase
+        return CheckOutcome(UpdateAttempt.COMPLETED, nextPhase as? UpdatePhase.UpdateAvailable)
     }
 
+    /**
+     * Re-checks [ApkInstaller.canRequestInstalls] rather than trusting a caller's earlier read of it
+     * — [returnedFromSettings] used to check it too, but this is the check that actually produces
+     * [UpdatePhase.PermissionNeeded], so a second read here was the only one that mattered.
+     */
     private suspend fun advance(info: UpdateInfo, forced: Boolean, from: RetryTarget): UpdateAttempt {
         if (!installer.canRequestInstalls()) {
             _phase.value = UpdatePhase.PermissionNeeded(info, forced)

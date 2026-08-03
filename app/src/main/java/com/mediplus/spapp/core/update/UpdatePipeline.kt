@@ -45,7 +45,9 @@ class UpdatePipeline @Inject constructor(
 
     /**
      * Runs from [from]: `DOWNLOAD` always transfers, `INSTALL` reuses [kept] when it still exists
-     * (the OS may evict the cache between a failure and the retry).
+     * and is for the same build being installed (the OS may evict the cache between a failure and
+     * the retry; [UpdateCoordinator.downloaded] also now outlives a single attempt, which widens the
+     * window for a stale APK from an earlier, different offer to still be sitting there).
      */
     internal suspend fun run(
         info: UpdateInfo,
@@ -54,11 +56,15 @@ class UpdatePipeline @Inject constructor(
         kept: DownloadedApk?,
         sink: PhaseSink,
     ): PipelineResult =
-        if (from == RetryTarget.INSTALL && kept != null && kept.file.exists()) {
-            backupAndInstall(info, forced, kept, sink)
+        if (from == RetryTarget.INSTALL && canReuse(kept, info)) {
+            backupAndInstall(info, forced, requireNotNull(kept), sink)
         } else {
             download(info, forced, sink)
         }
+
+    /** Whether [kept] is still usable for [info]: the same build, and still on disk to install. */
+    private fun canReuse(kept: DownloadedApk?, info: UpdateInfo): Boolean =
+        kept != null && kept.versionCode == info.latestVersionCode && kept.file.exists()
 
     private suspend fun download(info: UpdateInfo, forced: Boolean, sink: PhaseSink): PipelineResult {
         sink.emit(UpdatePhase.Downloading(0, info.sizeBytes, forced))

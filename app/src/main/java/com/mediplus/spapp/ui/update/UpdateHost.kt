@@ -49,9 +49,11 @@ fun UpdateHost(viewModel: UpdateViewModel = hiltViewModel()) {
         onPauseOrDispose { }
     }
 
-    // The backup is best effort, never a gate: a denial skips it and installs anyway
-    // (design 2026-08-03 §6). Rollback is a manual procedure, while a device stranded on a stale
-    // build with nobody present to notice is unrecoverable.
+    // A denial no longer fails fast here — it proceeds to onUpdateAccepted() exactly like a grant,
+    // deferring the failure to UpdatePipeline's backup gate, which is still enforced in this commit
+    // (so on API 24-28 a denial now costs a full APK download before failing at that gate). Task 4
+    // removes the gate itself and makes the backup genuinely best-effort; until then this only
+    // defers the denial rather than skipping the gate.
     val legacyWriteLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { _ -> viewModel.onUpdateAccepted() }

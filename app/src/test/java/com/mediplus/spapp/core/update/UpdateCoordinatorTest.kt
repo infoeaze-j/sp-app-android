@@ -18,6 +18,7 @@ import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -142,6 +143,14 @@ class UpdateCoordinatorTest {
     }
 
     @Test
+    fun `a business rejection on the check is completed work, not retryable`() = runTest {
+        serverSays(AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED)))
+        val coordinator = coordinator()
+
+        assertEquals(UpdateAttempt.COMPLETED, coordinator.runUpdate(Presence.Headless))
+    }
+
+    @Test
     fun `nothing to install is completed work, not retryable`() = runTest {
         serverSays(AppResult.Success(null))
         val coordinator = coordinator()
@@ -159,6 +168,44 @@ class UpdateCoordinatorTest {
         coordinator.dismiss()
 
         assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `dismissing while downloading does nothing`() = runTest {
+        serverSays(AppResult.Success(info()))
+        coEvery { repository.downloadAndVerify(any(), any()) } coAnswers {
+            val onProgress = secondArg<suspend (Long, Long) -> Unit>()
+            onProgress(50, 100)
+            delay(1_000)
+            AppResult.Success(DownloadedApk(apkFile, 7))
+        }
+        backupSucceeds()
+        coEvery { installer.install(any()) } returns InstallOutcome.Committed
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Foreground)
+        advanceUntilIdle()
+
+        val job = launch { coordinator.accept() }
+        runCurrent()
+        assertEquals(UpdatePhase.Downloading(50, 100, forced = false), coordinator.phase.value)
+
+        coordinator.dismiss()
+
+        // The else -> current branch: a phase with no dismiss rule of its own is left untouched.
+        assertEquals(UpdatePhase.Downloading(50, 100, forced = false), coordinator.phase.value)
+
+        advanceUntilIdle()
+        job.join()
+    }
+
+    @Test
+    fun `retrying from a phase with nothing to retry is a no-op`() = runTest {
+        val coordinator = coordinator()
+
+        coordinator.retry()
+
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+        coVerify(exactly = 0) { repository.fetchVersionInfo() }
     }
 
     @Test
@@ -220,7 +267,7 @@ class UpdateCoordinatorTest {
     fun `a second attempt is skipped while one is already running`() = runTest {
         val coordinator = coordinator()
         coEvery { repository.fetchVersionInfo() } coAnswers {
-            kotlinx.coroutines.delay(1_000)
+            delay(1_000)
             AppResult.Success(null)
         }
 
@@ -233,6 +280,44 @@ class UpdateCoordinatorTest {
         // The overlapping call returns immediately rather than queueing a duplicate attempt.
         assertEquals(UpdateAttempt.COMPLETED, second)
         coVerify(exactly = 1) { repository.fetchVersionInfo() }
+    }
+
+    @Test
+    fun `a retry tap while a headless attempt is checking queues rather than races it`() = runTest {
+        // Reach Failed(retry = DOWNLOAD) first, exactly the phase an operator would see and tap
+        // Retry on.
+        serverSays(AppResult.Success(info()))
+        coEvery { repository.downloadAndVerify(any(), any()) } returns
+            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Foreground)
+        advanceUntilIdle()
+        coordinator.accept()
+        advanceUntilIdle()
+
+        // Now the worker's periodic runUpdate parks inside checkForUpdate, still holding the phase
+        // at Failed, while the operator's tap arrives.
+        coEvery { repository.fetchVersionInfo() } coAnswers {
+            delay(500)
+            AppResult.Success(info())
+        }
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returns InstallOutcome.Committed
+
+        val workerJob = launch { coordinator.runUpdate(Presence.Headless) }
+        runCurrent()
+        val retryJob = launch { coordinator.retry() }
+        runCurrent()
+        advanceUntilIdle()
+        workerJob.join()
+        retryJob.join()
+
+        // Exactly 2 downloads total: the one above that reached Failed, and the worker's own once
+        // its check resolves. Without the lock, retry() races the worker the moment it is called
+        // (phase is still Failed then) and adds a third download of its own before the worker's
+        // check has even returned.
+        coVerify(exactly = 2) { repository.downloadAndVerify(any(), any()) }
     }
 
     @Test
