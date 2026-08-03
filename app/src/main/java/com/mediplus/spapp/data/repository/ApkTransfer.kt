@@ -2,10 +2,8 @@ package com.mediplus.spapp.data.repository
 
 import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
-import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.domain.model.DownloadedApk
-import com.mediplus.spapp.domain.model.UpdateInfo
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.io.File
@@ -19,12 +17,13 @@ import java.security.MessageDigest
 /**
  * The byte-moving half of the self-update download, kept apart from [UpdateRepositoryImpl] so that
  * class is left deciding what a response *means* rather than how to stream it. Nothing here talks
- * to the network or to Hilt; it is all file, digest and header arithmetic.
+ * to the network or to Hilt; it is all file and header arithmetic — whether the bytes can be
+ * trusted once they arrive is [ApkVerification]'s question, not this file's.
  *
- * The contract that makes resuming safe lives in [verified]: a finished file is accepted only when
- * its SHA-256 and byte count both match what the back office published. Every optimistic decision
- * below — reusing a prefix, trusting a 206 — can therefore only ever cost a wasted transfer, never
- * an install of the wrong bytes.
+ * The contract that makes resuming safe lives in `verified` (in [ApkVerification]): a finished file
+ * is accepted only when its SHA-256 and byte count both match what the back office published. Every
+ * optimistic decision below — reusing a prefix, trusting a 206 — can therefore only ever cost a
+ * wasted transfer, never an install of the wrong bytes.
  */
 
 internal const val HTTP_RANGE_NOT_SATISFIABLE = 416
@@ -74,23 +73,6 @@ internal fun resumableBytes(target: File, declaredSize: Long): Long {
     return onDisk
 }
 
-/**
- * Whether [target] is already the finished, verified download for [info] — the same test [verified]
- * applies after a transfer, applied before starting one. Without it a completed-but-uninstalled APK
- * is deleted by [resumableBytes] and fetched again in full, which is the *normal* state of the
- * headless flow whenever it is parked waiting for a confirmation tap.
- *
- * Nothing is trusted that was not trusted before: the digest is still what decides.
- */
-internal fun alreadyVerified(target: File, info: UpdateInfo): Boolean =
-    target.length() == info.sizeBytes && digestOf(target).equals(info.sha256, ignoreCase = true)
-
-private fun digestOf(file: File): String =
-    MessageDigest.getInstance("SHA-256")
-        .apply { updateWithPrefixOf(file, file.length()) }
-        .digest()
-        .toHex()
-
 internal suspend fun streamTo(target: File, body: ResponseBody, plan: TransferPlan): StreamedApk {
     target.parentFile?.mkdirs()
     val digest = MessageDigest.getInstance("SHA-256")
@@ -131,7 +113,7 @@ private suspend fun copyChunks(
     }
 }
 
-private fun MessageDigest.updateWithPrefixOf(file: File, byteCount: Long) {
+internal fun MessageDigest.updateWithPrefixOf(file: File, byteCount: Long) {
     val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
     var remaining = byteCount
     file.inputStream().use { input ->
@@ -148,16 +130,7 @@ private fun MessageDigest.updateWithPrefixOf(file: File, byteCount: Long) {
 internal fun interrupted(cause: IOException): AppResult<DownloadedApk> =
     AppResult.TransientFailure(AppError.Transient(TransientKind.DOWNLOAD_INTERRUPTED, cause))
 
-internal fun verified(info: UpdateInfo, target: File, streamed: StreamedApk): AppResult<DownloadedApk> =
-    if (streamed.bytes == info.sizeBytes && streamed.shaHex.equals(info.sha256, ignoreCase = true)) {
-        AppResult.Success(DownloadedApk(target, info.latestVersionCode))
-    } else {
-        // Deleting here is what stops a bad prefix being resumed into the same failure forever.
-        target.delete()
-        AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
-    }
-
 private fun percentOf(written: Long, total: Long): Int =
     if (total > 0) ((written * PERCENT) / total).toInt() else 0
 
-private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
