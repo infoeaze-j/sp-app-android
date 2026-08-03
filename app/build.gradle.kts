@@ -41,7 +41,7 @@ android {
         // Configurable back-office base URL. Overridable per build type (e.g. MockWebServer in CI).
         // Must end in the API version prefix the spec's server URL carries — every Retrofit path is
         // relative to it, and a trailing slash is what keeps the last segment from being dropped.
-        buildConfigField("String", "BASE_URL", "\"https://10.21.2.82:8080/api/v1/\"")
+        buildConfigField("String", "BASE_URL", "\"https://bio.infoeaze.com/api/v1/\"")
     }
 
     signingConfigs {
