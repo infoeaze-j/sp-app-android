@@ -1,43 +1,29 @@
 package com.mediplus.spapp.ui.update
 
-import com.mediplus.spapp.core.result.AppError
-import com.mediplus.spapp.core.result.AppResult
-import com.mediplus.spapp.core.result.BusinessCode
-import com.mediplus.spapp.core.result.DefaultErrorMapper
-import com.mediplus.spapp.core.result.TransientKind
-import com.mediplus.spapp.core.update.ApkBackupStore
-import com.mediplus.spapp.core.update.ApkInstaller
-import com.mediplus.spapp.core.update.InstallOutcome
-import com.mediplus.spapp.core.update.RetryTarget
+import com.mediplus.spapp.core.update.Presence
+import com.mediplus.spapp.core.update.UpdateAttempt
+import com.mediplus.spapp.core.update.UpdateCoordinator
 import com.mediplus.spapp.core.update.UpdatePhase
-import com.mediplus.spapp.data.repository.UpdateRepository
-import com.mediplus.spapp.domain.model.CurrentAppVersion
-import com.mediplus.spapp.domain.model.DownloadedApk
-import com.mediplus.spapp.domain.model.UpdateInfo
-import com.mediplus.spapp.domain.usecase.CheckForUpdateUseCase
 import com.mediplus.spapp.util.MainDispatcherRule
 import io.mockk.coEvery
-import io.mockk.coJustRun
 import io.mockk.coVerify
-import io.mockk.coVerifyOrder
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
-import java.io.File
 
 /**
- * The self-update orchestration (design: 2026-07-24-self-update-design.md): launch housekeeping
- * never blocks the first frame, the check fails open, forced updates cannot be dismissed, a
- * missing backup blocks the install, and retries re-enter at the right stage.
+ * The ViewModel is now an adapter over [UpdateCoordinator]: it supplies a scope, forwards gestures,
+ * and re-exposes the coordinator's flow. The orchestration itself is covered by
+ * `UpdateCoordinatorTest`, because the worker runs the same code and must not need a ViewModel.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpdateViewModelTest {
@@ -45,408 +31,95 @@ class UpdateViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    @get:Rule
-    val tempFolder = TemporaryFolder()
-
-    private val repository = mockk<UpdateRepository>()
-    private val installer = mockk<ApkInstaller>()
-    private val backupStore = mockk<ApkBackupStore>()
-    private val errorMapper = DefaultErrorMapper()
-    private val currentVersion = CurrentAppVersion(code = 5, name = "1.4")
-
-    private lateinit var apkFile: File
+    private val coordinator = mockk<UpdateCoordinator>()
+    private val phase = MutableStateFlow<UpdatePhase>(UpdatePhase.Idle)
 
     @Before
     fun setUp() {
-        apkFile = tempFolder.newFile("update-v7.apk")
-        coJustRun { repository.pruneObsoleteDownloads() }
-        coJustRun { installer.abandonStaleSessions() }
-        coJustRun { backupStore.pruneStaleBackups(any()) }
-        coEvery { installer.canRequestInstalls() } returns true
-        every { backupStore.needsLegacyWritePermission() } returns false
-    }
-
-    private fun viewModel() = UpdateViewModel(
-        checkForUpdate = CheckForUpdateUseCase(repository, currentVersion, BASE_URL),
-        updateRepository = repository,
-        installer = installer,
-        backupStore = backupStore,
-        errorMapper = errorMapper,
-        currentVersion = currentVersion,
-    )
-
-    private fun info(latest: Int = 7, minSupported: Int = 1) = UpdateInfo(
-        latestVersionCode = latest,
-        latestVersionName = "1.6",
-        apkUrl = "${BASE_URL}app/releases/$latest/binary",
-        sha256 = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6",
-        sizeBytes = 100,
-        minSupportedVersionCode = minSupported,
-    )
-
-    private fun serverSays(vararg results: AppResult<UpdateInfo?>) {
-        coEvery { repository.fetchVersionInfo() } returnsMany results.toList()
-    }
-
-    private fun downloadSucceeds() {
-        coEvery { repository.downloadAndVerify(any(), any()) } coAnswers {
-            val onProgress = secondArg<suspend (Long, Long) -> Unit>()
-            onProgress(50, 100)
-            onProgress(100, 100)
-            AppResult.Success(DownloadedApk(apkFile, 7))
-        }
-    }
-
-    private fun backupSucceeds() {
-        coEvery { backupStore.backupCurrentApk(any()) } returns AppResult.Success(Unit)
-    }
-
-    private fun businessMessage(code: BusinessCode) =
-        errorMapper.toUserMessage(AppError.Business(code))
-
-    @Test
-    fun `launch housekeeping never blocks the first frame`() = runTest {
-        serverSays(AppResult.Success(null))
-
-        val vm = viewModel()
-
-        assertEquals(UpdatePhase.Idle, vm.phase.value)
+        every { coordinator.phase } returns phase
+        coEvery { coordinator.runUpdate(any()) } returns UpdateAttempt.COMPLETED
+        coEvery { coordinator.accept() } returns Unit
+        coEvery { coordinator.retry() } returns Unit
+        coEvery { coordinator.returnedFromSettings() } returns Unit
+        justRun { coordinator.dismiss() }
+        every { coordinator.needsLegacyWritePermission() } returns false
     }
 
     @Test
-    fun `up to date stays idle after launch housekeeping runs once`() = runTest {
-        serverSays(AppResult.Success(null))
-
-        val vm = viewModel()
+    fun `opening the app runs a foreground update attempt`() = runTest {
+        UpdateViewModel(coordinator)
         advanceUntilIdle()
 
-        assertEquals(UpdatePhase.Idle, vm.phase.value)
-        coVerify(exactly = 1) { backupStore.pruneStaleBackups(5) }
-        coVerify(exactly = 1) { installer.abandonStaleSessions() }
-        coVerify(exactly = 1) { repository.pruneObsoleteDownloads() }
+        coVerify(exactly = 1) { coordinator.runUpdate(Presence.Foreground) }
     }
 
     @Test
-    fun `a failed check surfaces a dismissible notice`() = runTest {
-        serverSays(AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY)))
+    fun `construction never blocks the first frame`() = runTest {
+        UpdateViewModel(coordinator)
 
-        val vm = viewModel()
+        // The launch-time attempt is scheduled, not awaited — nothing has run yet at construction.
+        coVerify(exactly = 0) { coordinator.runUpdate(any()) }
+
         advanceUntilIdle()
-
-        val phase = vm.phase.value as UpdatePhase.CheckFailed
-        assertEquals(
-            errorMapper.toUserMessage(AppError.Transient(TransientKind.NO_CONNECTIVITY)),
-            phase.message,
-        )
+        coVerify(exactly = 1) { coordinator.runUpdate(Presence.Foreground) }
     }
 
     @Test
-    fun `dismissing the check notice returns to idle`() = runTest {
-        serverSays(AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY)))
-        val vm = viewModel()
-        advanceUntilIdle()
+    fun `the rendered phase is the coordinator's, whichever caller produced it`() = runTest {
+        val viewModel = UpdateViewModel(coordinator)
 
-        vm.onDismissed()
+        phase.value = UpdatePhase.Installing(forced = true)
 
-        assertEquals(UpdatePhase.Idle, vm.phase.value)
+        assertEquals(UpdatePhase.Installing(forced = true), viewModel.phase.value)
     }
 
     @Test
-    fun `retrying a failed check re-checks`() = runTest {
-        serverSays(
-            AppResult.TransientFailure(AppError.Transient(TransientKind.NO_CONNECTIVITY)),
-            AppResult.Success(null),
-        )
-        val vm = viewModel()
+    fun `accepting forwards to the coordinator`() = runTest {
+        val viewModel = UpdateViewModel(coordinator)
         advanceUntilIdle()
 
-        vm.onRetry()
+        viewModel.onUpdateAccepted()
         advanceUntilIdle()
 
-        assertEquals(UpdatePhase.Idle, vm.phase.value)
-        coVerify(exactly = 2) { repository.fetchVersionInfo() }
+        coVerify(exactly = 1) { coordinator.accept() }
     }
 
     @Test
-    fun `an optional update offers a dismissible prompt`() = runTest {
-        serverSays(AppResult.Success(info(latest = 7, minSupported = 1)))
-        val vm = viewModel()
-        advanceUntilIdle()
+    fun `dismissing forwards to the coordinator`() = runTest {
+        val viewModel = UpdateViewModel(coordinator)
 
-        assertEquals(UpdatePhase.UpdateAvailable(info(latest = 7, minSupported = 1), forced = false), vm.phase.value)
+        viewModel.onDismissed()
 
-        vm.onDismissed()
-        assertEquals(UpdatePhase.Idle, vm.phase.value)
+        verify(exactly = 1) { coordinator.dismiss() }
     }
 
     @Test
-    fun `a forced update cannot be dismissed`() = runTest {
-        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
-        val vm = viewModel()
+    fun `retrying forwards to the coordinator`() = runTest {
+        val viewModel = UpdateViewModel(coordinator)
         advanceUntilIdle()
 
-        vm.onDismissed()
+        viewModel.onRetry()
+        advanceUntilIdle()
 
-        assertEquals(UpdatePhase.UpdateAvailable(info(latest = 7, minSupported = 7), forced = true), vm.phase.value)
+        coVerify(exactly = 1) { coordinator.retry() }
     }
 
     @Test
-    fun `accepting without install permission routes through settings and resumes`() = runTest {
-        serverSays(AppResult.Success(info()))
-        coEvery { installer.canRequestInstalls() } returns false
-        downloadSucceeds()
-        backupSucceeds()
-        coEvery { installer.install(any()) } returns InstallOutcome.Committed
-        val vm = viewModel()
+    fun `returning from settings forwards to the coordinator`() = runTest {
+        val viewModel = UpdateViewModel(coordinator)
         advanceUntilIdle()
 
-        vm.onUpdateAccepted()
+        viewModel.onReturnedFromSettings()
         advanceUntilIdle()
-        assertEquals(UpdatePhase.PermissionNeeded(info(), forced = false), vm.phase.value)
 
-        coEvery { installer.canRequestInstalls() } returns true
-        vm.onReturnedFromSettings()
-        runCurrent()
-
-        assertEquals(UpdatePhase.Restarting, vm.phase.value)
+        coVerify(exactly = 1) { coordinator.returnedFromSettings() }
     }
 
     @Test
-    fun `returning from settings without the grant stays put`() = runTest {
-        serverSays(AppResult.Success(info()))
-        coEvery { installer.canRequestInstalls() } returns false
-        val vm = viewModel()
-        advanceUntilIdle()
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
+    fun `the legacy write question is answered by the coordinator`() = runTest {
+        every { coordinator.needsLegacyWritePermission() } returns true
+        val viewModel = UpdateViewModel(coordinator)
 
-        vm.onReturnedFromSettings()
-        advanceUntilIdle()
-
-        assertEquals(UpdatePhase.PermissionNeeded(info(), forced = false), vm.phase.value)
-    }
-
-    @Test
-    fun `the happy path walks download then backup then install`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        backupSucceeds()
-        coEvery { installer.install(any()) } returns InstallOutcome.Committed
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        runCurrent()
-
-        assertEquals(UpdatePhase.Restarting, vm.phase.value)
-        coVerifyOrder {
-            repository.downloadAndVerify(info(), any())
-            backupStore.backupCurrentApk(currentVersion)
-            installer.install(apkFile)
-        }
-    }
-
-    @Test
-    fun `a committed install shows restarting then settles back to idle`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        backupSucceeds()
-        coEvery { installer.install(any()) } returns InstallOutcome.Committed
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        runCurrent()
-        // The install "committed" while we're still alive (always, on the fake dev installer):
-        // show the restarting overlay rather than freezing on it.
-        assertEquals(UpdatePhase.Restarting, vm.phase.value)
-
-        advanceUntilIdle()
-        // A real relaunch lands a fresh, up-to-date build at Idle; we recover the same way.
-        assertEquals(UpdatePhase.Idle, vm.phase.value)
-    }
-
-    @Test
-    fun `download progress reaches the phase as it streams`() = runTest {
-        serverSays(AppResult.Success(info()))
-        backupSucceeds()
-        coEvery { installer.install(any()) } returns InstallOutcome.Committed
-        val seen = mutableListOf<UpdatePhase>()
-        lateinit var vm: UpdateViewModel
-        coEvery { repository.downloadAndVerify(any(), any()) } coAnswers {
-            val onProgress = secondArg<suspend (Long, Long) -> Unit>()
-            onProgress(50, 100)
-            seen.add(vm.phase.value)
-            onProgress(100, 100)
-            seen.add(vm.phase.value)
-            AppResult.Success(DownloadedApk(apkFile, 7))
-        }
-        vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
-
-        assertEquals(
-            listOf<UpdatePhase>(
-                UpdatePhase.Downloading(50, 100, forced = false),
-                UpdatePhase.Downloading(100, 100, forced = false),
-            ),
-            seen,
-        )
-    }
-
-    @Test
-    fun `a corrupted download fails with a fresh-download retry`() = runTest {
-        serverSays(AppResult.Success(info()))
-        coEvery { repository.downloadAndVerify(any(), any()) } returns
-            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
-
-        assertEquals(
-            UpdatePhase.Failed(
-                message = businessMessage(BusinessCode.UPDATE_CORRUPTED),
-                info = info(),
-                forced = false,
-                retry = RetryTarget.DOWNLOAD,
-            ),
-            vm.phase.value,
-        )
-
-        vm.onRetry()
-        advanceUntilIdle()
-        coVerify(exactly = 2) { repository.downloadAndVerify(any(), any()) }
-    }
-
-    @Test
-    fun `a backup failure blocks the install`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        coEvery { backupStore.backupCurrentApk(any()) } returns
-            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_BACKUP_FAILED))
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
-
-        val phase = vm.phase.value as UpdatePhase.Failed
-        assertEquals(businessMessage(BusinessCode.UPDATE_BACKUP_FAILED), phase.message)
-        assertEquals(RetryTarget.INSTALL, phase.retry)
-        coVerify(exactly = 0) { installer.install(any()) }
-    }
-
-    @Test
-    fun `an aborted install keeps the download and retries without re-downloading`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        backupSucceeds()
-        coEvery { installer.install(any()) } returnsMany
-            listOf(InstallOutcome.Aborted, InstallOutcome.Committed)
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
-
-        val phase = vm.phase.value as UpdatePhase.Failed
-        assertEquals(businessMessage(BusinessCode.UPDATE_INSTALL_ABORTED), phase.message)
-        assertEquals(RetryTarget.INSTALL, phase.retry)
-
-        vm.onRetry()
-        runCurrent()
-
-        assertEquals(UpdatePhase.Restarting, vm.phase.value)
-        coVerify(exactly = 1) { repository.downloadAndVerify(any(), any()) }
-        coVerify(exactly = 2) { installer.install(apkFile) }
-    }
-
-    @Test
-    fun `retrying an install after cache eviction re-downloads`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        backupSucceeds()
-        coEvery { installer.install(any()) } returnsMany
-            listOf(InstallOutcome.Aborted, InstallOutcome.Committed)
-        val vm = viewModel()
-        advanceUntilIdle()
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
-
-        assertTrue(apkFile.delete())
-        vm.onRetry()
-        advanceUntilIdle()
-
-        coVerify(exactly = 2) { repository.downloadAndVerify(any(), any()) }
-    }
-
-    @Test
-    fun `any other install failure is retryable at the install stage`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        backupSucceeds()
-        coEvery { installer.install(any()) } returns InstallOutcome.Failed("INSTALL_FAILED_INVALID_APK")
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onUpdateAccepted()
-        advanceUntilIdle()
-
-        val phase = vm.phase.value as UpdatePhase.Failed
-        assertEquals(businessMessage(BusinessCode.UPDATE_INSTALL_FAILED), phase.message)
-        assertEquals(RetryTarget.INSTALL, phase.retry)
-    }
-
-    @Test
-    fun `denying the legacy storage permission fails the backup path`() = runTest {
-        serverSays(AppResult.Success(info()))
-        val vm = viewModel()
-        advanceUntilIdle()
-
-        vm.onLegacyWriteDenied()
-
-        val phase = vm.phase.value as UpdatePhase.Failed
-        assertEquals(businessMessage(BusinessCode.UPDATE_BACKUP_FAILED), phase.message)
-        assertEquals(RetryTarget.PERMISSION, phase.retry)
-    }
-
-    @Test
-    fun `retrying after a denied storage permission re-offers the update so it can be asked again`() = runTest {
-        // UpdateAvailable is the only phase whose action runs the permission check, so returning
-        // there is what makes the request re-askable. Anything else closes the loop for good: on a
-        // forced update the overlay's Retry would be the only control and could never succeed.
-        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
-        every { backupStore.needsLegacyWritePermission() } returns true
-        val vm = viewModel()
-        advanceUntilIdle()
-        vm.onLegacyWriteDenied()
-
-        vm.onRetry()
-        advanceUntilIdle()
-
-        assertEquals(UpdatePhase.UpdateAvailable(info(latest = 7, minSupported = 7), forced = true), vm.phase.value)
-        assertTrue(vm.needsLegacyWritePermission())
-    }
-
-    @Test
-    fun `retrying after a denied storage permission does not download an APK it cannot install`() = runTest {
-        serverSays(AppResult.Success(info()))
-        downloadSucceeds()
-        val vm = viewModel()
-        advanceUntilIdle()
-        vm.onLegacyWriteDenied()
-
-        vm.onRetry()
-        advanceUntilIdle()
-
-        coVerify(exactly = 0) { repository.downloadAndVerify(any(), any()) }
-    }
-
-    private companion object {
-        const val BASE_URL = "https://backoffice.example.com/api/v1/"
+        assertEquals(true, viewModel.needsLegacyWritePermission())
     }
 }

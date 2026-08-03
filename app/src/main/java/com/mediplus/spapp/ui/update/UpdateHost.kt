@@ -49,11 +49,12 @@ fun UpdateHost(viewModel: UpdateViewModel = hiltViewModel()) {
         onPauseOrDispose { }
     }
 
+    // The backup is best effort, never a gate: a denial skips it and installs anyway
+    // (design 2026-08-03 §6). Rollback is a manual procedure, while a device stranded on a stale
+    // build with nobody present to notice is unrecoverable.
     val legacyWriteLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) viewModel.onUpdateAccepted() else viewModel.onLegacyWriteDenied()
-    }
+    ) { _ -> viewModel.onUpdateAccepted() }
     val onAccept = {
         if (viewModel.needsLegacyWritePermission()) {
             legacyWriteLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
