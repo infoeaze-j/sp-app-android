@@ -132,6 +132,10 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             R.string.err_update_corrupted_body,
             R.string.action_retry,
         )
+        // Retained as a diagnostic code only: since the 2026-08-03 unattended-update design the
+        // backup is best effort and no longer blocks an install, so nothing routes this to the
+        // operator. The mapping stays so that if a future path ever does surface it, it surfaces as
+        // itself rather than falling through to the generic message.
         BusinessCode.UPDATE_BACKUP_FAILED -> UiMessage(
             R.string.err_update_backup_failed_title,
             R.string.err_update_backup_failed_body,

@@ -13,7 +13,10 @@ interface ApkBackupStore {
 
     /**
      * Copies the installed APK to shared Downloads as `spapp-backup-v{code}.apk`, replacing
-     * any previous copy of the same version. The install flow never proceeds when this fails.
+     * any previous copy of the same version. Best effort: since the 2026-08-03 unattended-update
+     * design a failure here no longer blocks the install — headless, on a device with a full
+     * storage volume, refusing to proceed would strand it on a stale build with nobody present to
+     * recover it.
      */
     suspend fun backupCurrentApk(version: CurrentAppVersion): AppResult<Unit>
 

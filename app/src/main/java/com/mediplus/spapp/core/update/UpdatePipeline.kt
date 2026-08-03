@@ -94,13 +94,11 @@ class UpdatePipeline @Inject constructor(
         sink: PhaseSink,
     ): PipelineResult {
         sink.emit(UpdatePhase.BackingUp(forced))
-        val backup = backupStore.backupCurrentApk(currentVersion)
-        if (backup !is AppResult.Success) {
-            sink.emit(
-                UpdatePhase.Failed(messageFor(errorMapper, backup), info, forced, RetryTarget.INSTALL),
-            )
-            return PipelineResult(UpdateAttempt.COMPLETED, downloaded = apk)
-        }
+        // Best effort, never a gate (design 2026-08-03 §6). The result is deliberately discarded:
+        // rollback is already a manual procedure (uninstall, then install the backup by hand), so a
+        // missing backup costs convenience — while refusing to install leaves a field device that
+        // nobody will ever open stranded on a stale build, which nothing can recover.
+        backupStore.backupCurrentApk(currentVersion)
         sink.emit(UpdatePhase.Installing(forced))
         val outcome = installer.install(apk.file)
         if (outcome == InstallOutcome.Committed) {

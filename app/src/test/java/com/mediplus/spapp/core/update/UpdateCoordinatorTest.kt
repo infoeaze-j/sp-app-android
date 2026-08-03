@@ -465,12 +465,57 @@ class UpdateCoordinatorTest {
     }
 
     @Test
-    fun `a backup failure blocks the install`() = runTest {
-        // Task 4 removes this gate; it is asserted here so the extraction is provably behaviour-free.
+    fun `a failed backup does not block the install`() = runTest {
+        // Headless, "no backup, no install, ever" strands a device on a stale build permanently,
+        // with nobody present to notice. Rollback is a manual procedure; a stranded device is not
+        // recoverable at all (design 2026-08-03 §6).
         serverSays(AppResult.Success(info()))
         downloadSucceeds()
         coEvery { backupStore.backupCurrentApk(any()) } returns
             AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_BACKUP_FAILED))
+        coEvery { installer.install(any()) } returns InstallOutcome.Committed
+        val coordinator = coordinator()
+
+        // Wrapped in launch: runUpdate is a suspend entry point, and a direct (unlaunched) call
+        // would let runTest auto-advance straight through settleAfterCommit's delay, skipping past
+        // the Restarting phase before we ever get to observe it (see the headless-accept test above).
+        val job = launch { coordinator.runUpdate(Presence.Headless) }
+        runCurrent()
+
+        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        coVerify(exactly = 1) { installer.install(apkFile) }
+
+        advanceUntilIdle()
+        job.join()
+    }
+
+    @Test
+    fun `a failed backup still walks through the backing up phase`() = runTest {
+        // The attempt is still made and still visible; only its power of veto is gone.
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        coEvery { backupStore.backupCurrentApk(any()) } returns
+            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_BACKUP_FAILED))
+        coEvery { installer.install(any()) } returns InstallOutcome.Committed
+        val coordinator = coordinator()
+
+        coordinator.runUpdate(Presence.Headless)
+
+        coVerifyOrder {
+            backupStore.backupCurrentApk(currentVersion)
+            installer.install(apkFile)
+        }
+    }
+
+    @Test
+    fun `an install failure after a failed backup still reports the install failure`() = runTest {
+        // The backup's own error must not shadow the real one — UPDATE_BACKUP_FAILED no longer
+        // reaches the operator at all.
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        coEvery { backupStore.backupCurrentApk(any()) } returns
+            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_BACKUP_FAILED))
+        coEvery { installer.install(any()) } returns InstallOutcome.Failed("INSTALL_FAILED_INVALID_APK")
         val coordinator = coordinator()
         coordinator.runUpdate(Presence.Foreground)
         advanceUntilIdle()
@@ -479,9 +524,7 @@ class UpdateCoordinatorTest {
         advanceUntilIdle()
 
         val phase = coordinator.phase.value as UpdatePhase.Failed
-        assertEquals(businessMessage(BusinessCode.UPDATE_BACKUP_FAILED), phase.message)
-        assertEquals(RetryTarget.INSTALL, phase.retry)
-        coVerify(exactly = 0) { installer.install(any()) }
+        assertEquals(businessMessage(BusinessCode.UPDATE_INSTALL_FAILED), phase.message)
     }
 
     @Test
