@@ -2,6 +2,7 @@
 
 **Date:** 2026-08-03
 **Status:** Designed — not yet implemented
+**Fleet:** Sunmi V2s on Android 11 (API 30) and Sunmi V3 on Android 13 (API 33), confirmed 2026-08-03
 **Builds on:** `docs/superpowers/specs/2026-07-24-self-update-design.md` (the foreground flow)
 **Endpoints:** `GET /app/releases/latest`, `GET /app/releases/{release}/binary` (both `security: []`)
 
@@ -140,6 +141,19 @@ The system then answers either with a terminal status (it installed; nobody was 
 human is present, which a new `@Singleton ForegroundTracker` answers — another
 `ProcessLifecycleOwner` observer, following `DiagnosticsPoller` exactly.
 
+With the fleet now known, both answers occur in the field by design, not as an edge case:
+
+| Device | API | Result of the commit |
+| --- | --- | --- |
+| Sunmi V3 | 33 | Silent. Installs unattended. |
+| Sunmi V2s | 30 | `STATUS_PENDING_USER_ACTION` — always. One operator tap per update. |
+
+The notification path is therefore **the primary path for the V2s half of the fleet**, not a
+fallback, and must be built to that standard: high-priority, re-posted by the next worker run if
+dismissed, and tapping it must land directly on the system confirmation. The capability-driven design
+is what lets one code path serve both halves — but it should not be read as "silent, with a rare
+exception".
+
 `UpdateStatusReceiver` branches on that:
 
 - **Foreground** → `startActivity(confirm)`, unchanged from today.
@@ -185,28 +199,54 @@ records the failure, and installs regardless. Rationale: rollback is already a m
 will touch is limited — while a device silently stranded on a stale build is a real and unrecoverable
 outcome.
 
-This has a consequence that must be followed through, or the change is half-done. On a pre-Android-10
-device — which the V2s may well be — `needsLegacyWritePermission()` is true and `UpdateHost` asks for
-`WRITE_EXTERNAL_STORAGE` before accepting the update. Denying it currently lands in
-`onLegacyWriteDenied()`, which fails the whole attempt with `UPDATE_BACKUP_FAILED`. Under the new
-rule that denial must instead **skip the backup and proceed to install**, exactly as a failed
-`backupCurrentApk` now does. Otherwise a single "Deny" tap would permanently block updates on the
-oldest devices in the fleet, which is precisely the outcome this decision exists to prevent.
-`BusinessCode.UPDATE_BACKUP_FAILED` consequently loses its last blocking caller and is retained only
-as a diagnostic code.
+This has a consequence that must be followed through, or the change is half-done. `UpdateHost` asks
+for `WRITE_EXTERNAL_STORAGE` before accepting an update whenever `needsLegacyWritePermission()` is
+true, and denying it lands in `onLegacyWriteDenied()`, which fails the whole attempt with
+`UPDATE_BACKUP_FAILED` — a second, independent block that removing the gate in `backupAndInstall`
+would not touch. Under the new rule that denial must instead **skip the backup and proceed to
+install**, exactly as a failed `backupCurrentApk` now does. `BusinessCode.UPDATE_BACKUP_FAILED`
+consequently loses its last blocking caller and is retained only as a diagnostic code.
+
+With the fleet confirmed at API 30 and above, `needsLegacyWritePermission()` (`SDK_INT < Q`) is
+always false in the field, so this path is unreachable on real devices. It is still corrected,
+because leaving a second blocking route in place while documenting that the gate was removed is the
+kind of discrepancy that costs an afternoon the next time somebody reads this code — but it is
+correctness work, not a field risk.
 
 ### 7. Notifications
 
-Requires a notification channel, and on API 33 (the V3s) the `POST_NOTIFICATIONS` runtime
-permission, which should be granted during the office pass. If it is denied, the headless path
-degrades to "installs the next time somebody opens the app" — no worse than today's behaviour.
+Requires a notification channel. The runtime-permission situation falls out conveniently: the V2s
+(API 30) — the devices that *depend* on the notification, because they can never install silently —
+do not need a runtime grant for it. The V3s (API 33) do need `POST_NOTIFICATIONS`, but only reach
+the notification path at all if Sunmi's modified OS refuses the silent commit. Grant it at the office
+regardless; it is the cheap insurance against exactly the case this design cannot test in advance.
+
+If it is denied on a V3, the headless path degrades to "installs the next time somebody opens the
+app" — no worse than today's behaviour.
 
 ### 8. Permission auto-reset
 
 Android 11+ revokes runtime permissions for unused apps, which could strip `REQUEST_INSTALL_PACKAGES`
-from exactly the idle devices this design targets. A worker running every six hours should count as
+from exactly the idle devices this design targets. **The whole fleet is API 30 or above, so this
+applies to every device**, not just the newer half. A worker running every six hours should count as
 use, but the app should also check `isAutoRevokeWhitelisted` and request the exemption once, at the
 office.
+
+### 9. Considered and deferred: device-owner provisioning
+
+Enrolling each unit as device owner (`adb shell dpm set-device-owner …` on a device with no
+configured accounts, which is feasible during an office pass that already touches every device over
+adb) would give silent installs on the V2s too, auto-grant the install and notification permissions,
+and make the app immune to permission auto-reset and to being uninstalled. On the stated goal —
+certainty that every device can update itself — it is strictly stronger than this design.
+
+It is **not** proposed for this rollout, for three reasons: device owner cannot be removed without a
+factory reset, so a mistake is expensive and per-device; it requires a `DeviceAdminReceiver` and a
+provisioning step layered onto a rollout that already has two unresolved blockers; and the V2s
+failure mode without it is "an operator taps once", which is a delay, not a stranded device.
+
+It should be revisited if the V2s tap turns out to be unreliable in practice — the notification going
+unnoticed for weeks would change the calculation, and this is the escape hatch.
 
 ## Unchanged
 
@@ -244,9 +284,12 @@ that specific unit before it leaves.
 
 ## Open items
 
-- **V2s Android version is unconfirmed.** The V3s are Android 13 (API 33) and will update silently.
-  If the V2s are below API 31 they will require one operator tap per update, delivered by
-  notification. This changes nothing in the build — the design is capability-driven — but it changes
-  what can be promised to the clinics.
-- **Whether the released `USER_ACTION_NOT_REQUIRED` path is honoured on Sunmi's modified Android 13**
-  can only be settled on a real unit. The design fails safe either way.
+- **Whether `USER_ACTION_NOT_REQUIRED` is honoured on Sunmi's modified Android 13** can only be
+  settled on a real V3. The design fails safe either way — a refusal simply routes the V3 down the
+  same notification path the V2s already uses — but it decides whether half the fleet or none of it
+  updates unattended, so it is the single most valuable thing the bench test establishes.
+- **`minSdk` is 24 while the fleet floor is now API 30.** Raising it would drop core-library
+  desugaring and delete the legacy storage path outright. Deliberately **not** part of this work:
+  changing the minimum SDK is a build-wide change with its own regression surface, and doing it
+  during a rollout that is already blocked on a signing key and a hosting decision trades a real risk
+  for a tidiness gain. Worth doing immediately afterwards.
