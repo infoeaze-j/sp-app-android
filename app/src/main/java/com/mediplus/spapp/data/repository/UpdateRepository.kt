@@ -44,6 +44,9 @@ interface UpdateRepository {
      * 206 has ignored the range, and the transfer silently restarts from zero. Nothing about this is
      * trusted — the digest over the whole finished file is what decides, so a prefix that turns out
      * to belong to different bytes can only ever fail verification, never install.
+     *
+     * A file that is already complete and already matches the published digest is returned as-is,
+     * without a request — the normal state whenever an install is waiting on an operator tap.
      */
     suspend fun downloadAndVerify(
         info: UpdateInfo,
@@ -87,6 +90,12 @@ class UpdateRepositoryImpl @Inject constructor(
         // Partials for a build that is no longer the one on offer. This is the only place that
         // knows which build is actually being fetched, which is why the launch-time prune can't.
         cacheDir.listFiles()?.forEach { if (it != target) it.delete() }
+        // Already fetched and already verified — the state the headless flow sits in while a
+        // confirmation notification is outstanding. Re-fetching it would be pure waste.
+        if (alreadyVerified(target, info)) {
+            onProgress(info.sizeBytes, info.sizeBytes)
+            return@withContext AppResult.Success(DownloadedApk(target, info.latestVersionCode))
+        }
         try {
             // A server that refuses our offset can still serve the whole file, so spend a second
             // request here rather than making the operator tap Retry for something we can fix.

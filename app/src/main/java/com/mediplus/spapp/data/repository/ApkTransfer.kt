@@ -74,6 +74,23 @@ internal fun resumableBytes(target: File, declaredSize: Long): Long {
     return onDisk
 }
 
+/**
+ * Whether [target] is already the finished, verified download for [info] — the same test [verified]
+ * applies after a transfer, applied before starting one. Without it a completed-but-uninstalled APK
+ * is deleted by [resumableBytes] and fetched again in full, which is the *normal* state of the
+ * headless flow whenever it is parked waiting for a confirmation tap.
+ *
+ * Nothing is trusted that was not trusted before: the digest is still what decides.
+ */
+internal fun alreadyVerified(target: File, info: UpdateInfo): Boolean =
+    target.length() == info.sizeBytes && digestOf(target).equals(info.sha256, ignoreCase = true)
+
+private fun digestOf(file: File): String =
+    MessageDigest.getInstance("SHA-256")
+        .apply { updateWithPrefixOf(file, file.length()) }
+        .digest()
+        .toHex()
+
 internal suspend fun streamTo(target: File, body: ResponseBody, plan: TransferPlan): StreamedApk {
     target.parentFile?.mkdirs()
     val digest = MessageDigest.getInstance("SHA-256")
