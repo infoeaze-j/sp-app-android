@@ -23,9 +23,9 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 ```bash
 ./gradlew assembleDebug                  # build
 ./gradlew lintDebug                      # Android Lint — the in-build static-analysis gate (abortOnError=true)
-./gradlew testDebugUnitTest              # JVM unit suite (~200 tests)
+./gradlew testDebugUnitTest              # JVM unit suite (424 tests across test/ + testDebug/)
 ./gradlew testDebugUnitTest --tests "com.mediplus.spapp.ui.facecheck.FaceCheckViewModelTest"   # one test class
-./gradlew testDebugUnitTest --tests "*.FaceCheckViewModelTest.consent withheld halts"               # one test
+./gradlew testDebugUnitTest --tests "*.FaceCheckViewModelTest.withheld consent halts cleanly"       # one test
 ./gradlew createDebugUnitTestCoverageReport                # coverage → app/build/reports/coverage/
 ./gradlew connectedDebugAndroidTest      # instrumented (camera/NFC/nav) — needs a device or emulator
 ```
@@ -33,13 +33,25 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 **detekt is not a Gradle task here** — the plugin is deliberately unwired (Gradle 9.4 compat risk).
 CI downloads the 1.23.7 CLI and runs it over `app/src/main/java` with `config/detekt/detekt.yml`
 (`maxIssues: 0`, `warningsAsErrors`). Run it the same way locally before claiming detekt is clean;
-`./gradlew detekt` will just fail with "task not found". Note the config enforces the constitution
-numerically: functions ≤ 50 lines, line length ≤ 120, `ReturnCount` ≤ 4, no bare `TODO`/`FIXME`.
+`./gradlew detekt` will just fail with "task not found". Exactly as `.github/workflows/ci.yml` does:
+
+```bash
+curl -sSLO https://github.com/detekt/detekt/releases/download/v1.23.7/detekt-cli-1.23.7.zip
+unzip -q detekt-cli-1.23.7.zip
+./detekt-cli-1.23.7/bin/detekt-cli --config config/detekt/detekt.yml \
+  --input app/src/main/java --build-upon-default-config
+```
+
+Note the config enforces the constitution numerically: functions ≤ 50 lines, line length ≤ 120,
+`ReturnCount` ≤ 4, no bare `TODO`/`FIXME`.
 
 Toolchain gotchas (AGP 9.2.1 / Gradle 9.4.1 / Kotlin 2.3.10): AGP 9 has **built-in Kotlin** — do not
 add `org.jetbrains.kotlin.android`, and put `jvmTarget` inside `android { kotlin { compilerOptions } }`.
 KSP uses the unified version scheme. Hilt must stay ≥ 2.60. `compileSdk 37` (minor 37.1) while
-`targetSdk` stays 36.
+`targetSdk` stays 36. Also fixed in `app/build.gradle.kts`: `minSdk 24` (hence core-library
+desugaring for `java.time`), `jvmTarget = JVM_11`, and the release coordinates the self-update flow
+depends on — currently `versionCode = 4` / `versionName = "1.4"`. Instrumented tests run through
+`HiltTestRunner`. CI builds on **JDK 17**, not the JBR.
 
 ## Architecture
 
@@ -50,7 +62,7 @@ ui/<feature>/  XRoute + XScreen (Compose) + XViewModel (@HiltViewModel, StateFlo
 domain/usecase/  business rules, pure-ish, `operator fun invoke`
 data/repository/ AppResult mapping, feeds SessionManager
 data/remote/     Retrofit APIs + wire DTOs (never leave this package)
-core/            session, result, network, camera, nfc, time, di, ui/theme
+core/            session, result, network, camera, nfc, device, diagnostics, update, time, di, ui/theme
 ```
 
 **`AppResult<T>` is the universal outcome type.** Four variants — `Success`, `BusinessRejection`,
@@ -67,7 +79,9 @@ is ever stored. A null freshness window is treated as *immediately stale* (fail-
 **The journey is gated, not merely navigated.** `JourneyGate.furthestReachable(...)` is pure logic
 over primitive facts, producing a `JourneyStep`; `AppRoute` maps each destination to its required
 step. `NavGraph` additionally runs a global guard: any `sessionState != Active` pops the whole back
-stack to sign-in.
+stack to sign-in. Note the journey has five steps but four feature packages: **consent is not its
+own screen** — it lives inside `ui/facecheck` (`FaceCheckScreen`/`FaceCheckViewModel`), gating
+capture from within.
 
 **`NavGraph` owns the app's only chrome** — the `Scaffold` + `TopAppBar` carrying log out. Its
 `innerPadding` is what gives every screen its window insets, so screens must **not** apply their own
@@ -83,7 +97,8 @@ made once per screen entry).
 ## Debug vs release: the fake stack
 
 There are no product flavors. The **`debug` and `release` source sets each define their own
-`RepositoryModule`, `CameraModule`, and `NfcModule`** — release binds the real impls, debug binds
+`RepositoryModule`, `CameraModule`, `NfcModule`, `DiagnosticsModule`, and `UpdateModule`**
+(all under `core/di/`) — release binds the real impls, debug binds
 `Switching*` wrappers that pick fake-or-real per call from `DevSettingsStore`. Three things drive
 that choice: a master toggle (`DevSettings.fakeEnabled`, default **on**), a per-seam toggle for each
 `FakeSeam` (`AUTH`, `DEVICE`, `CARD`, `CAMERA`, `MEMBER`, `FACE`, `ENROLLMENT`, `UPDATE`,
@@ -167,25 +182,61 @@ it, and the current behaviour is the conservative option.
 
 ## Current state to be aware of
 
-- As of 2026-07-29 detekt is **still red on `main`** — **13** weighted issues, measured against a
-  clean `HEAD` worktree, all predating recent work (`LongParameterList` ×4, `LongMethod` ×2,
-  `TooManyFunctions` on `UpdateViewModel`, `TooGenericExceptionCaught` ×2, `MaxLineLength` ×2,
-  `VerifyFaceUseCase` return count). Check the baseline before assuming your change caused a
-  failure; the easiest way is `git worktree add --detach <tmp> HEAD` and run the CLI over that.
+- As of 2026-08-03 detekt is **still red on `main`** — **15** weighted issues, all predating recent
+  work. The full tally, so a new failure can be told apart from the baseline at a glance:
+
+  | Rule | × | Where |
+  |---|---|---|
+  | `LongParameterList` | 5 | `JourneyState.furthestReachable`; `FaceCheckScreen` ×3 (`FaceCheckScreen`, `CaptureContent`, `CameraCapture`); `MemberScanScreen` |
+  | `LongMethod` | 2 | `FaceCheckScreen.CameraCapture` (63), `SignInScreen` (103) |
+  | `MaxLineLength` | 2 | `FaceRepository:69`, `FaceCheckScreen:114` |
+  | `TooGenericExceptionCaught` | 2 | `CameraXFaceCamera:60`, `ApiCall:33` |
+  | `SwallowedException` | 1 | `CameraXFaceCamera:60` — the same `catch` as above |
+  | `TooManyFunctions` | 1 | `UpdateViewModel` (11 functions, threshold 11) |
+  | `MatchingDeclarationName` | 1 | `NfcModels.kt` declares `NfcAvailability` |
+  | `ReturnCount` | 1 | `VerifyFaceUseCase.interpret` (5, limit 4) |
+
+  Check the baseline before assuming your change caused a failure; the easiest way is
+  `git worktree add --detach <tmp> HEAD` and run the CLI over that. This tally has been wrong twice
+  — it read 13, then 15 with `LongParameterList` under-counted at ×4, which still summed to 15 and
+  so hid itself. The point of recording it is to stop someone blaming their own change, so re-measure
+  rather than trust it, and correct the table here when you do.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time `GET /app/releases/latest?versionCode=N` (unauthenticated, always 200, fail-open),
   SHA-256-verified streaming download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
   uninstall + install the backup), PackageInstaller session install. **Signing landmine:** the Gradle
   wiring is now in place — `app/build.gradle.kts` signs the `release` build type from a git-ignored
   `keystore.properties` (project root: `storeFile`/`storePassword`/`keyAlias`/`keyPassword`) when it
-  exists, and falls back to debug signing when it doesn't, so local/CI builds still assemble. **What
-  remains is manual:** create the permanent `.jks` (`keytool -genkeypair`, use `-validity 10000` — the
-  cert can never rotate for an installed app), write `keystore.properties`, and back the keystore up
-  off-machine. Do this before the first field rollout — updates only install over a same-key build, so
-  any device that got an earlier debug-signed build needs a one-time manual reinstall to cross over.
+  exists, and falls back to debug signing when it doesn't, so local/CI builds still assemble.
+  **The permanent key now exists (2026-08-03)** — `C:\Users\Juanco\keys\spapp-release.jks`, alias
+  `spapp`, RSA 2048, `CN=Mediplus SP App, O=Infoeaze, C=ZA`, valid to 2053-12-19, referenced by an
+  absolute path from the git-ignored `keystore.properties`. Verify any release build is signed with
+  it by comparing against the recorded fingerprint:
+
+  ```
+  SHA-256  69:DA:BA:2F:40:6F:DD:0D:A0:97:65:6B:8E:26:C0:95:D7:FD:0D:B7:57:B1:D6:78:31:55:EC:1C:70:FC:ED:B4
+  ```
+
+  `apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk` prints it (needs
+  `JAVA_HOME` set; `apksigner.bat` lives in `$env:LOCALAPPDATA\Android\Sdk\build-tools\37.0.0`).
+  Only a **V2** signature is emitted, which is correct for `minSdk 24` (v1 is unnecessary above 23).
+  v3 is off, so nothing today carries a rotation lineage; rotation is not *foreclosed* — a future
+  build could enable v3 and ship a lineage signed by this key — but it needs this key to authorise
+  it, so in practice the key is still the thing that must never be lost.
+  **The keystore lives on one machine and
+  is not yet backed up off-machine; losing it or its password strands the whole fleet permanently.**
+  CI has no `keystore.properties`, so CI release builds are still debug-signed — every APK that ships
+  to a device must be built here. Updates only install over a same-key build, so any device that got
+  an earlier debug-signed build needs a one-time manual reinstall to cross over.
   `apkUrl` must stay same-origin with `BASE_URL` — `CheckForUpdateUseCase` *enforces* that (a build
   on any other host is refused, https or not, so the response naming the URL cannot also choose the
-  host it comes from); every release must bump `versionCode`.
+  host it comes from); every release must bump `versionCode`. Origins compare scheme + host + port
+  with **an omitted port resolved to the scheme's default**, so `https://host/` and
+  `https://host:443/` match. That normalisation is load-bearing since the release `BASE_URL` moved to
+  `https://bio.infoeaze.com/api/v1/` (2026-08-03) and names no port: without it, a back office
+  emitting the explicit `:443` form would have every update refused, and the refusal surfaces as
+  `TransientKind.UNKNOWN` — an opaque "try again" the operator can never resolve. Debug still points
+  at the local Docker back office over cleartext (`http://10.21.2.82:8080/api/v1/`).
 - **The APK download resumes** (2026-07-29). An interrupted transfer keeps what it wrote and the
   next attempt sends `Range: bytes=N-`, re-digesting the prefix off disk before appending. It is
   opportunistic and self-verifying: `206` appends, `200` means the server ignored the range so the
