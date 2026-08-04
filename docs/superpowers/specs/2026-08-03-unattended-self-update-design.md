@@ -171,10 +171,33 @@ the moment a worker drives the flow.
 ### 4. Keeping the pending session alive
 
 A session waiting on a notification tap must survive. `abandonStaleSessions()` currently abandons
-every session belonging to this app at launch, which would orphan the notification's intent. The
-coordinator records the pending session id and the installer skips it. If the operator opens the app
-rather than tapping the notification, the foreground flow re-checks and re-offers, and the stale
-session is abandoned at that point.
+every session belonging to this app at launch, which would orphan the notification's intent.
+
+**Revised during implementation (2026-08-03).** This section originally proposed that the
+coordinator record the pending session id and the installer skip it. That does not work: launch
+housekeeping runs once per process and always *before* any install, so within a process the id is
+always null, and across a process restart — which every reboot is — the in-memory id is gone. The
+parameter would never fire in any reachable scenario, and the cross-process case is the one that
+matters, because on the V2s the notification is the only way an update completes.
+
+The platform already holds the fact. A session awaiting confirmation is **committed**, and
+`PackageInstaller.SessionInfo.isCommitted` (API 29+; the fleet floor is 30) reports it. The sweep
+skips committed sessions. No new state, no signature change, and it survives process death. The
+trade is that the logic now lives in a platform class and is device-verified rather than
+unit-tested.
+
+If the operator opens the app rather than tapping the notification, the foreground flow re-checks
+and re-offers from `ConfirmationPending`, raising the system dialog directly.
+
+**Sparing every committed session at launch is only safe because `install()` also caps how many can
+ever exist.** Left unchecked, a headless worker that finds the previous confirmation still un-tapped
+would create and commit a fresh session on every retry cycle — `RetryTarget.DOWNLOAD` always leads
+back through `install()` — while `UpdateNotifications` posts under a single notification id, so each
+new commit silently replaces the intent behind the last one. The sessions behind those superseded
+notifications become unreachable but, after the fix above, un-abandoned: they accumulate against the
+per-UID session cap until `PackageInstaller.createSession` throws. `install()` therefore abandons any
+already-committed session immediately before creating a new one, keeping exactly one committed
+session alive at a time — the newest, whose notification is the only one still live.
 
 ### 5. Reuse an APK that is already downloaded and verified
 

@@ -43,6 +43,7 @@ class PackageInstallerApkInstaller @Inject constructor(
 
     override suspend fun install(apk: File): InstallOutcome = withContext(dispatcher) {
         val installer = context.packageManager.packageInstaller
+        abandonCommittedSessions(installer)
         val sessionId = installer.createSession(sessionParams(apk))
         try {
             installer.openSession(sessionId).use { session ->
@@ -57,7 +58,9 @@ class PackageInstallerApkInstaller @Inject constructor(
 
     override suspend fun abandonStaleSessions(): Unit = withContext(dispatcher) {
         val installer = context.packageManager.packageInstaller
-        installer.mySessions.forEach { info -> abandonQuietly(installer, info.sessionId) }
+        installer.mySessions.forEach { info ->
+            if (!isAwaitingConfirmation(info)) abandonQuietly(installer, info.sessionId)
+        }
     }
 
     private fun sessionParams(apk: File) =
@@ -106,6 +109,34 @@ class PackageInstallerApkInstaller @Inject constructor(
             installer.abandonSession(sessionId)
         } catch (_: SecurityException) {
             // Not ours to abandon; nothing to clean.
+        }
+    }
+
+    /**
+     * A committed session is one the platform has accepted and is holding open — on this fleet,
+     * because it is waiting for the operator to tap the confirmation an [UpdateNotifications]
+     * notification is carrying. Abandoning it would leave a notification that does nothing, and on
+     * the V2s (API 30) that notification is the ONLY way an update ever completes.
+     *
+     * The alternative — remembering the session id ourselves — cannot work: launch housekeeping
+     * runs before any install in a process, and the id does not survive the process death that a
+     * reboot causes. The platform's own record does.
+     *
+     * `isCommitted` is API 29+; the whole fleet is API 30+, and below 29 the old sweep-everything
+     * behaviour is unchanged.
+     */
+    private fun isAwaitingConfirmation(info: PackageInstaller.SessionInfo): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && info.isCommitted
+
+    /**
+     * Keeps exactly one committed session alive: the newest. An older committed session is one the
+     * operator never confirmed, and it is already unreachable — [UpdateNotifications] posts under a
+     * single id, so the notification carrying its intent was replaced by this attempt's. Left alone
+     * they accumulate against the per-UID session cap until `createSession` refuses outright.
+     */
+    private fun abandonCommittedSessions(installer: PackageInstaller) {
+        installer.mySessions.forEach { info ->
+            if (isAwaitingConfirmation(info)) abandonQuietly(installer, info.sessionId)
         }
     }
 

@@ -24,7 +24,11 @@ interface ApkInstaller {
      */
     suspend fun install(apk: File): InstallOutcome
 
-    /** Abandons leftover sessions from crashed attempts; they count against a system quota. */
+    /**
+     * Abandons leftover sessions from crashed attempts; they count against a system quota. A
+     * session the platform reports as committed is spared: it is waiting on a confirmation the
+     * operator has been notified about, and abandoning it would make that notification inert.
+     */
     suspend fun abandonStaleSessions()
 }
 
