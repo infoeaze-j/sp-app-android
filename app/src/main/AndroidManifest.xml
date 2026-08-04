@@ -8,8 +8,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Self-update: stream the verified APK into a PackageInstaller session (sideloaded fleet,
-         no Play). The operator still confirms each install on unmanaged devices. -->
+         no Play). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Normal permission, auto-granted, inert below API 31. Lets an app that is its own installer
+         of record commit without the confirmation screen — the Sunmi V3 path. The V2s (API 30)
+         always falls through to the confirmation notification instead. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Rollback backups live in shared Downloads so they survive uninstall; only pre-Q devices
          need the legacy write permission for that. -->
     <uses-permission

@@ -22,10 +22,11 @@ import javax.inject.Inject
  * The real [ApkInstaller], backed by a [PackageInstaller] session: write + fsync the verified APK,
  * commit with a status receiver, and suspend until a terminal status arrives on [InstallEventBus].
  *
- * Future confirmation-free path (deliberately NOT enabled yet): once this app has performed one
- * self-update it becomes its own installer of record, and on Android 12+ declaring
- * `UPDATE_PACKAGES_WITHOUT_USER_ACTION` plus `setRequireUserAction(USER_ACTION_NOT_REQUIRED)`
- * would let subsequent updates commit without the confirmation screen.
+ * Every commit requests `USER_ACTION_NOT_REQUIRED` (API 31+) and reacts to whatever the platform
+ * answers — a terminal status means it installed unattended, `STATUS_PENDING_USER_ACTION` means a
+ * human is needed. Nothing here branches on the OS version to predict which. The permission that
+ * makes silence possible keys off being the installer of record, which this app becomes only after
+ * it has installed itself once, so the first self-update on a sideloaded device may still ask.
  */
 class PackageInstallerApkInstaller @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -65,10 +66,23 @@ class PackageInstallerApkInstaller @Inject constructor(
         }
     }
 
+    /**
+     * Always asks for a confirmation-free commit and lets the platform answer, rather than deciding
+     * from [Build.VERSION.SDK_INT] whether it is available (design 2026-08-03 §3). Sunmi ships
+     * modified Android: a V3 reporting API 33 may still refuse, and a version check that assumed
+     * silence would wait for a terminal status that never arrives.
+     *
+     * The guard here is API availability only — `setRequireUserAction` does not exist before
+     * API 31. Below that the request is simply not made and the platform answers
+     * `STATUS_PENDING_USER_ACTION`, which is the whole of the V2s path.
+     */
     private fun sessionParams(apk: File) =
         PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            }
         }
 
     private fun writeApk(session: PackageInstaller.Session, apk: File) {
@@ -117,10 +131,17 @@ class PackageInstallerApkInstaller @Inject constructor(
     }
 
     /**
-     * A committed session is one the platform has accepted and is holding open — on this fleet,
-     * because it is waiting for the operator to tap the confirmation an [UpdateNotifications]
+     * A committed session is one the platform has accepted and is holding open. Despite the name,
+     * `isCommitted` is broader than "awaiting confirmation": it becomes true the moment `commit()`
+     * is called, so on a device where [sessionParams] secured `USER_ACTION_NOT_REQUIRED` a committed
+     * session may instead be one the platform is silently installing right now, with no operator
+     * involved at all. What still makes it safe to sweep here is not any property of the session —
+     * it is [UpdateCoordinator]'s attempt lock, which serialises attempts so this can never run
+     * concurrently with an in-flight install of this app's own making.
+     *
+     * On this fleet a committed session that IS awaiting a tap is one an [UpdateNotifications]
      * notification is carrying. Abandoning it would leave a notification that does nothing, and on
-     * the V2s (API 30) that notification is the ONLY way an update ever completes.
+     * the V2s (API 30) that notification is the ONLY way such an update ever completes.
      *
      * The alternative — remembering the session id ourselves — cannot work: launch housekeeping
      * runs before any install in a process, and the id does not survive the process death that a
@@ -139,9 +160,10 @@ class PackageInstallerApkInstaller @Inject constructor(
      * Keeps exactly one committed session alive (API 29+): the newest. An older committed session is
      * one the operator never confirmed; abandoning it here delivers a terminal (aborted) status to
      * [UpdateStatusReceiver], which matches it against [UpdateNotifications] by session id before
-     * clearing — so this can never cancel the newer, still-live confirmation this attempt is about
-     * to post. Left alone, older committed sessions accumulate against the per-UID session cap until
-     * `createSession` refuses outright.
+     * clearing — so this can only ever retire the abandoned session's own notification, whatever
+     * this attempt goes on to do (including ending in [InstallOutcome.Committed], a silent install
+     * that posts no notification at all). Left alone, older committed sessions accumulate against
+     * the per-UID session cap until `createSession` refuses outright.
      */
     private fun abandonCommittedSessions(installer: PackageInstaller) {
         installer.mySessions.forEach { info ->
