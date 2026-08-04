@@ -26,8 +26,10 @@ interface ApkInstaller {
 
     /**
      * Abandons leftover sessions from crashed attempts; they count against a system quota. A
-     * session the platform reports as committed is spared: it is waiting on a confirmation the
-     * operator has been notified about, and abandoning it would make that notification inert.
+     * session the platform reports as committed is spared, whichever kind it turns out to be: one
+     * parked on a confirmation, where abandoning it would leave the operator a notification that
+     * does nothing, or one the platform is installing silently, where abandoning it would throw
+     * away an update already under way.
      */
     suspend fun abandonStaleSessions()
 }
