@@ -36,6 +36,15 @@ class UpdateNotifications @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
+    /**
+     * Which session the visible notification (if any) belongs to, so [clear] can tell a terminal
+     * broadcast for that session apart from one for an older, already-superseded session (design
+     * 2026-08-03 §3/§7 follow-up). `null` means either nothing is posted, or the process restarted
+     * and the answer is no longer known.
+     */
+    @Volatile
+    private var notifiedSessionId: Int? = null
+
     fun confirmationRequired(sessionId: Int, confirm: Intent) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -61,11 +70,25 @@ class UpdateNotifications @Inject constructor(
             .setOngoing(false)
             .setContentIntent(pending)
             .build()
+        notifiedSessionId = sessionId
         NotificationManagerCompat.from(context).notify(CONFIRMATION_NOTIFICATION_ID, notification)
     }
 
-    /** Removes the pending-confirmation notification specifically — never the whole channel. */
-    fun clear() {
+    /**
+     * Removes the pending-confirmation notification specifically — never the whole channel — but
+     * only when it was posted for [sessionId]. A terminal broadcast can arrive for an older,
+     * already-superseded session (e.g. one abandoned to make room for a newer commit); clearing
+     * unconditionally would cancel a newer, still-live confirmation and strand the operator with a
+     * committed session and nothing to tap.
+     *
+     * `notifiedSessionId == null` still clears: after process death we no longer know which session
+     * the visible notification belongs to, and clearing is the fallback that restores today's
+     * behaviour rather than leaving a notification nobody can ever dismiss.
+     */
+    fun clear(sessionId: Int) {
+        val shown = notifiedSessionId
+        if (shown != null && shown != sessionId) return
+        notifiedSessionId = null
         NotificationManagerCompat.from(context).cancel(CONFIRMATION_NOTIFICATION_ID)
     }
 

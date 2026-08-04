@@ -19,6 +19,12 @@ import javax.inject.Inject
  * background activity launch would be silently dropped — on API 29+ it is blocked and *logged*, not
  * thrown, so the old `SecurityException` catch never fires — and the install call would suspend
  * forever. Instead the confirmation goes into a notification and the event is published as terminal.
+ *
+ * The foreground branch posts the same notification too, as a safety net: `ProcessLifecycleOwner`
+ * reports the foreground with a grace delay, so [ForegroundTracker.presence] can still answer
+ * `Foreground` just after the app actually left, which is exactly when the dialog launch above would
+ * be silently dropped. It stays non-terminal, though — a normal foreground confirmation still waits
+ * for the platform's real terminal status rather than settling early on `ConfirmationPending`.
  */
 @AndroidEntryPoint
 class UpdateStatusReceiver : BroadcastReceiver() {
@@ -39,8 +45,9 @@ class UpdateStatusReceiver : BroadcastReceiver() {
             requestConfirmation(context, sessionId, intent)
             return
         }
-        // Any terminal status settles the session, so a notification pointing at it is now stale.
-        notifications.clear()
+        // Any terminal status settles the session, so a notification pointing at it is now stale —
+        // but only when it is THIS session's notification; see UpdateNotifications.clear().
+        notifications.clear(sessionId)
         bus.publish(
             InstallStatusEvent(
                 sessionId = sessionId,
@@ -57,7 +64,13 @@ class UpdateStatusReceiver : BroadcastReceiver() {
             return
         }
         when (foregroundTracker.presence()) {
-            Presence.Foreground -> launchConfirmation(context, sessionId, confirm)
+            Presence.Foreground -> {
+                // Safety net: a background-launch denial is silently dropped, so raising the dialog
+                // is not proof the confirmation is reachable. ProcessLifecycleOwner reports the
+                // foreground with a grace delay, so this branch can run just after the app left.
+                notifications.confirmationRequired(sessionId, confirm)
+                launchConfirmation(context, sessionId, confirm)
+            }
             Presence.Headless -> notifyConfirmation(sessionId, confirm)
         }
     }
