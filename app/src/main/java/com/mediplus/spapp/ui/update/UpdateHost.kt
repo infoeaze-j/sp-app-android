@@ -49,11 +49,11 @@ fun UpdateHost(viewModel: UpdateViewModel = hiltViewModel()) {
         onPauseOrDispose { }
     }
 
-    // A denial no longer fails fast here — it proceeds to onUpdateAccepted() exactly like a grant,
-    // deferring the failure to UpdatePipeline's backup gate, which is still enforced in this commit
-    // (so on API 24-28 a denial now costs a full APK download before failing at that gate). Task 4
-    // removes the gate itself and makes the backup genuinely best-effort; until then this only
-    // defers the denial rather than skipping the gate.
+    // A denial proceeds to onUpdateAccepted() exactly like a grant. Below API 29 the rollback backup
+    // needs this permission to write to Downloads/SpApp/, so a denial costs the backup — but not the
+    // update: since the backup stopped being a gate, UpdatePipeline discards its result and installs
+    // regardless. Rollback is a manual procedure anyway, so the operator loses a convenience rather
+    // than the update itself.
     val legacyWriteLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { _ -> viewModel.onUpdateAccepted() }
