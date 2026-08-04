@@ -125,6 +125,9 @@
     <string name="update_restarting">Update installed. Restarting…</string>
     <string name="update_permission_title">Allow updates</string>
     <string name="update_permission_body">Service Provider App needs permission to install its own updates. Open settings and allow installs from this app, then come back.</string>
+    <string name="update_confirm_title">Finish the update</string>
+    <string name="update_confirm_body">The update is downloaded and ready. Confirm the install to finish.</string>
+    <string name="action_install_now">Install now</string>
     <string name="update_percent">%1$d%%</string>
     <string name="action_update_now">Update now</string>
     <string name="action_update_later">Later</string>

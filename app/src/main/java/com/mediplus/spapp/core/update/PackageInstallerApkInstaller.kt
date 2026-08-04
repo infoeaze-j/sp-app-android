@@ -81,9 +81,10 @@ class PackageInstallerApkInstaller @Inject constructor(
             }
             commit()
             val event = terminal.await()
-            when (event.status) {
-                PackageInstaller.STATUS_SUCCESS -> InstallOutcome.Committed
-                PackageInstaller.STATUS_FAILURE_ABORTED -> InstallOutcome.Aborted
+            when {
+                event.awaitingConfirmation -> InstallOutcome.AwaitingConfirmation
+                event.status == PackageInstaller.STATUS_SUCCESS -> InstallOutcome.Committed
+                event.status == PackageInstaller.STATUS_FAILURE_ABORTED -> InstallOutcome.Aborted
                 else -> InstallOutcome.Failed(event.message)
             }
         }

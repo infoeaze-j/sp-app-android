@@ -37,6 +37,13 @@ sealed interface InstallOutcome {
     /** The operator declined the system confirmation. The verified APK is kept for a retry. */
     data object Aborted : InstallOutcome
 
+    /**
+     * The platform demanded a confirmation while nobody was foregrounded, so a notification now
+     * carries it and this call returned instead of suspending. The install session stays open and
+     * committed until the operator taps.
+     */
+    data object AwaitingConfirmation : InstallOutcome
+
     /** Any other installer failure (signature mismatch, storage, blocked source). */
     data class Failed(val statusMessage: String?) : InstallOutcome
 }

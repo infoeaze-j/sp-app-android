@@ -104,8 +104,11 @@ private fun UpdatePhaseSurface(
         is UpdatePhase.Installing -> UpdateOverlay(stringResource(R.string.update_installing)) {
             CircularProgressIndicator()
         }
-        // Rendered in Task 6, once the phase can actually be produced.
-        is UpdatePhase.ConfirmationPending -> Unit
+        is UpdatePhase.ConfirmationPending -> ConfirmationSurface(
+            phase,
+            viewModel::onRetry,
+            viewModel::onDismissed,
+        )
         UpdatePhase.Restarting -> UpdateOverlay(stringResource(R.string.update_restarting)) {
             CircularProgressIndicator()
         }
@@ -156,6 +159,34 @@ private fun PermissionSurface(
             body = stringResource(R.string.update_permission_body),
             confirmLabelRes = R.string.action_open_settings,
             onConfirm = onOpenSettings,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/**
+ * The operator opened the app while an install was waiting on a notification tap. The action raises
+ * the system confirmation directly, which is strictly better than sending them back to the shade.
+ */
+@Composable
+private fun ConfirmationSurface(
+    phase: UpdatePhase.ConfirmationPending,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    if (phase.forced) {
+        UpdateOverlay(
+            title = stringResource(R.string.update_confirm_title),
+            body = stringResource(R.string.update_confirm_body),
+            actionLabel = stringResource(R.string.action_install_now),
+            onAction = onConfirm,
+        )
+    } else {
+        UpdateDrawer(
+            title = stringResource(R.string.update_confirm_title),
+            body = stringResource(R.string.update_confirm_body),
+            confirmLabelRes = R.string.action_install_now,
+            onConfirm = onConfirm,
             onDismiss = onDismiss,
         )
     }

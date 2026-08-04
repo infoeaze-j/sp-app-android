@@ -596,6 +596,52 @@ class UpdateCoordinatorTest {
         assertEquals(RetryTarget.INSTALL, phase.retry)
     }
 
+    @Test
+    fun `an install awaiting confirmation parks in ConfirmationPending as completed work`() = runTest {
+        // The V2s half of the fleet reaches this on every single update: API 30 can never install
+        // silently, so the notification path is the primary path there, not a fallback.
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returns InstallOutcome.AwaitingConfirmation
+        val coordinator = coordinator()
+
+        val attempt = coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+
+        // Not RETRYABLE: nothing is wrong, and re-running would re-download and re-notify.
+        assertEquals(UpdateAttempt.COMPLETED, attempt)
+        assertEquals(
+            UpdatePhase.ConfirmationPending(info(), forced = false),
+            coordinator.phase.value,
+        )
+    }
+
+    @Test
+    fun `retrying from ConfirmationPending re-installs without re-downloading`() = runTest {
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returnsMany
+            listOf(InstallOutcome.AwaitingConfirmation, InstallOutcome.Committed)
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+
+        // Wrapped in launch: retry() is a suspend entry point, and a direct (unlaunched) call would
+        // let runTest auto-advance straight through settleAfterCommit's delay, skipping past
+        // Restarting before we ever get to observe it (see the headless-accept test above).
+        val job = launch { coordinator.retry() }
+        runCurrent()
+
+        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        coVerify(exactly = 1) { repository.downloadAndVerify(any(), any()) }
+        coVerify(exactly = 2) { installer.install(apkFile) }
+
+        advanceUntilIdle()
+        job.join()
+    }
+
     private companion object {
         const val BASE_URL = "https://backoffice.example.com/api/v1/"
     }

@@ -104,6 +104,9 @@ class UpdateCoordinator @Inject constructor(
             is UpdatePhase.UpdateAvailable -> if (current.forced) current else UpdatePhase.Idle
             is UpdatePhase.PermissionNeeded -> if (current.forced) current else UpdatePhase.Idle
             is UpdatePhase.Failed -> if (current.forced) current else UpdatePhase.Idle
+            // ConfirmationPending is one of the phases this falls through for: the install session
+            // is still live and the notification still carries the confirmation, so dismissing the
+            // in-app surface must not discard it.
             else -> current
         }
     }
@@ -113,6 +116,9 @@ class UpdateCoordinator @Inject constructor(
             when (val current = _phase.value) {
                 is UpdatePhase.CheckFailed -> runCheck()
                 is UpdatePhase.Failed -> advance(current.info, current.forced, current.retry)
+                // The operator opened the app instead of tapping the notification: raise the system
+                // dialog now, which the foreground branch of UpdateStatusReceiver does directly.
+                is UpdatePhase.ConfirmationPending -> advance(current.info, current.forced, RetryTarget.INSTALL)
                 else -> Unit
             }
         }

@@ -105,6 +105,12 @@ class UpdatePipeline @Inject constructor(
             settleAfterCommit(sink)
             return PipelineResult(UpdateAttempt.COMPLETED, downloaded = apk)
         }
+        if (outcome == InstallOutcome.AwaitingConfirmation) {
+            // Nothing is wrong and nothing is retryable: the APK is verified and the session is
+            // live, and only an operator tap is outstanding. Re-running would re-notify, not help.
+            sink.emit(UpdatePhase.ConfirmationPending(info, forced))
+            return PipelineResult(UpdateAttempt.COMPLETED, downloaded = apk)
+        }
         val code = if (outcome == InstallOutcome.Aborted) {
             BusinessCode.UPDATE_INSTALL_ABORTED
         } else {
