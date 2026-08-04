@@ -17,10 +17,17 @@ import javax.inject.Singleton
  * Owns the update work schedule, and the `androidx.work` types with it — nothing above this class
  * sees a WorkManager type.
  *
- * `KEEP` rather than `UPDATE`, and re-enqueued on every process start: the call is idempotent, and
- * repeating it self-heals a schedule that an OEM's aggressive task killer dropped. On these
- * custom-OEM Sunmi builds that is a real failure class, and it is invisible until the fleet has
- * already gone stale.
+ * `KEEP` rather than `UPDATE`, and re-enqueued on every process start. `KEEP` is what makes the
+ * repetition harmless: when a `WorkSpec` for this unique name already exists as enqueued or running,
+ * the enqueue returns without touching it.
+ *
+ * That repetition is load-bearing only where there is no row to keep — a first-ever launch, or a
+ * database wiped by clear-data. It is deliberately NOT what recovers a schedule an aggressive OEM
+ * task killer dropped, though it is easy to assume so: a force-stop cancels the OS-level jobs and
+ * alarms but leaves WorkManager's own rows intact, so this call finds an enqueued row and no-ops.
+ * That recovery belongs to WorkManager itself, which dispatches a `ForceStopRunnable` from its
+ * constructor on every process start and reschedules eligible work whether or not we ask. Verified
+ * against work-runtime 2.10.0.
  */
 @Singleton
 class UpdateScheduler @Inject constructor(
