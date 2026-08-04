@@ -67,6 +67,22 @@
             </intent-filter>
         </activity>
 
+        <!-- On-demand WorkManager init (SpApp is the Configuration.Provider), so workers are built
+             by HiltWorkerFactory. tools:node="merge" on the provider with a targeted removal of the
+             WorkManagerInitializer meta-data ONLY: removing the whole InitializationProvider would
+             also take out androidx.lifecycle's ProcessLifecycleInitializer, and with it the
+             DiagnosticsPoller, SessionRevalidator and ForegroundTracker. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
         <!-- Install-session status callbacks; targeted only by our own mutable PendingIntent. -->
         <receiver
             android:name=".core.update.UpdateStatusReceiver"
