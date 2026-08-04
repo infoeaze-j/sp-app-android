@@ -16,6 +16,11 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- The confirmation notification is the ONLY way an update completes on an API 30 device,
+         which is half the fleet. No runtime grant is needed there; API 33+ needs this one, and a
+         denial degrades to "installs next time somebody opens the app". -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Camera + NFC drive the core verification flows, but the app degrades gracefully
          (clear message) when a device lacks either, so they are not hard-required. -->
     <uses-feature

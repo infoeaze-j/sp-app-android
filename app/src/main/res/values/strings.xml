@@ -131,6 +131,10 @@
     <string name="update_percent">%1$d%%</string>
     <string name="action_update_now">Update now</string>
     <string name="action_update_later">Later</string>
+    <string name="update_notification_channel_name">App updates</string>
+    <string name="update_notification_channel_description">Alerts when an update needs to be confirmed.</string>
+    <string name="update_notification_title">Update ready to install</string>
+    <string name="update_notification_body">Tap to finish installing the latest version.</string>
 
     <!-- ===== Error messages (curated, non-revealing — FR-029) ===== -->
     <string name="err_generic_title">Something went wrong</string>
