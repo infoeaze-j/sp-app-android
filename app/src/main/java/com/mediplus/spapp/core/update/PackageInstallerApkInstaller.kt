@@ -43,15 +43,17 @@ class PackageInstallerApkInstaller @Inject constructor(
 
     override suspend fun install(apk: File): InstallOutcome = withContext(dispatcher) {
         val installer = context.packageManager.packageInstaller
-        abandonCommittedSessions(installer)
-        val sessionId = installer.createSession(sessionParams(apk))
+        var opened: Int? = null
         try {
+            abandonCommittedSessions(installer)
+            val sessionId = installer.createSession(sessionParams(apk))
+            opened = sessionId
             installer.openSession(sessionId).use { session ->
                 writeApk(session, apk)
                 awaitOutcome(sessionId) { session.commit(statusIntentSender(sessionId)) }
             }
         } catch (e: IOException) {
-            abandonQuietly(installer, sessionId)
+            opened?.let { abandonQuietly(installer, it) }
             InstallOutcome.Failed(e.message)
         }
     }
@@ -109,6 +111,8 @@ class PackageInstallerApkInstaller @Inject constructor(
             installer.abandonSession(sessionId)
         } catch (_: SecurityException) {
             // Not ours to abandon; nothing to clean.
+        } catch (_: IllegalArgumentException) {
+            // Already gone — listed by mySessions, then finalised before we got here.
         }
     }
 
@@ -123,16 +127,21 @@ class PackageInstallerApkInstaller @Inject constructor(
      * reboot causes. The platform's own record does.
      *
      * `isCommitted` is API 29+; the whole fleet is API 30+, and below 29 the old sweep-everything
-     * behaviour is unchanged.
+     * behaviour is unchanged for [abandonStaleSessions]. `minSdk` is 24, so that range is live code:
+     * below API 29 this always answers `false`, which means [abandonCommittedSessions] abandons
+     * nothing there either, and the accumulation it exists to prevent stays possible on API 24-28.
+     * Not fixed, because the fleet floor is 30 and this guard was specified for that fleet.
      */
     private fun isAwaitingConfirmation(info: PackageInstaller.SessionInfo): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && info.isCommitted
 
     /**
-     * Keeps exactly one committed session alive: the newest. An older committed session is one the
-     * operator never confirmed, and it is already unreachable — [UpdateNotifications] posts under a
-     * single id, so the notification carrying its intent was replaced by this attempt's. Left alone
-     * they accumulate against the per-UID session cap until `createSession` refuses outright.
+     * Keeps exactly one committed session alive (API 29+): the newest. An older committed session is
+     * one the operator never confirmed; abandoning it here delivers a terminal (aborted) status to
+     * [UpdateStatusReceiver], which matches it against [UpdateNotifications] by session id before
+     * clearing — so this can never cancel the newer, still-live confirmation this attempt is about
+     * to post. Left alone, older committed sessions accumulate against the per-UID session cap until
+     * `createSession` refuses outright.
      */
     private fun abandonCommittedSessions(installer: PackageInstaller) {
         installer.mySessions.forEach { info ->

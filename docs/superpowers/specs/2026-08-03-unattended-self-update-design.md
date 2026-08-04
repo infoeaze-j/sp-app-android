@@ -190,14 +190,19 @@ If the operator opens the app rather than tapping the notification, the foregrou
 and re-offers from `ConfirmationPending`, raising the system dialog directly.
 
 **Sparing every committed session at launch is only safe because `install()` also caps how many can
-ever exist.** Left unchecked, a headless worker that finds the previous confirmation still un-tapped
-would create and commit a fresh session on every retry cycle — `RetryTarget.DOWNLOAD` always leads
-back through `install()` — while `UpdateNotifications` posts under a single notification id, so each
-new commit silently replaces the intent behind the last one. The sessions behind those superseded
+ever exist, on API 29+.** Left unchecked, a headless worker that finds the previous confirmation still
+un-tapped would create and commit a fresh session on every retry cycle — `RetryTarget.DOWNLOAD` always
+leads back through `install()` — while `UpdateNotifications` posts under a single notification id, so
+each new commit silently replaces the intent behind the last one. The sessions behind those superseded
 notifications become unreachable but, after the fix above, un-abandoned: they accumulate against the
 per-UID session cap until `PackageInstaller.createSession` throws. `install()` therefore abandons any
-already-committed session immediately before creating a new one, keeping exactly one committed
-session alive at a time — the newest, whose notification is the only one still live.
+already-committed session immediately before creating a new one — the abandon delivers a terminal
+status to `UpdateStatusReceiver`, which clears that session's notification only if it is still the one
+visible, never a newer one — keeping exactly one committed session alive at a time on API 29+: the
+newest, whose notification is the only one still live. Below API 29 `isCommitted` cannot be read, so
+this abandon is a no-op and the accumulation stays open; `minSdk` is 24, so that range is live code,
+just below the fleet's actual floor of 30, and is left undefended deliberately rather than adding a
+fallback for a range no device in the fleet runs.
 
 ### 5. Reuse an APK that is already downloaded and verified
 
