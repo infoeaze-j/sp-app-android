@@ -37,6 +37,14 @@ regardless of any code change. They are recorded here because they gate everythi
 Neither is a coding problem, and neither is in scope for this design. Both must be resolved before
 the first device leaves the building.
 
+> **Both were resolved on 2026-08-03, after this section was written.** The two paragraphs above are
+> left as the design-time record; do not act on them. The permanent key now exists at
+> `C:\Users\Juanco\keys\spapp-release.jks` and a release build carries SHA-256
+> `69:DA:BA:2F:40:6F:DD:0D:A0:97:65:6B:8E:26:C0:95:D7:FD:0D:B7:57:B1:D6:78:31:55:EC:1C:70:FC:ED:B4`
+> (re-verified 2026-08-05), and the release `BASE_URL` is `https://bio.infoeaze.com/api/v1/`. The
+> keystore still lives on one machine and is still not backed up off-machine, and CI has no
+> `keystore.properties`, so CI release builds remain debug-signed — see **Open items** and `CLAUDE.md`.
+
 ## Requirement
 
 After the app has been launched once by a human on a device, published updates must install without
