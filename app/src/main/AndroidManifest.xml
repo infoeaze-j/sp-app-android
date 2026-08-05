@@ -25,6 +25,11 @@
          denial degrades to "installs next time somebody opens the app". -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- A device that reboots and is then never touched has no reason to start this app's process,
+         and WorkManager's own recovery cannot run until one exists. This broadcast is what starts
+         it; see BootCompletedReceiver. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Camera + NFC drive the core verification flows, but the app degrades gracefully
          (clear message) when a device lacks either, so they are not hard-required. -->
     <uses-feature
@@ -94,6 +99,17 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-arms the update schedule after a reboot. exported: BOOT_COMPLETED is a system
+             broadcast, so the system must be able to reach it — the only receiver of ours that is
+             exported, hence the reason spelled out. -->
+        <receiver
+            android:name=".core.update.BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
     </application>
