@@ -9,10 +9,6 @@ import android.os.Build
 import com.mediplus.spapp.core.di.IoDispatcher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -20,7 +16,8 @@ import javax.inject.Inject
 
 /**
  * The real [ApkInstaller], backed by a [PackageInstaller] session: write + fsync the verified APK,
- * commit with a status receiver, and suspend until a terminal status arrives on [InstallEventBus].
+ * retire any older committed session, then commit with a status receiver and let [awaitOutcome]
+ * settle the result from [InstallEventBus].
  *
  * Every commit requests `USER_ACTION_NOT_REQUIRED` (API 31+) and reacts to whatever the platform
  * answers — a terminal status means it installed unattended, `STATUS_PENDING_USER_ACTION` means a
@@ -46,12 +43,12 @@ class PackageInstallerApkInstaller @Inject constructor(
         val installer = context.packageManager.packageInstaller
         var opened: Int? = null
         try {
-            abandonCommittedSessions(installer)
             val sessionId = installer.createSession(sessionParams(apk))
             opened = sessionId
             installer.openSession(sessionId).use { session ->
                 writeApk(session, apk)
-                awaitOutcome(sessionId) { session.commit(statusIntentSender(sessionId)) }
+                abandonCommittedSessions(installer)
+                bus.awaitOutcome(sessionId) { session.commit(statusIntentSender(sessionId)) }
             }
         } catch (e: IOException) {
             opened?.let { abandonQuietly(installer, it) }
@@ -91,22 +88,6 @@ class PackageInstallerApkInstaller @Inject constructor(
             session.fsync(output)
         }
     }
-
-    /** Subscribes to the bus BEFORE committing so the terminal status can never be missed. */
-    private suspend fun awaitOutcome(sessionId: Int, commit: () -> Unit): InstallOutcome =
-        coroutineScope {
-            val terminal = async(start = CoroutineStart.UNDISPATCHED) {
-                bus.events.first { it.sessionId == sessionId && it.isTerminal }
-            }
-            commit()
-            val event = terminal.await()
-            when {
-                event.awaitingConfirmation -> InstallOutcome.AwaitingConfirmation
-                event.status == PackageInstaller.STATUS_SUCCESS -> InstallOutcome.Committed
-                event.status == PackageInstaller.STATUS_FAILURE_ABORTED -> InstallOutcome.Aborted
-                else -> InstallOutcome.Failed(event.message)
-            }
-        }
 
     private fun statusIntentSender(sessionId: Int): IntentSender {
         val intent = Intent(context, UpdateStatusReceiver::class.java).setAction(ACTION_INSTALL_STATUS)
@@ -164,6 +145,18 @@ class PackageInstallerApkInstaller @Inject constructor(
      * this attempt goes on to do (including ending in [InstallOutcome.Committed], a silent install
      * that posts no notification at all). Left alone, older committed sessions accumulate against
      * the per-UID session cap until `createSession` refuses outright.
+     *
+     * Called from [install] only once the replacement session has been created, written and fsynced
+     * — i.e. once everything that can fail with `IOException` is behind us. On the V2s the session
+     * being retired here is the one the visible notification points at, and that notification is the
+     * ONLY way an update ever completes on that half of the fleet; running the sweep first meant a
+     * `createSession` or a write that hit a full volume destroyed the working confirmation and put
+     * nothing in its place. This deliberately costs one extra staged copy on disk during the write
+     * (two sessions, briefly) — a write that then fails for space leaves the old confirmation
+     * standing, which is the outcome worth having.
+     *
+     * The new session is not swept by its own call: [isAwaitingConfirmation] tests `isCommitted`,
+     * and the commit has not happened yet.
      */
     private fun abandonCommittedSessions(installer: PackageInstaller) {
         installer.mySessions.forEach { info ->

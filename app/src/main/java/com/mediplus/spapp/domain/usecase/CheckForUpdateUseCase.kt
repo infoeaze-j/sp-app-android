@@ -21,7 +21,8 @@ import javax.inject.Inject
  * verdicts working, not as a second opinion on one that supplies them.
  *
  * Fail-open is the rule everywhere: nothing published, an undeployed endpoint, or a degenerate
- * payload (blank/malformed sha, non-positive size, off-origin url) must never leave a device stuck.
+ * payload (blank/malformed sha, a size that is non-positive or beyond any plausible APK, off-origin
+ * url) must never leave a device stuck.
  * In particular a build is [UpdateStatus.Forced] only when a newer build actually exists to
  * install — a supported-floor above the latest published build is a server bug, not a reason to
  * block every clinic.
@@ -50,8 +51,18 @@ class CheckForUpdateUseCase @Inject constructor(
             AppResult.Success(UpdateStatus.Optional(info))
     }
 
+    /**
+     * `sizeBytes` is not just metadata — it is the budget the download enforces against the bytes a
+     * server actually sends, so an unbounded declaration is an unbounded write on a device nobody
+     * will ever open. [MAX_APK_BYTES] is therefore a ceiling on what any single response may ask
+     * for. It is deliberately far above anything real: this app's own release APK is ~97 MB, and
+     * Google Play will not distribute a single APK above 100 MB at all, so no legitimate build can
+     * be refused here — while any declaration past it is certainly a bug or an attack.
+     */
     private fun UpdateInfo.isInstallable(): Boolean =
-        sha256.matches(SHA256_HEX) && sizeBytes > 0 && isSameOriginAsApi(apkUrl)
+        sha256.matches(SHA256_HEX) &&
+            sizeBytes > 0 && sizeBytes <= MAX_APK_BYTES &&
+            isSameOriginAsApi(apkUrl)
 
     /**
      * The APK must come from the API's own origin, which the spec states it does by construction.
@@ -59,6 +70,10 @@ class CheckForUpdateUseCase @Inject constructor(
      * along, but the rule still earns its place: the URL is named by the very response we are
      * deciding whether to trust, and honouring an arbitrary host would let that response point the
      * device at anyone's binary. Same-origin means the client never has to make that judgement.
+     *
+     * This check is only as strong as what happens *after* it, which is why the shared OkHttp client
+     * refuses redirects (`NetworkModule.provideOkHttpClient`): a 30x would otherwise let the same
+     * response move the download to a host this check never saw.
      */
     private fun isSameOriginAsApi(url: String): Boolean {
         val apiOrigin = originOf(baseUrl) ?: return false
@@ -84,5 +99,8 @@ class CheckForUpdateUseCase @Inject constructor(
         val SHA256_HEX = Regex("[0-9a-fA-F]{64}")
         const val NO_PORT = -1
         val DEFAULT_PORTS = mapOf("https" to 443, "http" to 80)
+
+        /** 512 MB: ~5x this app's own release APK, and past every ceiling Android itself imposes. */
+        const val MAX_APK_BYTES = 512L * 1024 * 1024
     }
 }

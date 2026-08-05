@@ -61,7 +61,13 @@ class UpdateApiContractTest {
         server = MockWebServer()
         server.start()
         cacheDir = tempFolder.newFolder("updates")
-        val client = OkHttpClient.Builder().readTimeout(1, TimeUnit.SECONDS).build()
+        val client = OkHttpClient.Builder()
+            .readTimeout(1, TimeUnit.SECONDS)
+            // Mirrors NetworkModule's real client, which NetworkModuleTest pins. The same-origin
+            // check is over the URL the *response* named, so a followed redirect would move the
+            // download to a host that check never saw.
+            .followRedirects(false)
+            .build()
         val api: UpdateApi = Retrofit.Builder()
             .baseUrl(server.url("/"))
             .client(client)
@@ -494,6 +500,47 @@ class UpdateApiContractTest {
         val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
 
         assertEquals(TransientKind.SERVER_ERROR, (result as AppResult.TransientFailure).error.kind)
+    }
+
+    // ---- Bounds: what a single response is allowed to make the device do ----
+
+    @Test
+    fun `a body running past the declared size is rejected and leaves nothing to resume`() = runTest {
+        // The failure mode this closes is not a bad install — the digest already stops that — it is
+        // an unbounded write. Deleting matters as much as stopping: a partial that survives is
+        // resumed and grown again every six hours, forever.
+        server.enqueue(MockResponse().setResponseCode(200).setBody(Buffer().write(ByteArray(APK_SIZE * 2))))
+
+        val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+        assertEquals(
+            BusinessCode.UPDATE_CORRUPTED,
+            (result as AppResult.BusinessRejection).error.code,
+        )
+        assertFalse("an overlong transfer must not leave a partial behind", downloadedFile().exists())
+    }
+
+    @Test
+    fun `a redirected binary is refused rather than fetched from wherever it points`() = runTest {
+        // CheckForUpdateUseCase validated the URL the response named. A 30x lets that same response
+        // choose a different host afterwards, which is the one judgement the client never makes.
+        val elsewhere = MockWebServer()
+        elsewhere.start()
+        try {
+            elsewhere.enqueue(MockResponse().setResponseCode(200).setBody(Buffer().write(apkBytes)))
+            server.enqueue(
+                MockResponse().setResponseCode(302)
+                    .setHeader("Location", elsewhere.url("/anyones.apk").toString()),
+            )
+
+            val result = repository.downloadAndVerify(infoFor(apkBytes)) { _, _ -> }
+
+            assertEquals(TransientKind.SERVER_ERROR, (result as AppResult.TransientFailure).error.kind)
+            assertEquals("the redirect target must never be contacted", 0, elsewhere.requestCount)
+            assertFalse(downloadedFile().exists())
+        } finally {
+            elsewhere.shutdown()
+        }
     }
 
     private fun sha256Of(bytes: ByteArray): String =

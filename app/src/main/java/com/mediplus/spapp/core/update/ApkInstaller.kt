@@ -21,6 +21,10 @@ interface ApkInstaller {
      * Streams [apk] into an install session and commits it. Suspends until the platform reports a
      * terminal status — which, for a successful self-update, it usually never does: the system
      * kills this process mid-install, so success manifests as death, not as a return value.
+     *
+     * The one wait that is bounded is a confirmation the operator has been shown and not answered;
+     * that settles as [InstallOutcome.AwaitingConfirmation] rather than holding the caller (and,
+     * through it, the attempt lock) until they come back.
      */
     suspend fun install(apk: File): InstallOutcome
 
@@ -44,9 +48,12 @@ sealed interface InstallOutcome {
     data object Aborted : InstallOutcome
 
     /**
-     * The platform demanded a confirmation while nobody was foregrounded, so a notification now
-     * carries it and this call returned instead of suspending. The install session stays open and
-     * committed until the operator taps.
+     * The platform demanded a confirmation and nobody has answered it: either nobody was
+     * foregrounded, so it went straight to a notification, or a dialog was raised and left untouched
+     * long enough that waiting on it stopped being worth the attempt lock. Either way a notification
+     * carries the confirmation and the session stays open and committed until the operator taps.
+     *
+     * Not a success — nothing has installed — and not a failure; nothing has gone wrong.
      */
     data object AwaitingConfirmation : InstallOutcome
 

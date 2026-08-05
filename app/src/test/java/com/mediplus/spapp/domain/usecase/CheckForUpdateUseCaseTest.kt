@@ -130,6 +130,40 @@ class CheckForUpdateUseCaseTest {
     }
 
     @Test
+    fun `a size beyond any plausible APK fails open as a check failure`() = runTest {
+        // One JSON field decides how many bytes the device is willing to write. Left unbounded, a
+        // wrong (or hostile) sizeBytes is enough to fill /data on a device nobody will ever open.
+        serverSays(AppResult.Success(info(sizeBytes = 4L * 1024 * 1024 * 1024)))
+
+        assertTrue(useCase() is AppResult.TransientFailure)
+    }
+
+    @Test
+    fun `a size one byte past the ceiling is refused`() = runTest {
+        serverSays(AppResult.Success(info(sizeBytes = MAX_APK_BYTES + 1)))
+
+        assertTrue(useCase() is AppResult.TransientFailure)
+    }
+
+    @Test
+    fun `a size exactly at the ceiling is still installable`() = runTest {
+        val published = info(sizeBytes = MAX_APK_BYTES)
+        serverSays(AppResult.Success(published))
+
+        assertEquals(AppResult.Success(UpdateStatus.Optional(published)), useCase())
+    }
+
+    @Test
+    fun `this app's own release size is nowhere near the ceiling`() = runTest {
+        // ~97 MB today (bundled ML Kit models). The ceiling has to leave real headroom, or the fix
+        // for an unbounded write turns into a fleet that can never update at all.
+        val published = info(sizeBytes = 100L * 1024 * 1024)
+        serverSays(AppResult.Success(published))
+
+        assertEquals(AppResult.Success(UpdateStatus.Optional(published)), useCase())
+    }
+
+    @Test
     fun `a url on another host fails open as a check failure`() = runTest {
         // The client attaches its bearer token to the download, so a third-party host would be
         // handed the operator's session token — https or not.
@@ -249,5 +283,8 @@ class CheckForUpdateUseCaseTest {
         const val BASE_URL = "http://backoffice.example.com/api/v1/"
         const val HTTPS_BASE_URL = "https://backoffice.example.com/api/v1/"
         const val VALID_SHA = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6"
+
+        /** Mirrors the production ceiling; kept here so a change to it fails these tests loudly. */
+        const val MAX_APK_BYTES = 512L * 1024 * 1024
     }
 }

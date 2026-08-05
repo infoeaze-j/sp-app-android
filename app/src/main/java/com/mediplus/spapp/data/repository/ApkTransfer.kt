@@ -24,6 +24,12 @@ import java.security.MessageDigest
  * is accepted only when its SHA-256 and byte count both match what the back office published. Every
  * optimistic decision below — reusing a prefix, trusting a 206 — can therefore only ever cost a
  * wasted transfer, never an install of the wrong bytes.
+ *
+ * The one thing that contract cannot supply is a bound. The digest only ever runs on a body that
+ * *ended*, so a body that does not end is answerable to nothing — hence the declared size is
+ * enforced as a hard ceiling on bytes written, not merely compared against afterwards. That is a
+ * defence against an unbounded write, not a second trust anchor: an overlong transfer is reported
+ * through the existing corrupt-download path, and the digest still decides everything else.
  */
 
 internal const val HTTP_RANGE_NOT_SATISFIABLE = 416
@@ -90,6 +96,13 @@ internal suspend fun streamTo(target: File, body: ResponseBody, plan: TransferPl
     return StreamedApk(bytes = written, shaHex = digest.digest().toHex())
 }
 
+/**
+ * Copies until the body ends **or** until it has offered more than the server said it would.
+ *
+ * The overshoot is returned rather than thrown: it makes `bytes != sizeBytes` true, so the transfer
+ * lands on the same corrupt-download rejection a truncated or tampered body already does — which
+ * deletes the file, so nothing is left for the next attempt to resume and grow again.
+ */
 private suspend fun copyChunks(
     input: InputStream,
     output: OutputStream,
@@ -102,6 +115,8 @@ private suspend fun copyChunks(
     while (true) {
         val read = input.read(buffer)
         if (read == -1) return written
+        // Checked before the write, so the excess never reaches the disk at all.
+        if (written + read > plan.totalBytes) return written + read
         digest.update(buffer, 0, read)
         output.write(buffer, 0, read)
         written += read

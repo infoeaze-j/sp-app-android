@@ -20,7 +20,7 @@ import javax.inject.Singleton
  * Retrofit + OkHttp + kotlinx.serialization stack. The [AuthInterceptor] attaches the session token
  * and treats 401 as invalidation (FR-002, FR-004). The logging interceptor is debug-only and capped
  * at HEADERS with the Authorization header redacted, so no token, identity, or biometric body is
- * ever written to logs (FR-029).
+ * ever written to logs (FR-029). Redirects are refused client-wide — see [provideOkHttpClient].
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -59,6 +59,15 @@ object NetworkModule {
         .addInterceptor(authInterceptor)
         .addInterceptor(deviceIdInterceptor)
         .addInterceptor(loggingInterceptor)
+        // Every request this app makes is aimed at an origin the CLIENT chose: BuildConfig.BASE_URL,
+        // or an apkUrl CheckForUpdateUseCase has already checked against it. A 30x hands that choice
+        // back to the response, after the check — which is the single judgement the same-origin rule
+        // exists to keep away from the server. docs/openapi.json declares no 3xx on any endpoint, so
+        // a redirect is always off-contract; letting it through as a plain non-2xx keeps it visible
+        // and retryable instead of silently obeyed. Client-wide rather than download-only because
+        // OkHttp strips only Authorization across a host change: X-Device-Id would otherwise ride
+        // along to whoever the redirect named, and a same-host redirect keeps the bearer token too.
+        .followRedirects(false)
         .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)

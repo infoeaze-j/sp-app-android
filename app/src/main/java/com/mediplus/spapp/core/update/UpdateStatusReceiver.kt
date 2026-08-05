@@ -24,7 +24,9 @@ import javax.inject.Inject
  * reports the foreground with a grace delay, so [ForegroundTracker.presence] can still answer
  * `Foreground` just after the app actually left, which is exactly when the dialog launch above would
  * be silently dropped. It stays non-terminal, though — a normal foreground confirmation still waits
- * for the platform's real terminal status rather than settling early on `ConfirmationPending`.
+ * for the platform's real terminal status rather than settling early on `ConfirmationPending`. What
+ * it does publish is a non-terminal notice that a confirmation was raised, which is what lets
+ * [awaitOutcome] bound that wait instead of holding the attempt lock until the operator returns.
  */
 @AndroidEntryPoint
 class UpdateStatusReceiver : BroadcastReceiver() {
@@ -69,6 +71,18 @@ class UpdateStatusReceiver : BroadcastReceiver() {
                 // is not proof the confirmation is reachable. ProcessLifecycleOwner reports the
                 // foreground with a grace delay, so this branch can run just after the app left.
                 notifications.confirmationRequired(sessionId, confirm)
+                // Published AFTER the notification exists, and non-terminal on purpose: a foreground
+                // confirmation still waits for the platform's real status rather than settling early
+                // on ConfirmationPending. It says only that a confirmation is now in front of the
+                // operator — enough for awaitOutcome to stop waiting *unboundedly* for an answer
+                // that, in the dropped-launch case above, is never coming.
+                bus.publish(
+                    InstallStatusEvent(
+                        sessionId = sessionId,
+                        status = PackageInstaller.STATUS_PENDING_USER_ACTION,
+                        message = null,
+                    ),
+                )
                 launchConfirmation(context, sessionId, confirm)
             }
             Presence.Headless -> notifyConfirmation(sessionId, confirm)
