@@ -35,13 +35,22 @@ interface UpdateNotifier {
     /**
      * The device cannot request installs — typically because Android's unused-app permission reset
      * stripped `REQUEST_INSTALL_PACKAGES` from an idle device, which applies to every unit in this
-     * fleet (all API 30+). Nobody is present to see the in-app prompt, so this is the only signal
-     * that would otherwise exist.
+     * fleet (all API 30+). Nobody is present to see the in-app prompt, so on a device that can
+     * deliver it this is the only signal that would otherwise exist.
+     *
+     * **It cannot be delivered on API 33+ today.** The app declares `POST_NOTIFICATIONS` but never
+     * requests it at runtime, and with `targetSdk 36` the platform denies it by default from API 33,
+     * so [UpdateNotifications]'s post returns without notifying. That silently costs the Sunmi V3s
+     * (Android 13) this notice, and costs them the Task 7 confirmation notification too. Requesting
+     * the grant is tracked as separate follow-up work; it is deliberately not done here, because a
+     * permission prompt belongs to a UI surface and to a decision about when the operator sees it.
+     * The Sunmi V2s (API 30) need no runtime grant and are unaffected.
      */
     fun installPermissionRequired()
 
     /**
-     * The permission is back, or was never the problem, so any standing notice is stale.
+     * The permission is back, or no update is pending for the notice to point at, so any standing
+     * notice is stale.
      *
      * Known gap, documented rather than fixed: granting through the in-app
      * [UpdatePhase.PermissionNeeded] surface does not call this, so a notice posted by an earlier
@@ -55,6 +64,32 @@ interface UpdateNotifier {
 }
 
 /**
+ * The two update notification channels. Split rather than shared so that muting one cannot disable
+ * the other: on the Sunmi V2s (API 30) the confirmation notification is the ONLY way an update ever
+ * completes, and an operator silencing a repeating "update problems" notice must not take the
+ * install path down with it.
+ *
+ * [CONFIRMATION] deliberately keeps the original channel id, so any importance the operator has
+ * already set on it survives this split.
+ */
+private enum class UpdateChannel(
+    val id: String,
+    @param:StringRes val nameRes: Int,
+    @param:StringRes val descriptionRes: Int,
+) {
+    CONFIRMATION(
+        id = "sp_app_updates",
+        nameRes = R.string.update_notification_channel_name,
+        descriptionRes = R.string.update_notification_channel_description,
+    ),
+    ATTENTION(
+        id = "sp_app_update_attention",
+        nameRes = R.string.update_attention_channel_name,
+        descriptionRes = R.string.update_attention_channel_description,
+    ),
+}
+
+/**
  * Posts the two update notifications: the one carrying a pending install confirmation
  * (design 2026-08-03 §3, §7) and the one saying the install permission has gone (§8). Only the
  * platform-side [UpdateStatusReceiver] holds this concrete class, because only it has the
@@ -64,12 +99,14 @@ interface UpdateNotifier {
  * the platform there can never commit without user action — so it is built as a primary path: high
  * importance, auto-cancel, and a content intent that lands directly on the system confirmation
  * rather than on our own UI. The permission notice is built the same way, landing on the unknown-app
- * sources screen.
+ * sources screen, on its own channel so one mute cannot silence both.
  *
  * Below API 33 no runtime grant is needed, which is exactly the half of the fleet that depends on
- * it. On API 33+ a denial degrades to "installs the next time somebody opens the app" — no worse
- * than the behaviour before this design — so the permission check returns quietly rather than
- * throwing.
+ * it. On API 33+ the grant is never requested anywhere in this app and `targetSdk 36` means the
+ * platform denies it by default, so posting returns quietly and **nothing is delivered at all** —
+ * see [UpdateNotifier.installPermissionRequired] for what that costs and why the fix is separate
+ * work. Returning quietly rather than throwing is still right: the degraded behaviour is "installs
+ * the next time somebody opens the app", which is no worse than before this design.
  */
 @Singleton
 class UpdateNotifications @Inject constructor(
@@ -84,7 +121,7 @@ class UpdateNotifications @Inject constructor(
      *
      * Read and written without a lock, which is safe only because both callers are
      * [UpdateStatusReceiver]'s main-thread `onReceive`. The permission methods below run on a worker
-     * thread and deliberately never touch this field or the confirmation's notification id.
+     * thread and deliberately never touch this field, nor the confirmation's notification id.
      */
     @Volatile
     private var notifiedSessionId: Int? = null
@@ -99,6 +136,7 @@ class UpdateNotifications @Inject constructor(
         )
         val posted = post(
             id = CONFIRMATION_NOTIFICATION_ID,
+            channel = UpdateChannel.CONFIRMATION,
             titleRes = R.string.update_notification_title,
             bodyRes = R.string.update_notification_body,
             contentIntent = pending,
@@ -141,6 +179,7 @@ class UpdateNotifications @Inject constructor(
         )
         post(
             id = PERMISSION_NOTIFICATION_ID,
+            channel = UpdateChannel.ATTENTION,
             titleRes = R.string.update_permission_notification_title,
             bodyRes = R.string.update_permission_notification_body,
             contentIntent = pending,
@@ -158,9 +197,15 @@ class UpdateNotifications @Inject constructor(
      * predicate on purpose: Lint's `MissingPermission` check follows dataflow within a single
      * function, so behind a predicate the `notify` call below reads as an unguarded permission use
      * and fails `lintDebug`, which aborts on error.
+     *
+     * `setOnlyAlertOnce(true)` matters because the permission notice re-posts on every periodic run:
+     * without it a permanently stripped device would sound and vibrate every six hours forever.
+     * Re-posting while the notice is still visible is silent; if the operator dismissed it, it
+     * alerts again, which is right — a dismissal is not a fix.
      */
     private fun post(
         id: Int,
+        channel: UpdateChannel,
         @StringRes titleRes: Int,
         @StringRes bodyRes: Int,
         contentIntent: PendingIntent,
@@ -171,8 +216,8 @@ class UpdateNotifications @Inject constructor(
         ) {
             return false
         }
-        ensureChannel()
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        ensureChannel(channel)
+        val notification = NotificationCompat.Builder(context, channel.id)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle(context.getString(titleRes))
             .setContentText(context.getString(bodyRes))
@@ -180,41 +225,40 @@ class UpdateNotifications @Inject constructor(
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setAutoCancel(true)
             .setOngoing(false)
+            .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
             .build()
         NotificationManagerCompat.from(context).notify(id, notification)
         return true
     }
 
-    private fun ensureChannel() {
+    private fun ensureChannel(channel: UpdateChannel) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            context.getString(R.string.update_notification_channel_name),
+        val created = NotificationChannel(
+            channel.id,
+            context.getString(channel.nameRes),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = context.getString(R.string.update_notification_channel_description)
+            description = context.getString(channel.descriptionRes)
         }
-        NotificationManagerCompat.from(context).createNotificationChannel(channel)
+        NotificationManagerCompat.from(context).createNotificationChannel(created)
     }
 
-    private companion object {
-        const val CHANNEL_ID = "sp_app_updates"
-
+    internal companion object {
         /**
          * The pending-confirmation notification, and — beside it rather than instead of it — the
          * lost-install-permission notice. They must not share an id: clearing the notice would then
          * cancel a live confirmation, leaving a committed session with nothing for the operator to
-         * tap.
+         * tap. `InstallPermissionNoticeTest` pins that they differ.
          */
-        const val CONFIRMATION_NOTIFICATION_ID = 1001
-        const val PERMISSION_NOTIFICATION_ID = 1002
+        internal const val CONFIRMATION_NOTIFICATION_ID = 1001
+        internal const val PERMISSION_NOTIFICATION_ID = 1002
 
         /**
          * Request code for the settings PendingIntent. Kept clear of the session-id band the
          * confirmation uses; the two intents do not `filterEquals` in any case, so neither can
          * update the other.
          */
-        const val PERMISSION_REQUEST_CODE = 2001
+        private const val PERMISSION_REQUEST_CODE = 2001
     }
 }

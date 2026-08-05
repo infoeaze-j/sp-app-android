@@ -3019,6 +3019,53 @@ prevention side.
 - Produces: `UpdateNotifier` gains `fun installPermissionRequired()`. `UpdateCoordinator`'s
   constructor gains a trailing `notifier: UpdateNotifier` parameter.
 
+> **Correction (2026-08-05, as shipped).** The steps below are kept as the record of what was
+> specified; four things about them are wrong and were not shipped as written.
+>
+> 1. **`UpdateCoordinator` is not modified at all** (ruling A). It already takes six constructor
+>    parameters and detekt's `LongParameterList` fires *at* `constructorThreshold: 7`, so a
+>    `notifier` there would break the build's own static-analysis gate. Neither
+>    `UpdateCoordinator.kt` nor `UpdateCoordinatorTest.kt` was touched, `advance` keeps its
+>    three-parameter signature, and Step 1's two tests are void — they construct a seven-argument
+>    coordinator that does not match the shipped code in any case.
+> 2. **The notice is posted from `UpdateWorker`,** which reads `coordinator.phase.value` after
+>    `runUpdate` returns — a permission stop returns `UpdateAttempt.COMPLETED` like any other
+>    definite answer, so the return value cannot carry it. The decision itself lives in
+>    `core/update/InstallPermissionNotice.kt` as `UpdateNotifier.reconcileInstallPermission(phase,
+>    presence)`, because there is no Robolectric here and `TestListenableWorkerBuilder` needs a real
+>    `Context`, so anything inside the worker would be untestable.
+> 3. **Presence is asked, not assumed, and `CheckFailed` is excluded.** "Headless" cannot be inferred
+>    from "a worker is running": `UpdateScheduler` constrains the periodic work on `NetworkType.CONNECTED`
+>    alone, so it overlaps an operator using the app, and a `PRIORITY_HIGH` heads-up would land on
+>    top of the in-app permission surface. `ForegroundTracker.presence()` is passed in and only
+>    `Presence.Headless` posts. Separately, `UpdatePhase.CheckFailed` neither posts nor clears: it is
+>    reached before `advance()` ever evaluates `canRequestInstalls()`, so it carries no information
+>    about the permission, and clearing on it would destroy the only standing signal because the back
+>    office was unreachable — repeatedly, since a transport failure retries with backoff. The
+>    reconcile is an exhaustive `when` over the sealed phase with no `else`, which is what stops a
+>    future variant inheriting the wrong branch.
+> 4. **The two notifications do not share `NOTIFICATION_ID`** (ruling D). Step 4's "one replaces the
+>    other" would mean clearing the permission notice cancels a live confirmation, leaving a
+>    committed install session with nothing for the operator to tap. `PERMISSION_NOTIFICATION_ID = 1002`
+>    sits beside `CONFIRMATION_NOTIFICATION_ID = 1001`, and they are on **separate channels** so that
+>    muting a repeating "update problems" notice cannot silence the confirmation — which on the V2s
+>    is the only way an update ever completes. Both carry `setOnlyAlertOnce(true)`, since the notice
+>    re-posts every six hours for as long as the permission is missing.
+>
+> Also note Step 4's `post(...)` helper must **not** be written as `if (!canNotify()) return`. Lint's
+> `MissingPermission` follows dataflow within a single function, so behind a predicate the `notify`
+> call reads as an unguarded permission use and `lintDebug` (`abortOnError`) fails the build. The
+> `SDK_INT` + `checkSelfPermission` guard stays inlined in `post` itself.
+>
+> **Open gap this task does not close.** The notice cannot be delivered on API 33+. The app declares
+> `POST_NOTIFICATIONS` in the manifest but never requests it at runtime — the only two
+> `RequestPermission()` launchers in the app are CAMERA and WRITE_EXTERNAL_STORAGE — and with
+> `targetSdk 36` the platform denies it by default from API 33, so `post()` returns without
+> notifying. That costs the Sunmi V3s (Android 13) this notice **and** the Task 7 confirmation
+> notification. The V2s (API 30) need no runtime grant and are unaffected. Requesting it is separate
+> follow-up work: a permission prompt belongs to a UI surface and to a decision about when the
+> operator is asked.
+
 - [ ] **Step 1: Write the failing test**
 
 Add to `UpdateCoordinatorTest.kt`. Add the mock and pass it to the factory:

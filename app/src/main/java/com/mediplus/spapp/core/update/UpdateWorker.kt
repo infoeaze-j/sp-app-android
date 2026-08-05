@@ -35,12 +35,15 @@ import dagger.assisted.AssistedInject
  *   benign stop for a torn install.
  *
  * The one addition is [reconcileInstallPermission], and it belongs to this caller rather than to
- * [UpdateCoordinator]. The worker is the only caller that already knows nobody is watching, so
- * "notify only when the operator is absent" needs no presence test — the foreground path simply
- * never reaches this code. Reading [UpdateCoordinator.phase] afterwards is how the outcome is
- * learned at all: a permission stop returns [UpdateAttempt.COMPLETED] like any other definite
- * answer, so the return value cannot carry it. The decision itself is a pure function of the phase
- * and is tested as one; see `InstallPermissionNotice` for why it is not inlined here.
+ * [UpdateCoordinator]. Reading [UpdateCoordinator.phase] afterwards is how that outcome is learned
+ * at all: a permission stop returns [UpdateAttempt.COMPLETED] like any other definite answer, so the
+ * return value cannot carry it. The decision itself is a pure function of the phase and is tested as
+ * one; see `InstallPermissionNotice` for why it is not inlined here.
+ *
+ * Note that [Presence.Headless] is passed to [UpdateCoordinator.runUpdate] as an *instruction* —
+ * accept on the operator's behalf — while [ForegroundTracker] is asked for the *fact* of whether
+ * anyone is watching. They are not the same question and must not be conflated: [UpdateScheduler]
+ * constrains this work on network alone, so a run can and does overlap an operator using the app.
  */
 @HiltWorker
 class UpdateWorker @AssistedInject constructor(
@@ -48,11 +51,12 @@ class UpdateWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val coordinator: UpdateCoordinator,
     private val notifier: UpdateNotifier,
+    private val foregroundTracker: ForegroundTracker,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
         val attempt = coordinator.runUpdate(Presence.Headless)
-        notifier.reconcileInstallPermission(coordinator.phase.value)
+        notifier.reconcileInstallPermission(coordinator.phase.value, foregroundTracker.presence())
         return when (attempt) {
             UpdateAttempt.RETRYABLE -> Result.retry()
             UpdateAttempt.COMPLETED -> Result.success()
