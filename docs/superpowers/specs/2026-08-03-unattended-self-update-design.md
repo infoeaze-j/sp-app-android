@@ -104,17 +104,26 @@ mapped to a `Result`.
   returns `Result.success()`, because the next periodic run is the right retry cadence and hammering
   a server that gave a definite answer helps nobody.
 - Enqueued as unique periodic work with `ExistingPeriodicWorkPolicy.KEEP` from `SpApp.onCreate()`,
-  beside the existing `bind()` calls. Re-enqueuing on every process start is idempotent and
-  self-heals a schedule the OEM dropped.
+  beside the existing `bind()` calls. `KEEP` is what makes re-enqueuing on every process start
+  *harmless*, not what makes it curative: an existing enqueued `WorkSpec` is left untouched, so the
+  call only does anything where there is no row to keep — a first-ever launch, or a database wiped
+  by clear-data. Recovering a schedule an OEM task killer dropped is WorkManager's own job, via the
+  `ForceStopRunnable` its constructor dispatches on every process start, and it happens whether or
+  not we ask. Verified against work-runtime 2.10.0.
 - New dependencies: `androidx.work:work-runtime-ktx` and `androidx.hilt:hilt-work`, plus
   `HiltWorkerFactory`, `SpApp : Configuration.Provider`, and removal of WorkManager's
   `androidx.startup` auto-initializer from the merged manifest.
 
 **Reboot.** WorkManager persists its schedule through JobScheduler and reschedules itself on boot,
-so no receiver is strictly required. Because these are custom-OEM Sunmi builds and silently dropped
-background jobs are a well-known OEM failure class, this design also adds
-`RECEIVE_BOOT_COMPLETED` and a minimal receiver that re-enqueues with `KEEP`. It is a few lines of
-insurance against a class of bug that is invisible until the fleet has already gone stale.
+so no receiver is strictly required to keep the schedule. This design adds `RECEIVE_BOOT_COMPLETED`
+and a minimal receiver anyway, for a narrower reason than the obvious one: what the broadcast buys
+is the **process start**. A device that reboots and is then never touched has no reason to start
+this app's process at all, and WorkManager's recovery cannot run until a process exists. The
+receiver's `KEEP` re-enqueue is belt and braces over the identical call in `SpApp.onCreate()` — kept
+so the receiver's purpose is legible, but not the mechanism.
+
+None of it reaches a freshly installed app: Android holds one in the stopped state, where it
+receives no broadcasts at all, until a human launches it once.
 
 ### 3. Presence, and the branch that actually matters
 
