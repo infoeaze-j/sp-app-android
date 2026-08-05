@@ -1,7 +1,8 @@
 # Unattended self-update — design
 
 **Date:** 2026-08-03
-**Status:** Designed — not yet implemented
+**Status:** Designed, implemented and **unverified** — bench verification outstanding
+(`docs/superpowers/plans/2026-08-03-unattended-self-update-bench-checklist.md`)
 **Fleet:** Sunmi V2s on Android 11 (API 30) and Sunmi V3 on Android 13 (API 33), confirmed 2026-08-03
 **Builds on:** `docs/superpowers/specs/2026-07-24-self-update-design.md` (the foreground flow)
 **Endpoints:** `GET /app/releases/latest`, `GET /app/releases/{release}/binary` (both `security: []`)
@@ -332,6 +333,39 @@ that specific unit before it leaves.
   settled on a real V3. The design fails safe either way — a refusal simply routes the V3 down the
   same notification path the V2s already uses — but it decides whether half the fleet or none of it
   updates unattended, so it is the single most valuable thing the bench test establishes.
+  **It fails safe only if that notification path works, and on the V3 it currently does not** — see
+  the next item.
+- **`POST_NOTIFICATIONS` is never requested, so neither notification is delivered on API 33+**
+  (verified 2026-08-05). The permission is declared in the manifest, but the app's only two runtime
+  `RequestPermission()` launchers are CAMERA (`FaceCheckScreen`) and WRITE_EXTERNAL_STORAGE
+  (`UpdateHost`). With `targetSdk 36` the platform denies `POST_NOTIFICATIONS` by default from
+  API 33, so `UpdateNotifications.post()` returns early and the **Sunmi V3** receives neither §8's
+  lost-permission notice nor §7's pending-confirmation notification.
+
+  §7 assumed this away — "grant it at the office" — but nothing in the app ever prompts, so there is
+  nothing to grant at the office except a manual Settings toggle. The consequence is the part that
+  matters: the V3 is the half that is supposed to install silently, so the confirmation notification
+  is its *fallback*. If the item above resolves against us, the V3 has **no working path at all**
+  until this is closed, and degrades to "installs the next time somebody opens the app" — which is
+  what this design exists to remove. Requesting the grant is separate follow-up work; the bench
+  checklist's office pass grants it by hand meanwhile.
+- **§8's auto-revoke half was never implemented.** Only the notification half shipped; nothing in the
+  app reads `isAutoRevokeWhitelisted` or requests the exemption. Turning off "Remove permissions if
+  app isn't used" by hand during the office pass is therefore the only defence an idle device has
+  against losing `REQUEST_INSTALL_PACKAGES`, and skipping it on one unit is how that unit silently
+  stops updating.
+- **Both rollout blockers named under *Problem* are resolved** (re-verified 2026-08-05). The release
+  build is signed with the permanent key — `apksigner verify --print-certs` prints SHA-256
+  `69:DA:BA:2F:…:70:FC:ED:B4`, V2 signer only — and the release `BASE_URL` is
+  `https://bio.infoeaze.com/api/v1/`, a public host. The third part of that check is **not** clear:
+  `GET /app/releases/latest?versionCode=4` currently answers `200 {"latest":null}`, so nothing is
+  published and there is no `apkUrl` whose origin can be confirmed same-origin yet. Publish
+  `versionCode 5` first; `CheckForUpdateUseCase` refuses any other origin and the refusal reaches the
+  operator as an opaque `TransientKind.UNKNOWN`.
+- **Bench results go here.** Record the outcome of
+  `docs/superpowers/plans/2026-08-03-unattended-self-update-bench-checklist.md` in this section —
+  above all whether the V3 installed silently, and whether the periodic job came back after a reboot
+  on a device nobody opened. Until both devices pass, this design is implemented and unverified.
 - **`minSdk` is 24 while the fleet floor is now API 30.** Raising it would drop core-library
   desugaring and delete the legacy storage path outright. Deliberately **not** part of this work:
   changing the minimum SDK is a build-wide change with its own regression surface, and doing it

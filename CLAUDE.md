@@ -23,7 +23,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 ```bash
 ./gradlew assembleDebug                  # build
 ./gradlew lintDebug                      # Android Lint — the in-build static-analysis gate (abortOnError=true)
-./gradlew testDebugUnitTest              # JVM unit suite (424 tests across test/ + testDebug/)
+./gradlew testDebugUnitTest              # JVM unit suite (467 tests across test/ + testDebug/)
 ./gradlew testDebugUnitTest --tests "com.mediplus.spapp.ui.facecheck.FaceCheckViewModelTest"   # one test class
 ./gradlew testDebugUnitTest --tests "*.FaceCheckViewModelTest.withheld consent halts cleanly"       # one test
 ./gradlew createDebugUnitTestCoverageReport                # coverage → app/build/reports/coverage/
@@ -198,7 +198,7 @@ it, and the current behaviour is the conservative option.
 
 ## Current state to be aware of
 
-- As of 2026-08-06 detekt is **still red on `main`** — **14** weighted issues, measured with the CLI
+- As of 2026-08-06 detekt is **still red on `main`** — **13** weighted issues, measured with the CLI
   over the working tree. The full tally, so a new failure can be told apart from the baseline at a
   glance:
 
@@ -209,19 +209,20 @@ it, and the current behaviour is the conservative option.
   | `MaxLineLength` | 2 | `FaceRepository:69`, `FaceCheckScreen:114` |
   | `TooGenericExceptionCaught` | 2 | `CameraXFaceCamera:68`, `ApiCall:33` |
   | `SwallowedException` | 1 | `CameraXFaceCamera:68` — the same `catch` as above |
-  | `TooManyFunctions` | 1 | `UpdateViewModel` (11 functions, threshold 11) |
   | `MatchingDeclarationName` | 1 | `NfcModels.kt` declares `NfcAvailability` |
   | `ReturnCount` | 1 | `VerifyFaceUseCase.interpret` (5, limit 4) |
 
-  Check the baseline before assuming your change caused a failure; the easiest way is
-  `git worktree add --detach <tmp> HEAD` and run the CLI over that. This tally has been wrong three
-  times: it read 13, then 15 with `LongParameterList` under-counted at ×4, and on 2026-08-06 it read
-  15 while the composition underneath had shifted — deleting `JourneyGate` took `LongParameterList`
-  5 → 4 at the same moment `MemberScanViewModel.onDecline` pushed that class onto the
-  `TooManyFunctions` threshold, so a newly-introduced issue hid inside an unchanged total (it was
-  refactored back out, hence 14). **A matching total is not a clean run**: read the rows, not the
-  sum. The point of recording it is to stop someone blaming their own change, so re-measure rather
-  than trust it, and correct the table here when you do.
+  It read **14** until the unattended-self-update work dissolved `UpdateViewModel` into
+  `UpdateCoordinator`, taking its `TooManyFunctions` (11 functions, threshold 11) with it; that row
+  is gone and nothing else moved. Check the baseline before assuming your change caused a failure;
+  the easiest way is `git worktree add --detach <tmp> HEAD` and run the CLI over that. This tally has
+  been wrong three times: it read 13, then 15 with `LongParameterList` under-counted at ×4, and on
+  2026-08-06 it read 15 while the composition underneath had shifted — deleting `JourneyGate` took
+  `LongParameterList` 5 → 4 at the same moment `MemberScanViewModel.onDecline` pushed that class onto
+  the `TooManyFunctions` threshold, so a newly-introduced issue hid inside an unchanged total (it was
+  refactored back out). **A matching total is not a clean run**: read the rows, not the sum. The
+  point of recording it is to stop someone blaming their own change, so re-measure rather than trust
+  it, and correct the table here when you do.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time `GET /app/releases/latest?versionCode=N` (unauthenticated, always 200, fail-open),
   SHA-256-verified streaming download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual
@@ -273,6 +274,85 @@ it, and the current behaviour is the conservative option.
   — nothing about a dropped download is ambiguous, so the old "Outcome not confirmed / re-check
   before retrying" was actively misleading. The message deliberately does not promise resuming,
   since that only happens when the server answers `206` and a `UiMessage` has no format arguments.
+- **Self-update runs unattended** (2026-08-03; design:
+  `docs/superpowers/specs/2026-08-03-unattended-self-update-design.md`; bench checklist:
+  `docs/superpowers/plans/2026-08-03-unattended-self-update-bench-checklist.md`).
+  Orchestration moved out of `UpdateViewModel` into a `@Singleton UpdateCoordinator` (+
+  `UpdatePipeline`, `UpdateHousekeeping`) in `core/update`, so the UI and a periodic `UpdateWorker`
+  drive the *same* code and publish to the same `StateFlow<UpdatePhase>`; the ViewModel is now a thin
+  adapter. `runUpdate` takes the attempt lock with `tryLock` — an overlapping trigger is *skipped*,
+  not queued — while the operator gestures (`accept`/`retry`/`returnedFromSettings`) take it with
+  `withLock` and queue behind whatever is in flight. WorkManager runs every 6 h on
+  `NetworkType.CONNECTED`, enqueued with `KEEP` from `SpApp.onCreate()` and from
+  `BootCompletedReceiver`, and needs WorkManager's `androidx.startup` initializer removed — **by a
+  targeted `tools:node="remove"` on the `WorkManagerInitializer` meta-data only**, because dropping
+  the whole `InitializationProvider` would also take out `ProcessLifecycleInitializer` and with it
+  `DiagnosticsPoller`, `SessionRevalidator` and `ForegroundTracker`.
+  **Neither `KEEP` nor the re-enqueue is what survives a reboot**, though it is easy to assume so.
+  work-runtime builds every `JobInfo` with `setPersisted(false)` on purpose, so a reboot destroys
+  every job and only the `WorkSpec` row survives; `ForceStopRunnable`'s third branch (`cleanUp()` →
+  `Schedulers.schedule`) rebuilds them, and it is dispatched from the `WorkManagerImpl` constructor.
+  Removing the initializer made that constructor lazy, and `UpdateScheduler.schedule()` holds the
+  app's *only* `WorkManager.getInstance(...)` call — so **asking is what triggers the recovery**,
+  while the `KEEP` enqueue itself finds an existing row and no-ops. Adding a second `getInstance`
+  call anywhere earlier in the process would silently move that trigger. `BootCompletedReceiver` is a
+  *second* boot path beside work-runtime's own `RescheduleReceiver` (declared `enabled="false"` and
+  switched on by a runtime `setComponentEnabledSetting` write that `UnfinishedWorkListener` makes
+  only once WorkManager has been constructed in-process and seen unfinished work); ours is statically
+  enabled, and `exported="false"` on work-runtime's own precedent — the system delivers a protected
+  broadcast to a manifest receiver regardless, and exporting would only let another app forge it. All
+  of that is verified against work-runtime 2.10.0 **by reading its source, not on a device.**
+  The install branch is **capability-driven, never `SDK_INT`-driven**: every commit requests
+  `USER_ACTION_NOT_REQUIRED` and reacts to the platform's answer, because Sunmi ships modified
+  Android and a version check that assumed silence would wait forever for a status that never comes.
+  When the platform demands confirmation and `ForegroundTracker` says nobody is there, the intent
+  goes into a high-priority notification and `install()` returns `InstallOutcome.AwaitingConfirmation`
+  (phase `ConfirmationPending`) instead of suspending — closing a hang that was unreachable while
+  installs only happened with the app open. **On the V2s (API 30) that notification is the primary
+  path, not a fallback**; the V3 (API 33) is the only half that can go silent, and only after the app
+  has installed itself once and become its own installer of record. Launch housekeeping consequently
+  **skips committed sessions** (`SessionInfo.isCommitted`) rather than abandoning everything, or a
+  reboot would orphan the very intent the notification carries; `install()` in turn abandons any
+  already-committed session before creating a new one, so exactly one stays alive.
+  A second notification, on its own id (1002 vs the confirmation's 1001) and its own channel
+  ("Update problems" vs "Update confirmations", split so muting one cannot silence the other), says
+  the install permission is gone — Android's unused-app permission reset applies to the whole fleet.
+  The decision is a pure function in `InstallPermissionNotice.kt` called from `UpdateWorker`: not
+  from `UpdateCoordinator`, where a `notifier` would be the seventh constructor parameter and so
+  exactly detekt's `LongParameterList` threshold, and not inline in the worker's body, because there
+  is no Robolectric here and `TestListenableWorkerBuilder` needs a real `Context`, which would put it
+  out of reach of the JVM suite. Only `PermissionNeeded` posts, and only when headless; every other
+  phase clears — except `CheckFailed`, which is left **untouched** rather than cleared, because it is
+  reached before `canRequestInstalls()` is ever evaluated and a transport failure retries with
+  backoff, so clearing on it would repeatedly destroy the only standing signal.
+  **Known gap: neither notification is delivered on API 33+ today.** `POST_NOTIFICATIONS` is declared
+  in the manifest but requested nowhere — the app's only two `RequestPermission()` launchers are
+  CAMERA (`FaceCheckScreen`) and WRITE_EXTERNAL_STORAGE (`UpdateHost`) — and with `targetSdk 36` the
+  platform denies it by default, so `UpdateNotifications.post()` returns early. That costs the
+  **Sunmi V3** both the permission notice and the confirmation notification, and it matters most in
+  the one case the design cannot test in advance: the V3 is the half that is supposed to install
+  silently, so the confirmation notification is its *fallback*. If Sunmi's Android 13 turns out not
+  to honour `USER_ACTION_NOT_REQUIRED`, the V3 has **no working path at all** until this is fixed.
+  Requesting the grant is separate follow-up work; meanwhile the bench checklist's office pass grants
+  it by hand. Design §8's other half — checking `isAutoRevokeWhitelisted` and requesting the
+  exemption — was never implemented either, so the manual "Remove permissions if app isn't used"
+  toggle is a device's only defence against losing the install permission while idle.
+  Two behaviour changes worth knowing: the rollback backup is **best effort and no longer gates an
+  install** (a stranded field device is unrecoverable; a missing backup is an inconvenience), so
+  `BusinessCode.UPDATE_BACKUP_FAILED` is now diagnostic-only and reaches no operator; and a
+  completed-but-uninstalled APK is reused rather than re-downloaded, which is the normal state
+  whenever a confirmation is outstanding.
+  **The first manual launch cannot be removed** — Android's stopped state blocks every broadcast to a
+  freshly installed app until a human taps the icon once. The office pass must include it, plus one
+  real self-update on the bench.
+  **None of this is verified on hardware.** Everything above is JVM tests and source reading; the
+  feature is *designed, implemented and unverified* until a real V3 and a real V2s pass the bench
+  checklist. Do not ship the fleet on it.
+  One benign warning not to chase: `processDebugUnitTestManifest` emits
+  "`meta-data#androidx.work.WorkManagerInitializer` was tagged … to remove other declarations but no
+  other declaration present", attributed to `app/src/debug/AndroidManifest.xml`. It reads exactly
+  like the targeted removal having failed — which is that change's one failure mode with no other
+  signal — but it is cosmetic: the unit-test manifest has no WorkManager node to remove.
 - **Device registration** (`POST /devices/register`): a client-generated `installId` UUID is minted
   and persisted once by `PrefsDataStore`, `SignInViewModel` registers best-effort right after a
   successful sign-in, and `DeviceIdInterceptor` attaches the returned id as `X-Device-Id` on every
