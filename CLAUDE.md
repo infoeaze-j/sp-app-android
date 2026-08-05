@@ -108,6 +108,14 @@ that choice: a master toggle (`DevSettings.fakeEnabled`, default **on**), a per-
 master switch is a kill switch and the seam toggles let one step run real while the rest stay faked.
 Debug builds install a second launcher icon, **"SP App Dev"** (`DevSettingsActivity`), for editing them.
 
+The same debug/release split carries one piece of **UI**: `core/ui/debug/DebugOverlay.kt` — a bug
+button pinned to the bottom-start corner by `NavGraph`, opening a sheet of build facts (currently
+just `BuildConfig.BASE_URL`, from the JVM-tested `DebugInfo.entries()`). The release source set
+defines the same composable as `= Unit`, so it is absent from a release build by construction rather
+than behind a `BuildConfig.DEBUG` branch. It is drawn after `UpdateHost`, so it stays reachable on
+sign-in and over a forced-update overlay — the two places a wrongly-pointed build is hardest to
+diagnose. Add facts by extending `DebugInfo.entries()`, not the composable.
+
 Consequence: the whole journey runs on a bare emulator with no camera and no NFC, using default
 settings. Tests for this stack live in `app/src/testDebug/` (not `test/`).
 

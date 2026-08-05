@@ -30,6 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import com.mediplus.spapp.R
 import com.mediplus.spapp.core.ui.components.ActionDrawer
 import com.mediplus.spapp.core.ui.components.DrawerAction
+import com.mediplus.spapp.core.ui.debug.DebugOverlay
 import com.mediplus.spapp.domain.model.SessionState
 import com.mediplus.spapp.ui.addservice.AddServiceRoute
 import com.mediplus.spapp.ui.facecheck.FaceCheckRoute
@@ -89,6 +90,9 @@ fun NavGraph(
         // Drawn last so a forced-update overlay covers the chrome too — log out included: with the
         // build unusable there is nothing meaningful to log out of, and the journey is void anyway.
         UpdateHost()
+        // …except the debug bug button, which is drawn above even that: a build pointed at the wrong
+        // back office is exactly when you need to read the base URL, and it is a no-op in release.
+        DebugOverlay()
     }
 }
 

@@ -33,15 +33,15 @@ android {
         applicationId = "com.mediplus.spapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.4"
+        versionCode = 5
+        versionName = "1.5 (auto prod release)"
 
         testInstrumentationRunner = "com.mediplus.spapp.HiltTestRunner"
 
         // Configurable back-office base URL. Overridable per build type (e.g. MockWebServer in CI).
         // Must end in the API version prefix the spec's server URL carries — every Retrofit path is
         // relative to it, and a trailing slash is what keeps the last segment from being dropped.
-        buildConfigField("String", "BASE_URL", "\"https://bio.infoeaze.com/api/v1/\"")
+        buildConfigField("String", "BASE_URL", "\"http://localhost:8080/api/v1/\"")
     }
 
     signingConfigs {
@@ -70,6 +70,7 @@ android {
             if (keystorePropsFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            buildConfigField("String","BASE_URL","\"https://bio.infoeaze.com/api/v1/\"")
         }
     }
 

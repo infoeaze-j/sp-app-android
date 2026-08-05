@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -37,6 +38,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.spapp.R
 import com.mediplus.spapp.core.ui.theme.LocalSpacing
+
+/** Share of the screen width the Mediplus lockup occupies; its own aspect ratio sets the height. */
+private const val LOGO_WIDTH_FRACTION = 0.72f
 
 /**
  * US1 sign-in destination. Owns credential entry, loading, non-revealing errors, sign-in lockout
@@ -85,18 +89,15 @@ fun SignInScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // Company branding: placeholder logo + name. Replace logo_placeholder and company_name
-        // with the real brand assets when available.
+        // Company branding. The lockup already carries the Mediplus wordmark, so the screen does
+        // not repeat the company name as text.
         Image(
-            painter = painterResource(R.drawable.logo_placeholder),
+            painter = painterResource(R.drawable.mediplus_logo),
             contentDescription = stringResource(R.string.company_logo_desc),
+            contentScale = ContentScale.Fit,
             modifier = Modifier
-                .heightIn(max = spacing.xxl)
-                .padding(bottom = spacing.md),
-        )
-        Text(
-            text = stringResource(R.string.company_name),
-            style = MaterialTheme.typography.headlineMedium,
+                .fillMaxWidth(LOGO_WIDTH_FRACTION)
+                .padding(bottom = spacing.sm),
         )
         Text(
             text = stringResource(R.string.signin_subtitle),
