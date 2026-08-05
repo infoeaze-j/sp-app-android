@@ -1,5 +1,6 @@
 package com.mediplus.spapp.core.update
 
+import com.mediplus.spapp.core.di.IoDispatcher
 import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
@@ -8,10 +9,13 @@ import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.core.result.UiMessage
 import com.mediplus.spapp.core.result.appErrorOrNull
 import com.mediplus.spapp.data.repository.UpdateRepository
+import com.mediplus.spapp.data.repository.alreadyVerified
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.DownloadedApk
 import com.mediplus.spapp.domain.model.UpdateInfo
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,6 +29,21 @@ internal fun interface PhaseSink {
  * keep a verified APK for a retry that skips the transfer.
  */
 internal data class PipelineResult(val attempt: UpdateAttempt, val downloaded: DownloadedApk?)
+
+/**
+ * Everything one run needs to know about the attempt that asked for it.
+ *
+ * A parameter object rather than four arguments for two reasons. It keeps
+ * [UpdatePipeline.run] at three parameters — six would be exactly detekt's `LongParameterList`
+ * threshold — and, more usefully, these four facts travel together into every phase the run emits,
+ * so passing them as one thing is what they already are.
+ */
+internal data class UpdateRun(
+    val info: UpdateInfo,
+    val forced: Boolean,
+    val from: RetryTarget,
+    val trigger: UpdateTrigger,
+)
 
 /**
  * The linear half of the update journey: download -> backup -> install. Split out of
@@ -41,44 +60,52 @@ class UpdatePipeline @Inject constructor(
     private val backupStore: ApkBackupStore,
     private val errorMapper: ErrorMapper,
     private val currentVersion: CurrentAppVersion,
+    @param:IoDispatcher private val dispatcher: CoroutineDispatcher,
 ) {
 
     /**
-     * Runs from [from]: `DOWNLOAD` always transfers, `INSTALL` reuses [kept] when it still exists
-     * and is for the same build being installed (the OS may evict the cache between a failure and
-     * the retry; [UpdateCoordinator.downloaded] also now outlives a single attempt, which widens the
-     * window for a stale APK from an earlier, different offer to still be sitting there).
+     * Runs from [UpdateRun.from]: `DOWNLOAD` always transfers, `INSTALL` reuses [kept] when it is
+     * still installable (the OS may evict the cache between a failure and the retry;
+     * [UpdateCoordinator.downloaded] also now outlives a single attempt, which widens the window for
+     * a stale APK from an earlier, different offer to still be sitting there).
      */
-    internal suspend fun run(
-        info: UpdateInfo,
-        forced: Boolean,
-        from: RetryTarget,
-        kept: DownloadedApk?,
-        sink: PhaseSink,
-    ): PipelineResult =
-        if (from == RetryTarget.INSTALL && canReuse(kept, info)) {
-            backupAndInstall(info, forced, requireNotNull(kept), sink)
+    internal suspend fun run(spec: UpdateRun, kept: DownloadedApk?, sink: PhaseSink): PipelineResult =
+        if (spec.from == RetryTarget.INSTALL && canReuse(kept, spec.info)) {
+            backupAndInstall(spec, requireNotNull(kept), sink)
         } else {
-            download(info, forced, sink)
+            download(spec, sink)
         }
 
-    /** Whether [kept] is still usable for [info]: the same build, and still on disk to install. */
-    private fun canReuse(kept: DownloadedApk?, info: UpdateInfo): Boolean =
-        kept != null && kept.versionCode == info.latestVersionCode && kept.file.exists()
+    /**
+     * Whether [kept] is still usable for [info]: the same build, still on disk — and still the bytes
+     * the back office published.
+     *
+     * The digest is re-read rather than remembered. `@UpdateCacheDir` is app-private, so replacing
+     * the file needs root or the same UID, but this is the one place where "the bytes we verified
+     * are the bytes we install" would otherwise be an assumption rather than a check, and the
+     * download path already re-digests through the same [alreadyVerified]. It runs off the main
+     * thread because an operator's Retry tap reaches here on `viewModelScope`, and hashing ~50 MB
+     * there is a visible stall.
+     */
+    private suspend fun canReuse(kept: DownloadedApk?, info: UpdateInfo): Boolean =
+        kept != null &&
+            kept.versionCode == info.latestVersionCode &&
+            kept.file.exists() &&
+            withContext(dispatcher) { alreadyVerified(kept.file, info) }
 
-    private suspend fun download(info: UpdateInfo, forced: Boolean, sink: PhaseSink): PipelineResult {
-        sink.emit(UpdatePhase.Downloading(0, info.sizeBytes, forced))
-        val result = updateRepository.downloadAndVerify(info) { bytes, total ->
-            sink.emit(UpdatePhase.Downloading(bytes, total, forced))
+    private suspend fun download(spec: UpdateRun, sink: PhaseSink): PipelineResult {
+        sink.emit(UpdatePhase.Downloading(0, spec.info.sizeBytes, spec.forced, spec.trigger))
+        val result = updateRepository.downloadAndVerify(spec.info) { bytes, total ->
+            sink.emit(UpdatePhase.Downloading(bytes, total, spec.forced, spec.trigger))
         }
         return when (result) {
-            is AppResult.Success -> backupAndInstall(info, forced, result.data, sink)
+            is AppResult.Success -> backupAndInstall(spec, result.data, sink)
             else -> {
                 sink.emit(
                     UpdatePhase.Failed(
                         messageFor(errorMapper, result),
-                        info,
-                        forced,
+                        spec.info,
+                        spec.forced,
                         RetryTarget.DOWNLOAD,
                     ),
                 )
@@ -88,21 +115,21 @@ class UpdatePipeline @Inject constructor(
     }
 
     private suspend fun backupAndInstall(
-        info: UpdateInfo,
-        forced: Boolean,
+        spec: UpdateRun,
         apk: DownloadedApk,
         sink: PhaseSink,
     ): PipelineResult {
-        sink.emit(UpdatePhase.BackingUp(forced))
+        val (info, forced) = spec
+        sink.emit(UpdatePhase.BackingUp(forced, spec.trigger))
         // Best effort, never a gate (design 2026-08-03 §6). The result is deliberately discarded:
         // rollback is already a manual procedure (uninstall, then install the backup by hand), so a
         // missing backup costs convenience — while refusing to install leaves a field device that
         // nobody will ever open stranded on a stale build, which nothing can recover.
         backupStore.backupCurrentApk(currentVersion)
-        sink.emit(UpdatePhase.Installing(forced))
+        sink.emit(UpdatePhase.Installing(forced, spec.trigger))
         val outcome = installer.install(apk.file)
         if (outcome == InstallOutcome.Committed) {
-            settleAfterCommit(sink)
+            settleAfterCommit(spec, sink)
             return PipelineResult(UpdateAttempt.COMPLETED, downloaded = apk)
         }
         if (outcome == InstallOutcome.AwaitingConfirmation) {
@@ -133,8 +160,8 @@ class UpdatePipeline @Inject constructor(
      * reports success while we survive — show [UpdatePhase.Restarting] briefly, then recover to
      * [UpdatePhase.Idle] the way a relaunched, now up-to-date build would.
      */
-    private suspend fun settleAfterCommit(sink: PhaseSink) {
-        sink.emit(UpdatePhase.Restarting)
+    private suspend fun settleAfterCommit(spec: UpdateRun, sink: PhaseSink) {
+        sink.emit(UpdatePhase.Restarting(spec.forced, spec.trigger))
         delay(RESTARTING_SETTLE_MILLIS)
         sink.emit(UpdatePhase.Idle)
     }

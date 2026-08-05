@@ -18,16 +18,15 @@ import com.mediplus.spapp.data.repository.UpdateRepositoryImpl
 import com.mediplus.spapp.dev.DevSettingsStore
 import com.mediplus.spapp.dev.FakeSeam
 import com.mediplus.spapp.domain.model.DownloadedApk
-import com.mediplus.spapp.domain.model.UpdateInfo
 import com.mediplus.spapp.domain.model.Enrollment
 import com.mediplus.spapp.domain.model.EnrollmentRequest
 import com.mediplus.spapp.domain.model.FaceDecision
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
-import com.mediplus.spapp.domain.model.Money
 import com.mediplus.spapp.domain.model.ServiceCatalog
 import com.mediplus.spapp.domain.model.Session
 import com.mediplus.spapp.domain.model.SessionState
+import com.mediplus.spapp.domain.model.UpdateInfo
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 

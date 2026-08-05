@@ -18,18 +18,23 @@ import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * The self-update orchestration, now shared by the UI and the background worker
@@ -57,7 +62,10 @@ class UpdateCoordinatorTest {
 
     @Before
     fun setUp() {
-        apkFile = tempFolder.newFile("update-v7.apk")
+        // Real bytes, whose digest info() publishes. The install-retry path re-verifies the cached
+        // file against that digest before handing it to the installer, so a fixture holding an empty
+        // file would silently turn every "reuses the download" test into "re-downloads".
+        apkFile = tempFolder.newFile("update-v7.apk").apply { writeBytes(APK_BYTES) }
         coJustRun { repository.pruneObsoleteDownloads() }
         coJustRun { installer.abandonStaleSessions() }
         coJustRun { backupStore.pruneStaleBackups(any()) }
@@ -70,7 +78,14 @@ class UpdateCoordinatorTest {
         installer = installer,
         backupStore = backupStore,
         errorMapper = errorMapper,
-        pipeline = UpdatePipeline(repository, installer, backupStore, errorMapper, currentVersion),
+        pipeline = UpdatePipeline(
+            repository,
+            installer,
+            backupStore,
+            errorMapper,
+            currentVersion,
+            mainDispatcherRule.dispatcher,
+        ),
         housekeeping = UpdateHousekeeping(backupStore, installer, repository, currentVersion),
     )
 
@@ -78,8 +93,8 @@ class UpdateCoordinatorTest {
         latestVersionCode = latest,
         latestVersionName = "1.6",
         apkUrl = "${BASE_URL}app/releases/$latest/binary",
-        sha256 = "a3f5c8e1b2d4a6c8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6",
-        sizeBytes = 100,
+        sha256 = APK_SHA256,
+        sizeBytes = APK_BYTES.size.toLong(),
         minSupportedVersionCode = minSupported,
     )
 
@@ -102,6 +117,14 @@ class UpdateCoordinatorTest {
 
     private fun businessMessage(code: BusinessCode) =
         errorMapper.toUserMessage(AppError.Business(code))
+
+    // The trigger is spelled out at every call site rather than defaulted: which caller produced a
+    // progress phase is exactly what decides whether the operator is shown it.
+    private fun downloading(soFar: Long, total: Long, trigger: UpdateTrigger) =
+        UpdatePhase.Downloading(soFar, total, forced = false, trigger = trigger)
+
+    private fun restarting(trigger: UpdateTrigger) =
+        UpdatePhase.Restarting(forced = false, trigger = trigger)
 
     @Test
     fun `up to date stays idle and runs launch housekeeping once`() = runTest {
@@ -187,12 +210,12 @@ class UpdateCoordinatorTest {
 
         val job = launch { coordinator.accept() }
         runCurrent()
-        assertEquals(UpdatePhase.Downloading(50, 100, forced = false), coordinator.phase.value)
+        assertEquals(downloading(50, 100, UpdateTrigger.Operator), coordinator.phase.value)
 
         coordinator.dismiss()
 
         // The else -> current branch: a phase with no dismiss rule of its own is left untouched.
-        assertEquals(UpdatePhase.Downloading(50, 100, forced = false), coordinator.phase.value)
+        assertEquals(downloading(50, 100, UpdateTrigger.Operator), coordinator.phase.value)
 
         advanceUntilIdle()
         job.join()
@@ -252,7 +275,7 @@ class UpdateCoordinatorTest {
         val job = launch { coordinator.runUpdate(Presence.Headless) }
         runCurrent()
 
-        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        assertEquals(restarting(UpdateTrigger.Background), coordinator.phase.value)
         coVerifyOrder {
             repository.downloadAndVerify(info(), any())
             backupStore.backupCurrentApk(currentVersion)
@@ -356,7 +379,7 @@ class UpdateCoordinatorTest {
         val job = launch { coordinator.returnedFromSettings() }
         runCurrent()
 
-        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        assertEquals(restarting(UpdateTrigger.Operator), coordinator.phase.value)
 
         advanceUntilIdle()
         job.join()
@@ -402,8 +425,8 @@ class UpdateCoordinatorTest {
 
         assertEquals(
             listOf<UpdatePhase>(
-                UpdatePhase.Downloading(50, 100, forced = false),
-                UpdatePhase.Downloading(100, 100, forced = false),
+                downloading(50, 100, UpdateTrigger.Operator),
+                downloading(100, 100, UpdateTrigger.Operator),
             ),
             seen,
         )
@@ -421,7 +444,7 @@ class UpdateCoordinatorTest {
 
         val job = launch { coordinator.accept() }
         runCurrent()
-        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        assertEquals(restarting(UpdateTrigger.Operator), coordinator.phase.value)
 
         advanceUntilIdle()
         job.join()
@@ -482,7 +505,7 @@ class UpdateCoordinatorTest {
         val job = launch { coordinator.runUpdate(Presence.Headless) }
         runCurrent()
 
-        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        assertEquals(restarting(UpdateTrigger.Background), coordinator.phase.value)
         coVerify(exactly = 1) { installer.install(apkFile) }
 
         advanceUntilIdle()
@@ -550,7 +573,7 @@ class UpdateCoordinatorTest {
         val job = launch { coordinator.retry() }
         runCurrent()
 
-        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        assertEquals(restarting(UpdateTrigger.Operator), coordinator.phase.value)
         coVerify(exactly = 1) { repository.downloadAndVerify(any(), any()) }
         coVerify(exactly = 2) { installer.install(apkFile) }
 
@@ -634,7 +657,7 @@ class UpdateCoordinatorTest {
         val job = launch { coordinator.retry() }
         runCurrent()
 
-        assertEquals(UpdatePhase.Restarting, coordinator.phase.value)
+        assertEquals(restarting(UpdateTrigger.Operator), coordinator.phase.value)
         coVerify(exactly = 1) { repository.downloadAndVerify(any(), any()) }
         coVerify(exactly = 2) { installer.install(apkFile) }
 
@@ -642,7 +665,329 @@ class UpdateCoordinatorTest {
         job.join()
     }
 
+    @Test
+    fun `an optional update offers a dismissible prompt`() = runTest {
+        // The commonest operator gesture in the whole flow. It lost its test in the coordinator
+        // refactor — UpdateViewModelTest used to own it — and nothing replaced the assertion.
+        serverSays(AppResult.Success(info()))
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Foreground)
+        advanceUntilIdle()
+        assertEquals(UpdatePhase.UpdateAvailable(info(), forced = false), coordinator.phase.value)
+
+        coordinator.dismiss()
+
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `a forced permission stop cannot be dismissed`() = runTest {
+        // One of three `if (forced) current else Idle` guards in dismiss(). Deleting this one used
+        // to pass the entire suite — and on this fleet a forced update is how a fix nobody can
+        // decline gets pushed.
+        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
+        coEvery { installer.canRequestInstalls() } returns false
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+        val stopped = UpdatePhase.PermissionNeeded(info(latest = 7, minSupported = 7), forced = true)
+        assertEquals(stopped, coordinator.phase.value)
+
+        coordinator.dismiss()
+
+        assertEquals(stopped, coordinator.phase.value)
+    }
+
+    @Test
+    fun `an optional permission stop is dismissible`() = runTest {
+        serverSays(AppResult.Success(info()))
+        coEvery { installer.canRequestInstalls() } returns false
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Foreground)
+        advanceUntilIdle()
+        coordinator.accept()
+        advanceUntilIdle()
+        assertEquals(UpdatePhase.PermissionNeeded(info(), forced = false), coordinator.phase.value)
+
+        coordinator.dismiss()
+
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `a forced failure cannot be dismissed`() = runTest {
+        // The third guard, and the other one deleting used to pass the suite.
+        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
+        coEvery { repository.downloadAndVerify(any(), any()) } returns
+            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+        val failed = coordinator.phase.value as UpdatePhase.Failed
+        assertTrue(failed.forced)
+
+        coordinator.dismiss()
+
+        assertEquals(failed, coordinator.phase.value)
+    }
+
+    @Test
+    fun `an optional failure is dismissible`() = runTest {
+        serverSays(AppResult.Success(info()))
+        coEvery { repository.downloadAndVerify(any(), any()) } returns
+            AppResult.BusinessRejection(AppError.Business(BusinessCode.UPDATE_CORRUPTED))
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+        assertTrue(coordinator.phase.value is UpdatePhase.Failed)
+
+        coordinator.dismiss()
+
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `the backup and install stages each reach the phase`() = runTest {
+        // Read from inside the mocks rather than from a call order: `coVerifyOrder` proves the
+        // collaborators ran, not that either phase was ever published.
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        val seen = mutableListOf<UpdatePhase>()
+        lateinit var coordinator: UpdateCoordinator
+        coEvery { backupStore.backupCurrentApk(any()) } coAnswers {
+            seen.add(coordinator.phase.value)
+            AppResult.Success(Unit)
+        }
+        coEvery { installer.install(any()) } coAnswers {
+            seen.add(coordinator.phase.value)
+            InstallOutcome.Committed
+        }
+        coordinator = coordinator()
+
+        coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf<UpdatePhase>(
+                UpdatePhase.BackingUp(forced = false, trigger = UpdateTrigger.Background),
+                UpdatePhase.Installing(forced = false, trigger = UpdateTrigger.Background),
+            ),
+            seen,
+        )
+    }
+
+    @Test
+    fun `a forced install awaiting confirmation stays forced and cannot be dismissed`() = runTest {
+        // `forced` is not cosmetic here: UpdateHost branches on it to choose an inescapable overlay
+        // over a dismissible drawer.
+        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returns InstallOutcome.AwaitingConfirmation
+        val coordinator = coordinator()
+
+        coordinator.runUpdate(Presence.Headless)
+        advanceUntilIdle()
+
+        val pending = UpdatePhase.ConfirmationPending(info(latest = 7, minSupported = 7), forced = true)
+        assertEquals(pending, coordinator.phase.value)
+
+        // Not a forced-guard branch: the session is live and the notification still carries the
+        // confirmation, so dismissing the in-app surface must not discard it either way.
+        coordinator.dismiss()
+        assertEquals(pending, coordinator.phase.value)
+    }
+
+    /** Every phase the pipeline publishes between the check and the install, in order. */
+    private suspend fun progressOf(run: suspend (UpdateCoordinator) -> Unit): List<UpdatePhase> {
+        val seen = mutableListOf<UpdatePhase>()
+        lateinit var coordinator: UpdateCoordinator
+        coEvery { repository.downloadAndVerify(any(), any()) } coAnswers {
+            secondArg<suspend (Long, Long) -> Unit>()(50, 100)
+            seen.add(coordinator.phase.value)
+            AppResult.Success(DownloadedApk(apkFile, 7))
+        }
+        coEvery { backupStore.backupCurrentApk(any()) } coAnswers {
+            seen.add(coordinator.phase.value)
+            AppResult.Success(Unit)
+        }
+        coEvery { installer.install(any()) } coAnswers {
+            seen.add(coordinator.phase.value)
+            InstallOutcome.Committed
+        }
+        coordinator = coordinator()
+        run(coordinator)
+        seen.add(coordinator.phase.value)
+        return seen
+    }
+
+    @Test
+    fun `a background attempt keeps its progress off the operator's screen`() = runTest {
+        // The regression this branch introduced: before the worker existed, runUpdate only ran from
+        // UpdateViewModel.init, at a launch the operator had just performed. UpdateScheduler
+        // constrains the periodic work on network alone, so it now routinely overlaps a live
+        // journey — and every one of these phases renders as a full-screen overlay above the app's
+        // whole chrome, log out included, with no action on it to escape by.
+        serverSays(AppResult.Success(info()))
+        lateinit var job: Job
+
+        val seen = progressOf { coordinator ->
+            job = launch { coordinator.runUpdate(Presence.Headless) }
+            runCurrent()
+        }
+
+        assertEquals(4, seen.size)
+        seen.forEach {
+            assertTrue("$it should report work in flight", it is UpdatePhase.Progress)
+            assertFalse("$it must not reach the operator", (it as UpdatePhase.Progress).visibleToOperator)
+        }
+
+        advanceUntilIdle()
+        job.join()
+    }
+
+    @Test
+    fun `an attempt the operator started shows its progress`() = runTest {
+        serverSays(AppResult.Success(info()))
+        lateinit var job: Job
+
+        val seen = progressOf { coordinator ->
+            coordinator.runUpdate(Presence.Foreground)
+            advanceUntilIdle()
+            job = launch { coordinator.accept() }
+            runCurrent()
+        }
+
+        assertEquals(4, seen.size)
+        seen.forEach {
+            assertTrue("$it must be shown", (it as UpdatePhase.Progress).visibleToOperator)
+        }
+
+        advanceUntilIdle()
+        job.join()
+    }
+
+    @Test
+    fun `a forced background attempt still takes the screen`() = runTest {
+        // The denial path: suppressing a forced update's progress would stop it blocking, and
+        // blocking a build the back office has declared unusable is the point of forcing it.
+        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
+        lateinit var job: Job
+
+        val seen = progressOf { coordinator ->
+            job = launch { coordinator.runUpdate(Presence.Headless) }
+            runCurrent()
+        }
+
+        assertEquals(4, seen.size)
+        seen.forEach {
+            assertTrue("$it must block", (it as UpdatePhase.Progress).visibleToOperator)
+        }
+
+        advanceUntilIdle()
+        job.join()
+    }
+
+    @Test
+    fun `a stopped worker does not park the app on a progress phase`() = runTest {
+        // WorkManager stops a CoroutineWorker routinely — a Wi-Fi blip mid-download, the ~10 minute
+        // execution limit, doze, quota — and that cancels doWork()'s coroutine. Without a recovery
+        // the phase stays on Downloading forever, which the UI renders as an actionless full-screen
+        // overlay nobody in a clinic can escape.
+        serverSays(AppResult.Success(info()))
+        coEvery { repository.downloadAndVerify(any(), any()) } coAnswers {
+            val onProgress = secondArg<suspend (Long, Long) -> Unit>()
+            onProgress(50, 100)
+            delay(1_000)
+            AppResult.Success(DownloadedApk(apkFile, 7))
+        }
+        val coordinator = coordinator()
+
+        val job = launch { coordinator.runUpdate(Presence.Headless) }
+        runCurrent()
+        assertTrue(coordinator.phase.value is UpdatePhase.Downloading)
+
+        job.cancelAndJoin()
+
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `a cancelled operator gesture does not park the app on a progress phase`() = runTest {
+        // The same parking through the other door: accept(), retry() and returnedFromSettings() all
+        // reach the pipeline from viewModelScope, which dies with the screen.
+        serverSays(AppResult.Success(info()))
+        coEvery { repository.downloadAndVerify(any(), any()) } coAnswers {
+            val onProgress = secondArg<suspend (Long, Long) -> Unit>()
+            onProgress(50, 100)
+            delay(1_000)
+            AppResult.Success(DownloadedApk(apkFile, 7))
+        }
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Foreground)
+        advanceUntilIdle()
+
+        val job = launch { coordinator.accept() }
+        runCurrent()
+        assertTrue(coordinator.phase.value is UpdatePhase.Downloading)
+
+        job.cancelAndJoin()
+
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `a restarting phase survives an attempt that is merely still running`() = runTest {
+        // The trap in the recovery above: Restarting is reached on a *successful* install, so the
+        // discriminator has to be cancellation, not "a progress phase is standing".
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returns InstallOutcome.Committed
+        val coordinator = coordinator()
+
+        val job = launch { coordinator.runUpdate(Presence.Headless) }
+        runCurrent()
+        assertEquals(restarting(UpdateTrigger.Background), coordinator.phase.value)
+
+        advanceTimeBy(RESTARTING_SETTLE_MILLIS - 1)
+        assertEquals(restarting(UpdateTrigger.Background), coordinator.phase.value)
+
+        advanceUntilIdle()
+        job.join()
+        assertEquals(UpdatePhase.Idle, coordinator.phase.value)
+    }
+
+    @Test
+    fun `a reused download is re-verified before it is installed`() = runTest {
+        // The one place where "the bytes we verified are the bytes we install" was an assumption
+        // rather than a check: the retry path handed the cached file straight to the installer on
+        // nothing but a matching version code.
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        backupSucceeds()
+        coEvery { installer.install(any()) } returnsMany
+            listOf(InstallOutcome.Aborted, InstallOutcome.Committed)
+        val coordinator = coordinator()
+        coordinator.runUpdate(Presence.Foreground)
+        advanceUntilIdle()
+        coordinator.accept()
+        advanceUntilIdle()
+        assertEquals(RetryTarget.INSTALL, (coordinator.phase.value as UpdatePhase.Failed).retry)
+
+        // Same name, same length, different bytes.
+        apkFile.writeBytes(ByteArray(APK_BYTES.size) { 0 })
+        coordinator.retry()
+        advanceUntilIdle()
+
+        coVerify(exactly = 2) { repository.downloadAndVerify(any(), any()) }
+    }
+
     private companion object {
         const val BASE_URL = "https://backoffice.example.com/api/v1/"
+        val APK_BYTES = ByteArray(64) { it.toByte() }
+        val APK_SHA256: String = MessageDigest.getInstance("SHA-256")
+            .digest(APK_BYTES)
+            .joinToString("") { "%02x".format(it) }
     }
 }

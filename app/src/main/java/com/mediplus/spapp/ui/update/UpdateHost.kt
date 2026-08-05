@@ -36,7 +36,8 @@ import com.mediplus.spapp.core.update.UpdatePhase
 /**
  * Hosts the whole self-update surface above the app chrome (drawn after the Scaffold in NavGraph,
  * so a forced update covers the top bar too). Optional interruptions use the app's one modal
- * surface, [ActionDrawer]; everything the operator must not escape uses a full-screen overlay.
+ * surface, [ActionDrawer]; everything the operator must not escape uses a full-screen overlay; and
+ * progress from an attempt nobody asked for is not shown at all — see [ProgressSurface].
  */
 @Composable
 fun UpdateHost(viewModel: UpdateViewModel = hiltViewModel()) {
@@ -95,6 +96,31 @@ private fun UpdatePhaseSurface(
         )
         is UpdatePhase.UpdateAvailable -> AvailableSurface(phase, onAccept, viewModel::onDismissed)
         is UpdatePhase.PermissionNeeded -> PermissionSurface(phase, onOpenSettings, viewModel::onDismissed)
+        is UpdatePhase.Progress -> ProgressSurface(phase)
+        is UpdatePhase.ConfirmationPending -> ConfirmationSurface(
+            phase,
+            viewModel::onRetry,
+            viewModel::onDismissed,
+        )
+        is UpdatePhase.Failed -> FailedSurface(phase, viewModel::onRetry, viewModel::onDismissed)
+    }
+}
+
+/**
+ * Work in flight, and the only surface the operator may never be shown at all.
+ *
+ * The periodic worker is constrained on network alone, so a background attempt routinely overlaps a
+ * live journey. Rendering its progress would take the whole screen — chrome, log out and all — from
+ * an operator mid-NFC-tap or mid-face-capture, for the length of a download plus a ~50 MB backup
+ * copy plus a ~50 MB session write, with no action on it to escape by. The rule that decides this
+ * is `visibleToOperator`, which lives on [UpdatePhase.Progress] so there is one copy of it; every
+ * phase that needs a human is not a [UpdatePhase.Progress] and reaches its own surface above,
+ * however it was produced.
+ */
+@Composable
+private fun ProgressSurface(phase: UpdatePhase.Progress) {
+    if (!phase.visibleToOperator) return
+    when (phase) {
         is UpdatePhase.Downloading -> UpdateOverlay(stringResource(R.string.update_downloading)) {
             DownloadProgress(phase)
         }
@@ -104,15 +130,9 @@ private fun UpdatePhaseSurface(
         is UpdatePhase.Installing -> UpdateOverlay(stringResource(R.string.update_installing)) {
             CircularProgressIndicator()
         }
-        is UpdatePhase.ConfirmationPending -> ConfirmationSurface(
-            phase,
-            viewModel::onRetry,
-            viewModel::onDismissed,
-        )
-        UpdatePhase.Restarting -> UpdateOverlay(stringResource(R.string.update_restarting)) {
+        is UpdatePhase.Restarting -> UpdateOverlay(stringResource(R.string.update_restarting)) {
             CircularProgressIndicator()
         }
-        is UpdatePhase.Failed -> FailedSurface(phase, viewModel::onRetry, viewModel::onDismissed)
     }
 }
 

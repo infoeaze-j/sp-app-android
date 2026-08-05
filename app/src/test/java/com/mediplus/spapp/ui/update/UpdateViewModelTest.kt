@@ -4,6 +4,7 @@ import com.mediplus.spapp.core.update.Presence
 import com.mediplus.spapp.core.update.UpdateAttempt
 import com.mediplus.spapp.core.update.UpdateCoordinator
 import com.mediplus.spapp.core.update.UpdatePhase
+import com.mediplus.spapp.core.update.UpdateTrigger
 import com.mediplus.spapp.util.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -68,9 +69,10 @@ class UpdateViewModelTest {
     fun `the rendered phase is the coordinator's, whichever caller produced it`() = runTest {
         val viewModel = UpdateViewModel(coordinator)
 
-        phase.value = UpdatePhase.Installing(forced = true)
+        val installing = UpdatePhase.Installing(forced = true, trigger = UpdateTrigger.Background)
+        phase.value = installing
 
-        assertEquals(UpdatePhase.Installing(forced = true), viewModel.phase.value)
+        assertEquals(installing, viewModel.phase.value)
     }
 
     @Test

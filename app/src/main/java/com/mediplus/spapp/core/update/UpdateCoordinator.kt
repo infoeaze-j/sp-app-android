@@ -6,9 +6,11 @@ import com.mediplus.spapp.domain.model.DownloadedApk
 import com.mediplus.spapp.domain.model.UpdateInfo
 import com.mediplus.spapp.domain.model.UpdateStatus
 import com.mediplus.spapp.domain.usecase.CheckForUpdateUseCase
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -81,7 +83,16 @@ class UpdateCoordinator @Inject constructor(
                 checked.attempt != UpdateAttempt.COMPLETED -> checked.attempt
                 checked.offer == null -> UpdateAttempt.COMPLETED
                 presence == Presence.Foreground -> UpdateAttempt.COMPLETED
-                else -> advance(checked.offer.info, checked.offer.forced, RetryTarget.DOWNLOAD)
+                // Only Presence.Headless reaches here, and that is exactly the attempt nobody asked
+                // for — so its progress is the progress that must stay off the operator's screen.
+                else -> advance(
+                    UpdateRun(
+                        info = checked.offer.info,
+                        forced = checked.offer.forced,
+                        from = RetryTarget.DOWNLOAD,
+                        trigger = UpdateTrigger.Background,
+                    ),
+                )
             }
         } finally {
             attemptLock.unlock()
@@ -94,7 +105,7 @@ class UpdateCoordinator @Inject constructor(
     suspend fun accept() {
         attemptLock.withLock {
             val offer = _phase.value as? UpdatePhase.UpdateAvailable ?: return@withLock
-            advance(offer.info, offer.forced, RetryTarget.DOWNLOAD)
+            advance(operatorRun(offer.info, offer.forced, RetryTarget.DOWNLOAD))
         }
     }
 
@@ -115,10 +126,12 @@ class UpdateCoordinator @Inject constructor(
         attemptLock.withLock {
             when (val current = _phase.value) {
                 is UpdatePhase.CheckFailed -> runCheck()
-                is UpdatePhase.Failed -> advance(current.info, current.forced, current.retry)
+                is UpdatePhase.Failed ->
+                    advance(operatorRun(current.info, current.forced, current.retry))
                 // The operator opened the app instead of tapping the notification: raise the system
                 // dialog now, which the foreground branch of UpdateStatusReceiver does directly.
-                is UpdatePhase.ConfirmationPending -> advance(current.info, current.forced, RetryTarget.INSTALL)
+                is UpdatePhase.ConfirmationPending ->
+                    advance(operatorRun(current.info, current.forced, RetryTarget.INSTALL))
                 else -> Unit
             }
         }
@@ -127,9 +140,17 @@ class UpdateCoordinator @Inject constructor(
     suspend fun returnedFromSettings() {
         attemptLock.withLock {
             val current = _phase.value as? UpdatePhase.PermissionNeeded ?: return@withLock
-            advance(current.info, current.forced, RetryTarget.DOWNLOAD)
+            advance(operatorRun(current.info, current.forced, RetryTarget.DOWNLOAD))
         }
     }
+
+    /**
+     * The three gestures above are operator-initiated by definition — a tap on Update now, Retry, or
+     * a return from the unknown-sources settings screen — so the progress they produce is progress
+     * the operator asked to see.
+     */
+    private fun operatorRun(info: UpdateInfo, forced: Boolean, from: RetryTarget) =
+        UpdateRun(info = info, forced = forced, from = from, trigger = UpdateTrigger.Operator)
 
     private suspend fun runCheck(): CheckOutcome {
         val result = checkForUpdate()
@@ -151,13 +172,41 @@ class UpdateCoordinator @Inject constructor(
      * — [returnedFromSettings] used to check it too, but this is the check that actually produces
      * [UpdatePhase.PermissionNeeded], so a second read here was the only one that mattered.
      */
-    private suspend fun advance(info: UpdateInfo, forced: Boolean, from: RetryTarget): UpdateAttempt {
+    private suspend fun advance(spec: UpdateRun): UpdateAttempt {
         if (!installer.canRequestInstalls()) {
-            _phase.value = UpdatePhase.PermissionNeeded(info, forced)
+            _phase.value = UpdatePhase.PermissionNeeded(spec.info, spec.forced)
             return UpdateAttempt.COMPLETED
         }
-        val result = pipeline.run(info, forced, from, downloaded, sink)
-        result.downloaded?.let { downloaded = it }
-        return result.attempt
+        try {
+            val result = pipeline.run(spec, downloaded, sink)
+            result.downloaded?.let { downloaded = it }
+            return result.attempt
+        } finally {
+            if (!currentCoroutineContext().isActive) recoverFromCancellation()
+        }
+    }
+
+    /**
+     * An attempt that was stopped rather than finished must not leave its progress standing.
+     *
+     * WorkManager cancels a `CoroutineWorker`'s job routinely — a clinic Wi-Fi blip against the
+     * network constraint, the ~10 minute execution limit, doze, quota — and `viewModelScope` dies
+     * with the screen, which cancels the gesture paths the same way. Nothing else restores [_phase],
+     * so the flow used to be left on `Downloading` or `Installing` permanently: an actionless
+     * full-screen overlay whose only escape is force-swiping the app from recents.
+     *
+     * Two things make this narrow rather than a blunt reset. `isActive` is false here **only** under
+     * cancellation, so an attempt that returned normally is never touched — [UpdatePhase.Restarting]
+     * is reached on a *successful* install and has to survive. And only [UpdatePhase.Progress] is
+     * cleared, so a [UpdatePhase.Failed] or [UpdatePhase.ConfirmationPending] that the pipeline had
+     * already published, and that still needs a human, is left alone.
+     *
+     * [UpdatePhase.Idle] rather than re-offering: nothing is in flight, and a *forced* attempt must
+     * not be re-raised from here, because a background cancellation would then throw a surface at an
+     * operator who never asked for anything. The next check re-offers, and the download resumes from
+     * what it already wrote.
+     */
+    private fun recoverFromCancellation() {
+        if (_phase.value is UpdatePhase.Progress) _phase.value = UpdatePhase.Idle
     }
 }

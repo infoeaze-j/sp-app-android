@@ -8,6 +8,7 @@ import io.mockk.verify
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
+import kotlin.reflect.KClass
 
 /**
  * The whole decision behind the lost-install-permission notice
@@ -37,11 +38,11 @@ class InstallPermissionNoticeTest {
     private fun clearingPhases() = listOf(
         UpdatePhase.Idle,
         UpdatePhase.UpdateAvailable(info(), forced = false),
-        UpdatePhase.Downloading(bytesSoFar = 50, totalBytes = 100, forced = false),
-        UpdatePhase.BackingUp(forced = false),
-        UpdatePhase.Installing(forced = false),
+        UpdatePhase.Downloading(50, 100, forced = false, trigger = UpdateTrigger.Background),
+        UpdatePhase.BackingUp(forced = false, trigger = UpdateTrigger.Background),
+        UpdatePhase.Installing(forced = false, trigger = UpdateTrigger.Background),
         UpdatePhase.ConfirmationPending(info(), forced = false),
-        UpdatePhase.Restarting,
+        UpdatePhase.Restarting(forced = false, trigger = UpdateTrigger.Background),
         UpdatePhase.Failed(message(), info(), forced = false, retry = RetryTarget.DOWNLOAD),
     )
 
@@ -155,8 +156,20 @@ class InstallPermissionNoticeTest {
             addAll(clearingPhases())
         }.map { it::class }.toSet()
 
-        assertEquals(UpdatePhase::class.sealedSubclasses.toSet(), decided)
+        assertEquals(leafPhases(UpdatePhase::class), decided)
     }
+
+    /**
+     * Flattened rather than a plain `sealedSubclasses`: `UpdatePhase.Progress` groups the phases
+     * that report work in flight, so the concrete phases now sit a level down. Only the leaves are
+     * ever emitted, and only the leaves are what the `when` above has to classify.
+     */
+    private fun leafPhases(phase: KClass<out UpdatePhase>): Set<KClass<out UpdatePhase>> =
+        phase.sealedSubclasses
+            .takeIf { it.isNotEmpty() }
+            ?.flatMap { leafPhases(it) }
+            ?.toSet()
+            ?: setOf(phase)
 
     @Test
     fun `the two update notifications never share an id`() {

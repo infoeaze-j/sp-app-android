@@ -48,7 +48,7 @@ internal fun UpdateNotifier.reconcileInstallPermission(phase: UpdatePhase, prese
             if (presence == Presence.Headless) installPermissionRequired()
         is UpdatePhase.CheckFailed -> Unit
         UpdatePhase.Idle,
-        UpdatePhase.Restarting,
+        is UpdatePhase.Restarting,
         is UpdatePhase.UpdateAvailable,
         is UpdatePhase.Downloading,
         is UpdatePhase.BackingUp,
