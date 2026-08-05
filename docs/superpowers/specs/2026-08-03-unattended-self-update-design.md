@@ -107,20 +107,27 @@ mapped to a `Result`.
   beside the existing `bind()` calls. `KEEP` is what makes re-enqueuing on every process start
   *harmless*, not what makes it curative: an existing enqueued `WorkSpec` is left untouched, so the
   call only does anything where there is no row to keep — a first-ever launch, or a database wiped
-  by clear-data. Recovering a schedule an OEM task killer dropped is WorkManager's own job, via the
-  `ForceStopRunnable` its constructor dispatches on every process start, and it happens whether or
-  not we ask. Verified against work-runtime 2.10.0.
+  by clear-data. Recovery of a dropped schedule is WorkManager's own job, via the `ForceStopRunnable`
+  its constructor dispatches — but it does *not* happen whether or not we ask. Removing the
+  `androidx.startup` initializer (below) makes `WorkManagerImpl` construct lazily on the first
+  `WorkManager.getInstance(...)`, and `UpdateScheduler.schedule()` holds the only such call in the
+  app. Asking is therefore what triggers the recovery. Verified against work-runtime 2.10.0.
 - New dependencies: `androidx.work:work-runtime-ktx` and `androidx.hilt:hilt-work`, plus
   `HiltWorkerFactory`, `SpApp : Configuration.Provider`, and removal of WorkManager's
   `androidx.startup` auto-initializer from the merged manifest.
 
-**Reboot.** WorkManager persists its schedule through JobScheduler and reschedules itself on boot,
-so no receiver is strictly required to keep the schedule. This design adds `RECEIVE_BOOT_COMPLETED`
-and a minimal receiver anyway, for a narrower reason than the obvious one: what the broadcast buys
-is the **process start**. A device that reboots and is then never touched has no reason to start
-this app's process at all, and WorkManager's recovery cannot run until a process exists. The
-receiver's `KEEP` re-enqueue is belt and braces over the identical call in `SpApp.onCreate()` — kept
-so the receiver's purpose is legible, but not the mechanism.
+**Reboot.** A reboot destroys every JobScheduler job this app had: work-runtime builds each `JobInfo`
+with `setPersisted(false)` deliberately, because it rebuilds them on `BOOT_COMPLETED` instead. What
+survives is the `WorkSpec` row in WorkManager's own database, so a process must start and construct
+`WorkManagerImpl` for `ForceStopRunnable` to notice the missing job and re-create it.
+
+work-runtime already ships a receiver for exactly this — `RescheduleReceiver` — so the one this
+design adds, with `RECEIVE_BOOT_COMPLETED`, is a **second** path rather than the only one. Its
+advantage is narrow but real: it is statically enabled in our manifest, whereas `RescheduleReceiver`
+is declared `enabled="false"` and switched on by a runtime `setComponentEnabledSetting` write that
+`UnfinishedWorkListener` makes only after WorkManager has been constructed in-process and observed
+unfinished work. Ours does not depend on that write having landed. Its `schedule()` body is what
+constructs `WorkManagerImpl` and so triggers the rebuild — the `KEEP` enqueue itself no-ops.
 
 None of it reaches a freshly installed app: Android holds one in the stopped state, where it
 receives no broadcasts at all, until a human launches it once.

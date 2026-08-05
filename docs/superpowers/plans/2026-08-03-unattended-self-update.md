@@ -2757,6 +2757,16 @@ class UpdateScheduler @Inject constructor(
 }
 ```
 
+> **Correction (2026-08-05, verified against work-runtime 2.10.0).** The KDoc above is wrong and was
+> not shipped as written; see the class for the corrected text. `KEEP` makes the repeated enqueue
+> *harmless*, not curative — an existing enqueued `WorkSpec` survives a killed job, so the enqueue
+> finds a row and no-ops in the very scenario "self-heals a schedule that an OEM's aggressive task
+> killer dropped" credits it with. What actually recovers the schedule is `ForceStopRunnable`, which
+> `WorkManagerImpl`'s constructor dispatches. Because Step 5 removes the `androidx.startup`
+> initializer, that constructor only runs on the first `WorkManager.getInstance(...)` — the call
+> inside `schedule()`, the only one in the app — so the recovery happens *because* we ask, not
+> regardless.
+
 - [ ] **Step 4: Make `SpApp` provide the WorkManager configuration and schedule the work**
 
 ```kotlin
@@ -2885,6 +2895,16 @@ custom-OEM failure class that is invisible until the fleet has already gone stal
 This does **not** remove the first manual launch: a newly installed app is in the stopped state and
 receives no broadcasts at all, `BOOT_COMPLETED` included, until a human taps the icon once.
 
+> **Correction (2026-08-05, verified against work-runtime 2.10.0).** The paragraph above is wrong in
+> its first clause and in its justification. WorkManager does *not* persist its schedule through
+> JobScheduler: `SystemJobInfoConverter:128` sets `setPersisted(false)` precisely so it can rebuild
+> the jobs on `BOOT_COMPLETED` itself. And the receiver is not insurance against an OEM task killer
+> — its real justification is that work-runtime's own `RescheduleReceiver` is declared
+> `enabled="false"` and only switched on by a runtime `setComponentEnabledSetting` write, whereas
+> ours is statically enabled in the manifest and so does not depend on that write. The shipped
+> receiver and design §2 carry the corrected reasoning; the stopped-state paragraph above is
+> accurate and unchanged.
+
 **Files:**
 - Create: `app/src/main/java/com/mediplus/spapp/core/update/BootCompletedReceiver.kt`
 - Modify: `app/src/main/AndroidManifest.xml`
@@ -2929,6 +2949,13 @@ class BootCompletedReceiver : BroadcastReceiver() {
     }
 }
 ```
+
+> **Correction (2026-08-05).** The KDoc above was not shipped as written — see the class for the
+> corrected text, and the note under the task heading for why. The body is correct as given: no
+> `super.onReceive`, which the Hilt Gradle plugin already emits as instruction 0 of the rewritten
+> `onReceive`. The `<receiver>` below shipped with `android:exported="false"`, not `"true"`: the
+> system delivers a protected broadcast to a manifest receiver either way, and `RescheduleReceiver`
+> takes this same action non-exported.
 
 - [ ] **Step 2: Declare the permission and the receiver**
 

@@ -25,9 +25,9 @@
          denial degrades to "installs next time somebody opens the app". -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- A device that reboots and is then never touched has no reason to start this app's process,
-         and WorkManager's own recovery cannot run until one exists. This broadcast is what starts
-         it; see BootCompletedReceiver. -->
+    <!-- A reboot destroys every JobScheduler job this app had — work-runtime marks them
+         setPersisted(false) and rebuilds them on this broadcast instead. Lets
+         BootCompletedReceiver be that rebuild's second path; see that class. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Camera + NFC drive the core verification flows, but the app degrades gracefully
@@ -102,12 +102,15 @@
             </intent-filter>
         </receiver>
 
-        <!-- Re-arms the update schedule after a reboot. exported: BOOT_COMPLETED is a system
-             broadcast, so the system must be able to reach it — the only receiver of ours that is
-             exported, hence the reason spelled out. -->
+        <!-- Re-arms the update schedule after a reboot; a second path beside work-runtime's own
+             RescheduleReceiver, which only exists once a runtime PackageManager write has enabled
+             it. Not exported: the system delivers a protected broadcast to a manifest receiver
+             regardless, and exporting would only let other apps forge it. work-runtime declares
+             RescheduleReceiver for this very action with exported="false", and UpdateRelaunchReceiver
+             above takes MY_PACKAGE_REPLACED the same way. -->
         <receiver
             android:name=".core.update.BootCompletedReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>

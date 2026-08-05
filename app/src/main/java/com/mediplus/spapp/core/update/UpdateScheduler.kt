@@ -21,12 +21,18 @@ import javax.inject.Singleton
  * repetition harmless: when a `WorkSpec` for this unique name already exists as enqueued or running,
  * the enqueue returns without touching it.
  *
- * That repetition is load-bearing only where there is no row to keep — a first-ever launch, or a
- * database wiped by clear-data. It is deliberately NOT what recovers a schedule an aggressive OEM
- * task killer dropped, though it is easy to assume so: a force-stop cancels the OS-level jobs and
- * alarms but leaves WorkManager's own rows intact, so this call finds an enqueued row and no-ops.
- * That recovery belongs to WorkManager itself, which dispatches a `ForceStopRunnable` from its
- * constructor on every process start and reschedules eligible work whether or not we ask. Verified
+ * The *enqueue* is load-bearing only where there is no row to keep — a first-ever launch, or a
+ * database wiped by clear-data. It is deliberately NOT what recovers a schedule that a reboot or an
+ * aggressive OEM task killer dropped, though it is easy to assume so: killing the OS-level job
+ * leaves WorkManager's own rows intact, so this call finds an enqueued row and no-ops.
+ *
+ * The *asking* is what carries that recovery, and it is a side effect of the line below rather than
+ * of the policy. Because the `androidx.startup` initializer is removed from the merged manifest,
+ * `WorkManagerImpl` is constructed lazily on the first `WorkManager.getInstance(...)` — and this is
+ * the only such call in the app. That constructor dispatches a `ForceStopRunnable`, which on a
+ * reboot takes its third branch: `cleanUp()` finds rows whose job is gone (every job, since
+ * work-runtime marks them `setPersisted(false)`) and `Schedulers.schedule(...)` rebuilds them. So
+ * WorkManager's recovery does not run alongside this call; it runs *because* of it. Verified
  * against work-runtime 2.10.0.
  */
 @Singleton
