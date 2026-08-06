@@ -7,7 +7,9 @@ import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
+import java.io.Closeable
 import kotlin.math.abs
 
 /**
@@ -17,17 +19,17 @@ import kotlin.math.abs
  */
 enum class FramingGuidance { GOOD, NO_FACE, MULTIPLE_FACES, FACE_TOO_SMALL, POOR_POSE }
 
+/**
+ * [Closeable] because the [FaceDetector] it owns holds native, off-heap resources. One analyzer is
+ * built per camera bind — i.e. per face check — so whoever binds must [close] it when the binding
+ * ends; detaching it from the `ImageAnalysis` use case does not release the detector (Principle IV).
+ */
 class FaceFramingAnalyzer(
     private val onGuidance: (FramingGuidance) -> Unit,
-) : ImageAnalysis.Analyzer {
+    private val detector: FaceDetector = defaultDetector(),
+) : ImageAnalysis.Analyzer, Closeable {
 
-    private val detector = FaceDetection.getClient(
-        FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .build(),
-    )
+    override fun close() = detector.close()
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
@@ -66,3 +68,12 @@ class FaceFramingAnalyzer(
         const val MAX_ROLL_DEGREES = 20f
     }
 }
+
+/** The production detector, kept out of the constructor default's way so tests can supply a fake. */
+private fun defaultDetector(): FaceDetector = FaceDetection.getClient(
+    FaceDetectorOptions.Builder()
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+        .build(),
+)

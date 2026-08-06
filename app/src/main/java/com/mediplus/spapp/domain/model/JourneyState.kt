@@ -42,9 +42,17 @@ data class VerifiedIdentity(
 }
 
 /**
- * The ordered, gated steps of the single sequential journey (FR-032). A later step is unreachable
- * until its prerequisite succeeds. Nav guards use [JourneyStep] to decide reachability and to name
- * the outstanding requirement when a step is blocked.
+ * The ordered steps of the single sequential journey (FR-032), as vocabulary for describing where a
+ * patient is.
+ *
+ * Order is **not** enforced by a reachability check over this enum. It comes from three concrete
+ * things: each step navigates forward with `popUpTo(...) { inclusive = true }`, so there is never a
+ * back stack to jump around in; `NavGraph`'s global guard pops everything to sign-in the moment
+ * `sessionState != Active`; and the only decision that matters — whether the composite is verified
+ * *and still fresh* — is re-evaluated server-side of the seam at submit time by
+ * [com.mediplus.spapp.domain.usecase.AddServiceUseCase], which is the one place it can be
+ * authoritative. A gate in front of navigation could only duplicate that check, later and with less
+ * information.
  */
 enum class JourneyStep {
     NOT_SIGNED_IN,
@@ -54,37 +62,4 @@ enum class JourneyStep {
     FACE_CHECK,
     READY_TO_ENROLL,
     ENROLLMENT,
-}
-
-/**
- * Pure gating logic for the sequential journey, expressed over primitive facts so it stays free of
- * device/UI dependencies and is fully unit-testable (FR-032). Consent and lockout are passed as
- * plain booleans so this foundational type does not depend on later-phase models.
- */
-object JourneyGate {
-
-    /**
-     * The furthest step currently reachable given the facts. The journey collapses to
-     * [JourneyStep.NOT_SIGNED_IN] whenever the session is not active (FR-004a).
-     */
-    fun furthestReachable(
-        sessionActive: Boolean,
-        memberVerified: Boolean,
-        consentGranted: Boolean,
-        faceVerified: Boolean,
-        currentlyVerified: Boolean,
-        lockedOut: Boolean,
-    ): JourneyStep = when {
-        !sessionActive -> JourneyStep.NOT_SIGNED_IN
-        !memberVerified -> JourneyStep.MEMBER_SCAN
-        !consentGranted -> JourneyStep.CONSENT
-        lockedOut -> JourneyStep.FACE_CHECK
-        !faceVerified -> JourneyStep.FACE_CHECK
-        currentlyVerified -> JourneyStep.ENROLLMENT
-        else -> JourneyStep.MEMBER_SCAN // verified but stale → re-verify (FR-026)
-    }
-
-    /** Whether [target] is reachable right now (it is at or below the furthest reachable step). */
-    fun canReach(target: JourneyStep, furthest: JourneyStep): Boolean =
-        target.ordinal <= furthest.ordinal
 }

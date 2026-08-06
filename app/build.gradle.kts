@@ -34,7 +34,9 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 5
-        versionName = "1.5 (auto prod release)"
+        // A version, not a release note: it is rendered in the sign-in footer the operator reads and
+        // sent to the back office as `appVersionName` on every POST /devices/register.
+        versionName = "1.5"
 
         testInstrumentationRunner = "com.mediplus.spapp.HiltTestRunner"
 
@@ -115,8 +117,6 @@ android {
         // Fail the build on lint errors; warnings are surfaced but do not abort day-to-day builds.
         abortOnError = true
         checkDependencies = true
-        // Third-party privacy-sensitive libs (JMRTD/BouncyCastle) ship benign warnings we don't own.
-        disable += setOf("ObsoleteLintCustomCheck")
     }
 }
 
@@ -168,9 +168,8 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // ML Kit (on-device capture guidance + MRZ OCR)
+    // ML Kit (on-device capture guidance only — never matching or liveness, those are the server's)
     implementation(libs.mlkit.face.detection)
-    implementation(libs.mlkit.text.recognition)
 
     // Storage (non-sensitive prefs only)
     implementation(libs.androidx.datastore.preferences)

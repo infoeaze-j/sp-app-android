@@ -23,11 +23,6 @@ class DefaultErrorMapper @Inject constructor() : ErrorMapper {
             bodyRes = R.string.err_timeout_body,
             actionRes = R.string.action_recheck,
         )
-        is AppError.SessionInvalid -> UiMessage(
-            titleRes = R.string.err_session_ended_title,
-            bodyRes = R.string.err_session_ended_body,
-            actionRes = R.string.action_sign_in_again,
-        )
     }
 
     // The dispatcher stays exhaustive over BusinessCode, so a new code cannot compile without a

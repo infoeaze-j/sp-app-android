@@ -6,7 +6,8 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Spacing tokens (Principle III: shared design tokens). [minTouchTarget] is 48dp so every
- * interactive element meets the accessibility target size.
+ * interactive element meets the accessibility target size; [maxContentWidth] caps a
+ * `fillMaxWidth` control so it does not stretch edge to edge on a tablet.
  */
 data class Spacing(
     val xs: Dp = 4.dp,
@@ -16,6 +17,7 @@ data class Spacing(
     val xl: Dp = 32.dp,
     val xxl: Dp = 64.dp,
     val minTouchTarget: Dp = 48.dp,
+    val maxContentWidth: Dp = 320.dp,
 )
 
 val LocalSpacing = staticCompositionLocalOf { Spacing() }

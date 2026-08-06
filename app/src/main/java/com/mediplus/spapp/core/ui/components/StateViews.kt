@@ -20,7 +20,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.mediplus.spapp.R
 import com.mediplus.spapp.core.result.UiMessage
 import com.mediplus.spapp.core.ui.theme.LocalSpacing
@@ -131,7 +130,7 @@ fun PermissionDeniedState(
             modifier = Modifier
                 .padding(top = spacing.lg)
                 .fillMaxWidth()
-                .widthIn(max = 320.dp)
+                .widthIn(max = spacing.maxContentWidth)
                 .heightIn(min = spacing.minTouchTarget),
         ) {
             Text(stringResource(R.string.action_grant_permission))
@@ -141,7 +140,7 @@ fun PermissionDeniedState(
             modifier = Modifier
                 .padding(top = spacing.sm)
                 .fillMaxWidth()
-                .widthIn(max = 320.dp)
+                .widthIn(max = spacing.maxContentWidth)
                 .heightIn(min = spacing.minTouchTarget),
         ) {
             Text(stringResource(R.string.action_open_settings))

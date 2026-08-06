@@ -27,7 +27,6 @@ camerax = "1.5.0"
 
 # ML Kit
 mlkitFaceDetection = "16.1.7"
-mlkitTextRecognition = "16.0.1"
 
 # Storage
 datastore = "1.1.7"
@@ -103,7 +102,6 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 
 # ML Kit
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
-mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 
 # Storage
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }

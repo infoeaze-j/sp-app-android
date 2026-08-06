@@ -50,7 +50,9 @@ add `org.jetbrains.kotlin.android`, and put `jvmTarget` inside `android { kotlin
 KSP uses the unified version scheme. Hilt must stay ≥ 2.60. `compileSdk 37` (minor 37.1) while
 `targetSdk` stays 36. Also fixed in `app/build.gradle.kts`: `minSdk 24` (hence core-library
 desugaring for `java.time`), `jvmTarget = JVM_11`, and the release coordinates the self-update flow
-depends on — currently `versionCode = 4` / `versionName = "1.4"`. Instrumented tests run through
+depends on — currently `versionCode = 5` / `versionName = "1.5"`. Keep `versionName` a bare version:
+it is rendered in the sign-in footer and sent to the back office as `appVersionName` on every
+`POST /devices/register`, so a release note there lands in the fleet's audit record. Instrumented tests run through
 `HiltTestRunner`. CI builds on **JDK 17**, not the JBR.
 
 ## Architecture
@@ -76,12 +78,18 @@ verification state too — the patient must be fully re-verified after re-login.
 is ever stored. A null freshness window is treated as *immediately stale* (fail-safe), not as
 "no expiry".
 
-**The journey is gated, not merely navigated.** `JourneyGate.furthestReachable(...)` is pure logic
-over primitive facts, producing a `JourneyStep`; `AppRoute` maps each destination to its required
-step. `NavGraph` additionally runs a global guard: any `sessionState != Active` pops the whole back
-stack to sign-in. Note the journey has five steps but four feature packages: **consent is not its
-own screen** — it lives inside `ui/facecheck` (`FaceCheckScreen`/`FaceCheckViewModel`), gating
-capture from within.
+**The journey's order is enforced by three concrete things, not by a nav guard.** (1) Every forward
+navigation uses `popUpTo(...) { inclusive = true }`, so the back stack only ever holds the current
+destination — there is nowhere to jump back or sideways to. (2) `NavGraph` runs one global guard:
+any `sessionState != Active` pops the whole back stack to sign-in. (3) The decision that actually
+matters — is the composite verified *and* still inside the freshness window — is re-evaluated at
+submit time by `AddServiceUseCase.invoke`, which is the only place it can be authoritative.
+`AppRoute` is a path enum and nothing more; `JourneyStep` is vocabulary for describing where a
+patient is, with no reachability logic behind it (a `JourneyGate` that computed one existed until
+2026-08-06 with zero call sites, and was deleted rather than wired up — it could only duplicate the
+submit-time check, later and with less information). Note the journey has five steps but four
+feature packages: **consent is not its own screen** — it lives inside `ui/facecheck`
+(`FaceCheckScreen`/`FaceCheckViewModel`), gating capture from within.
 
 **`NavGraph` owns the app's only chrome** — the `Scaffold` + `TopAppBar` carrying log out. Its
 `innerPadding` is what gives every screen its window insets, so screens must **not** apply their own
@@ -190,25 +198,30 @@ it, and the current behaviour is the conservative option.
 
 ## Current state to be aware of
 
-- As of 2026-08-03 detekt is **still red on `main`** — **15** weighted issues, all predating recent
-  work. The full tally, so a new failure can be told apart from the baseline at a glance:
+- As of 2026-08-06 detekt is **still red on `main`** — **14** weighted issues, measured with the CLI
+  over the working tree. The full tally, so a new failure can be told apart from the baseline at a
+  glance:
 
   | Rule | × | Where |
   |---|---|---|
-  | `LongParameterList` | 5 | `JourneyState.furthestReachable`; `FaceCheckScreen` ×3 (`FaceCheckScreen`, `CaptureContent`, `CameraCapture`); `MemberScanScreen` |
-  | `LongMethod` | 2 | `FaceCheckScreen.CameraCapture` (63), `SignInScreen` (103) |
+  | `LongParameterList` | 4 | `FaceCheckScreen` ×3 (`FaceCheckScreen:87`, `CaptureContent:152`, `CameraCapture:184`); `MemberScanScreen:92` |
+  | `LongMethod` | 2 | `FaceCheckScreen.CameraCapture` (63), `SignInScreen` (110) |
   | `MaxLineLength` | 2 | `FaceRepository:69`, `FaceCheckScreen:114` |
-  | `TooGenericExceptionCaught` | 2 | `CameraXFaceCamera:60`, `ApiCall:33` |
-  | `SwallowedException` | 1 | `CameraXFaceCamera:60` — the same `catch` as above |
+  | `TooGenericExceptionCaught` | 2 | `CameraXFaceCamera:68`, `ApiCall:33` |
+  | `SwallowedException` | 1 | `CameraXFaceCamera:68` — the same `catch` as above |
   | `TooManyFunctions` | 1 | `UpdateViewModel` (11 functions, threshold 11) |
   | `MatchingDeclarationName` | 1 | `NfcModels.kt` declares `NfcAvailability` |
   | `ReturnCount` | 1 | `VerifyFaceUseCase.interpret` (5, limit 4) |
 
   Check the baseline before assuming your change caused a failure; the easiest way is
-  `git worktree add --detach <tmp> HEAD` and run the CLI over that. This tally has been wrong twice
-  — it read 13, then 15 with `LongParameterList` under-counted at ×4, which still summed to 15 and
-  so hid itself. The point of recording it is to stop someone blaming their own change, so re-measure
-  rather than trust it, and correct the table here when you do.
+  `git worktree add --detach <tmp> HEAD` and run the CLI over that. This tally has been wrong three
+  times: it read 13, then 15 with `LongParameterList` under-counted at ×4, and on 2026-08-06 it read
+  15 while the composition underneath had shifted — deleting `JourneyGate` took `LongParameterList`
+  5 → 4 at the same moment `MemberScanViewModel.onDecline` pushed that class onto the
+  `TooManyFunctions` threshold, so a newly-introduced issue hid inside an unchanged total (it was
+  refactored back out, hence 14). **A matching total is not a clean run**: read the rows, not the
+  sum. The point of recording it is to stop someone blaming their own change, so re-measure rather
+  than trust it, and correct the table here when you do.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
   launch-time `GET /app/releases/latest?versionCode=N` (unauthenticated, always 200, fail-open),
   SHA-256-verified streaming download, rollback backup of the installed APK to `Downloads/SpApp/` (revert = manual

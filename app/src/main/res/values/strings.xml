@@ -8,13 +8,11 @@
     <string name="action_retry">Retry</string>
     <string name="action_recheck">Re-check</string>
     <string name="action_try_again">Try again</string>
-    <string name="action_sign_in_again">Sign in again</string>
     <string name="action_rescan">Scan again</string>
     <string name="action_start_over">Start over</string>
     <string name="action_grant_permission">Allow</string>
     <string name="action_open_settings">Open settings</string>
     <string name="action_enter_manually">Enter number</string>
-    <string name="action_continue">Continue</string>
     <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_back">Back</string>
@@ -30,10 +28,11 @@
     <string name="state_permission_needed_title">Permission needed</string>
 
     <!-- ===== Sign in (US1) ===== -->
-    <string name="signin_subtitle">Sign in to submit a claim</string>
+    <string name="signin_title">Service Provider Claims</string>
     <string name="signin_identifier_label">Operator ID</string>
     <string name="signin_secret_label">Password</string>
     <string name="signin_submit">Sign in</string>
+    <string name="signin_submitting">Signing in…</string>
     <string name="signin_session_ended">Your session ended. Please sign in again to continue.</string>
     <string name="signin_show_password">Show password</string>
     <string name="signin_hide_password">Hide password</string>
@@ -65,14 +64,12 @@
     <string name="err_card_unreadable_body">Try tapping again, or enter the number printed on the card.</string>
 
     <!-- ===== Live face check (US3) ===== -->
-    <string name="face_title">Face check</string>
     <string name="consent_title">Consent to a face check</string>
     <string name="consent_body">Ask the patient: may we take a live photo to confirm their identity? This is used only for verification and is not stored.</string>
     <string name="consent_grant">Patient consents</string>
     <string name="consent_decline">Consent withheld</string>
     <string name="face_consent_withheld_title">Consent withheld</string>
     <string name="face_consent_withheld_body">The patient did not consent. The process has stopped and no enrollment was made.</string>
-    <string name="face_prompt">Position the patient\'s face inside the frame and hold still.</string>
     <string name="face_framing_no_face">No face detected — center the patient\'s face in the frame.</string>
     <string name="face_framing_multiple">More than one face detected — only the patient should be in frame.</string>
     <string name="face_framing_too_small">Move a little closer.</string>
@@ -88,7 +85,6 @@
     <string name="face_camera_unavailable_body">This device has no usable camera, so the face check cannot be completed.</string>
 
     <!-- ===== Add a service (US4) ===== -->
-    <string name="addservice_title">Add a service</string>
     <string name="addservice_choose">Choose a service for this visit</string>
     <string name="addservice_no_services">No services are available for this person right now.</string>
     <string name="addservice_already_added">Already added</string>
@@ -117,7 +113,6 @@
     <string name="addservice_summary_service_label">Service</string>
     <string name="addservice_summary_patient_unknown">This person\'s details aren\'t available, so this can\'t be submitted. Go back and verify them again.</string>
     <string name="addservice_summary_submit">Submit</string>
-    <string name="addservice_start_over">Start over</string>
 
     <!-- ===== Self-update ===== -->
     <string name="update_available_title">Update available</string>
@@ -151,9 +146,6 @@
          server honours a range request, and a UiMessage carries no format arguments to say which. -->
     <string name="err_download_interrupted_title">Download interrupted</string>
     <string name="err_download_interrupted_body">The connection dropped before the update finished downloading. Try again when the connection is stable.</string>
-
-    <string name="err_session_ended_title">Session ended</string>
-    <string name="err_session_ended_body">Your session is no longer active. Sign in again to continue; earlier steps must be repeated.</string>
 
     <string name="err_invalid_credentials_title">Sign-in failed</string>
     <string name="err_invalid_credentials_body">The details entered weren\'t accepted. Check them and try again.</string>

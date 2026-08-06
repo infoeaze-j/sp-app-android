@@ -98,9 +98,16 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun signOut(): AppResult<Unit> {
-        // Attempt server-side invalidation, but always clear local session-bound state (FR-004a).
-        runCatching { apiCall(dispatcher, { api.logout() }) { AppResult.Success(Unit) } }
-        sessionManager.clearAll()
+        // Attempt server-side invalidation, but always clear local session-bound state (FR-004a) —
+        // which is what the `finally` guarantees, cancellation included. There is nothing to catch:
+        // apiCall already classifies every transport failure into an AppResult. The runCatching that
+        // used to wrap this also caught CancellationException, so a cancelled sign-out kept running
+        // instead of unwinding.
+        try {
+            apiCall(dispatcher, { api.logout() }) { AppResult.Success(Unit) }
+        } finally {
+            sessionManager.clearAll()
+        }
         return AppResult.Success(Unit)
     }
 

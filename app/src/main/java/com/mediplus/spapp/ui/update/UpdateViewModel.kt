@@ -29,8 +29,12 @@ import javax.inject.Inject
 /** How long the restarting overlay lingers before recovering to Idle when the process survives. */
 private const val RESTARTING_SETTLE_MILLIS = 1_500L
 
-/** Which stage a failed update attempt re-enters. INSTALL keeps the verified download. */
-enum class RetryTarget { DOWNLOAD, INSTALL }
+/**
+ * Which stage a failed update attempt re-enters. INSTALL keeps the verified download; PERMISSION
+ * goes all the way back to the offer, because that is the only phase whose action asks for the
+ * legacy storage permission again — and nothing has been downloaded yet.
+ */
+enum class RetryTarget { DOWNLOAD, INSTALL, PERMISSION }
 
 /**
  * Every observable state of the self-update flow, explicit per convention. A successful install
@@ -116,7 +120,13 @@ class UpdateViewModel @Inject constructor(
     fun onRetry() {
         when (val phase = _phase.value) {
             is UpdatePhase.CheckFailed -> viewModelScope.launch { runCheck() }
-            is UpdatePhase.Failed -> {
+            // The backup precondition is known to be unmet and nothing has been fetched: hand the
+            // operator back the offer, whose accept action re-runs the permission request. Any other
+            // destination closes the loop — the permission is asked for from exactly one place, so a
+            // retry that downloads instead spends the whole APK on an install that can never happen.
+            is UpdatePhase.Failed -> if (phase.retry == RetryTarget.PERMISSION) {
+                _phase.value = UpdatePhase.UpdateAvailable(phase.info, phase.forced)
+            } else {
                 val kept = downloaded
                 viewModelScope.launch {
                     if (phase.retry == RetryTarget.INSTALL && kept != null && kept.file.exists()) {
@@ -140,13 +150,19 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Pre-Q only: the rollback backup is written to shared storage, so a denied
+     * `WRITE_EXTERNAL_STORAGE` means the backup — and therefore the install — cannot proceed.
+     * Retries at [RetryTarget.PERMISSION] rather than [RetryTarget.INSTALL]: the permission is
+     * requested from one place, the offer's accept action, and nothing has been downloaded.
+     */
     fun onLegacyWriteDenied() {
         val phase = _phase.value as? UpdatePhase.UpdateAvailable ?: return
         _phase.value = UpdatePhase.Failed(
             message = errorMapper.toUserMessage(AppError.Business(BusinessCode.UPDATE_BACKUP_FAILED)),
             info = phase.info,
             forced = phase.forced,
-            retry = RetryTarget.INSTALL,
+            retry = RetryTarget.PERMISSION,
         )
     }
 

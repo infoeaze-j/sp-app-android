@@ -13,6 +13,7 @@ import com.mediplus.spapp.core.result.appErrorOrNull
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.NfcAvailability
+import com.mediplus.spapp.domain.usecase.EndPatientVisitUseCase
 import com.mediplus.spapp.domain.usecase.VerifyMemberUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -45,6 +46,7 @@ data class MemberScanUiState(val phase: MemberScanPhase = MemberScanPhase.Checki
 class MemberScanViewModel @Inject constructor(
     private val cardReader: MemberCardReader,
     private val verifyMember: VerifyMemberUseCase,
+    private val endPatientVisit: EndPatientVisitUseCase,
     private val errorMapper: ErrorMapper,
 ) : ViewModel() {
 
@@ -81,8 +83,8 @@ class MemberScanViewModel @Inject constructor(
             }
             when (result) {
                 is AppResult.Success -> verify(result.data)
-                else -> _uiState.value =
-                    MemberScanUiState(MemberScanPhase.Failed(map(result), retryable = true))
+                // Always retryable: whatever went wrong with this tap, another tap is free.
+                else -> _uiState.value = MemberScanUiState(failed(result, retryable = true))
             }
         }
     }
@@ -120,6 +122,18 @@ class MemberScanViewModel @Inject constructor(
         _uiState.value = MemberScanUiState(MemberScanPhase.Verified)
     }
 
+    /**
+     * Operator says this is not the patient in front of them — a mistyped manual number, or a card
+     * that selected someone else (a UID selects, it never authenticates). [VerifyMemberUseCase] has
+     * already written the composite by the time this screen renders, so the wrong patient has to be
+     * dropped, not just navigated past; then back to a scannable state for another go (FR-011a).
+     */
+    fun onDecline() {
+        if (_uiState.value.phase !is MemberScanPhase.Confirm) return
+        endPatientVisit()
+        checkAvailability()
+    }
+
     /** Return to a scannable state after a failure (session/prior steps are preserved) (FR-009). */
     fun retry() {
         stopScan()
@@ -138,14 +152,20 @@ class MemberScanViewModel @Inject constructor(
                     ),
                 )
             else -> MemberScanUiState(
-                MemberScanPhase.Failed(map(result), retryable = isRetryable(result)),
+                failed(result, retryable = result is AppResult.TransientFailure || result is AppResult.Timeout),
             )
         }
     }
 
-    private fun map(result: AppResult<*>): UiMessage =
-        errorMapper.toUserMessage(result.appErrorOrNull() ?: AppError.Business(BusinessCode.GENERIC))
-
-    private fun isRetryable(result: AppResult<*>): Boolean =
-        result is AppResult.TransientFailure || result is AppResult.Timeout
+    /**
+     * The [MemberScanPhase.Failed] for a failed [result]. [retryable] is the caller's decision, not
+     * a property of the result: an unreadable card can always be re-tapped, while the same rejection
+     * coming back from the back office is final.
+     */
+    private fun failed(result: AppResult<*>, retryable: Boolean) = MemberScanPhase.Failed(
+        message = errorMapper.toUserMessage(
+            result.appErrorOrNull() ?: AppError.Business(BusinessCode.GENERIC),
+        ),
+        retryable = retryable,
+    )
 }

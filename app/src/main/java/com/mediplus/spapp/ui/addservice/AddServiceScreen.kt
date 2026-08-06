@@ -275,7 +275,11 @@ private fun BlockedContent(outstanding: Outstanding, modifier: Modifier) {
     val bodyRes = when (outstanding) {
         Outstanding.DOCUMENT -> R.string.addservice_blocked_document
         Outstanding.FACE -> R.string.addservice_blocked_face
-        Outstanding.STALE, Outstanding.NONE -> R.string.addservice_blocked_stale
+        Outstanding.STALE -> R.string.addservice_blocked_stale
+        // Blocked is only emitted when !isCurrentlyVerified, which by construction means something
+        // is outstanding — so NONE cannot happen. Its own arm rather than folding it into the stale
+        // message: an impossible state must not be mislabelled as a real, specific one.
+        Outstanding.NONE -> R.string.err_generic_body
     }
     val spacing = LocalSpacing.current
     Column(

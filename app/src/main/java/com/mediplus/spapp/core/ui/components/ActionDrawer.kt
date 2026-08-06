@@ -62,7 +62,13 @@ fun ActionDrawer(
         // Swipe-down and scrim taps do exactly what the dismiss button does — the drawer has already
         // animated away by the time this fires, so the action runs directly. The only path out of
         // here that acts on anything is the explicit confirm.
-        onDismissRequest = dismiss.onClick,
+        //
+        // They also honour `dismiss.enabled`, the same flag the button reads. When dismissal is
+        // refused the sheet has to be shown again: it is already hidden by now, and simply not
+        // acting would leave the caller composing an invisible drawer with no way back.
+        onDismissRequest = {
+            if (dismiss.enabled) dismiss.onClick() else scope.launch { sheetState.show() }
+        },
         sheetState = sheetState,
         modifier = modifier,
     ) {

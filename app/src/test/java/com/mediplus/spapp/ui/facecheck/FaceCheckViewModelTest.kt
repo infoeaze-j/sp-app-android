@@ -94,6 +94,21 @@ class FaceCheckViewModelTest {
     }
 
     @Test
+    fun `a lockout the server did not describe still blocks retry`() {
+        // VerifyFaceUseCase reaches Rejected(code, null) on the BusinessRejection path: the code
+        // says locked out, but there is no FaceLockoutState to read it from. retry() used to
+        // re-derive the verdict from that nullable state while the UI derived it from the code, so
+        // the two guards disagreed and only the hidden button kept the capture from restarting.
+        grantAndCapture(FaceCheckResult.Rejected(BusinessCode.FACE_LOCKED_OUT, lockout = null))
+        val failed = vm.uiState.value.phase as FacePhase.Failed
+        assertEquals(false, failed.canRetry)
+
+        vm.retry()
+
+        assertEquals(failed, vm.uiState.value.phase)
+    }
+
+    @Test
     fun `no-match is retryable`() {
         grantAndCapture(FaceCheckResult.Rejected(BusinessCode.FACE_NO_MATCH, notLocked))
         val phase = vm.uiState.value.phase as FacePhase.Failed

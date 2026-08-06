@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -27,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -34,13 +36,37 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mediplus.spapp.R
 import com.mediplus.spapp.core.ui.theme.LocalSpacing
+import kotlin.math.roundToInt
 
 /** Share of the screen width the Mediplus lockup occupies; its own aspect ratio sets the height. */
-private const val LOGO_WIDTH_FRACTION = 0.72f
+private const val LOGO_WIDTH_FRACTION = 0.88f
+
+/**
+ * Share of the leftover vertical space left above the sign-in content. Plain centring would leave
+ * half of it; the form is lifted by 30% of that space so it sits higher on the screen.
+ */
+private const val CONTENT_TOP_SPACE_FRACTION = 0.2f
+
+/**
+ * Vertical arrangement that places the sign-in content [CONTENT_TOP_SPACE_FRACTION] of the way down
+ * the free space rather than centring it. When the content is taller than the viewport there is no
+ * free space, so it degrades to a top arrangement and the column's scroll takes over.
+ */
+private val LiftedFromCenter = object : Arrangement.Vertical {
+    override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+        val free = (totalSize - sizes.sum()).coerceAtLeast(0)
+        var offset = (free * CONTENT_TOP_SPACE_FRACTION).roundToInt()
+        sizes.forEachIndexed { index, size ->
+            outPositions[index] = offset
+            offset += size
+        }
+    }
+}
 
 /**
  * US1 sign-in destination. Owns credential entry, loading, non-revealing errors, sign-in lockout
@@ -87,7 +113,7 @@ fun SignInScreen(
             .verticalScroll(rememberScrollState())
             .padding(spacing.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = LiftedFromCenter,
     ) {
         // Company branding. The lockup already carries the Mediplus wordmark, so the screen does
         // not repeat the company name as text.
@@ -99,11 +125,15 @@ fun SignInScreen(
                 .fillMaxWidth(LOGO_WIDTH_FRACTION)
                 .padding(bottom = spacing.sm),
         )
+        // Names the app's purpose between the lockup and the form. It is a heading, not a prompt:
+        // the button already says what the action is, so no instructional subtitle follows it.
         Text(
-            text = stringResource(R.string.signin_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
+            text = stringResource(R.string.signin_title),
+            style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = spacing.xs, bottom = spacing.lg),
+            modifier = Modifier
+                .padding(top = spacing.sm, bottom = spacing.lg)
+                .semantics { heading() },
         )
 
         if (state.sessionEndedNotice) {
@@ -171,7 +201,19 @@ fun SignInScreen(
                 .heightIn(min = spacing.minTouchTarget),
         ) {
             if (state.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.heightIn(max = spacing.lg))
+                // size() and not heightIn(): the indicator draws a circle of its own *width*, so
+                // constraining the height alone leaves a 40dp circle overflowing a 24dp-tall slot.
+                // The colour is the brand primary rather than the (disabled) button content colour,
+                // so the busy state still reads as work in progress on the greyed-out button.
+                CircularProgressIndicator(
+                    modifier = Modifier.size(spacing.lg),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = spacing.xs / 2,
+                )
+                Text(
+                    text = stringResource(R.string.signin_submitting),
+                    modifier = Modifier.padding(start = spacing.sm),
+                )
             } else {
                 Text(stringResource(R.string.signin_submit))
             }

@@ -79,6 +79,7 @@ fun MemberScanRoute(
         onManualEntry = viewModel::showManualEntry,
         onSubmitNumber = viewModel::submitManualNumber,
         onConfirm = viewModel::onConfirm,
+        onDecline = viewModel::onDecline,
         onRetry = viewModel::retry,
         onOpenSettings = {
             activity?.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
@@ -93,6 +94,7 @@ fun MemberScanScreen(
     onManualEntry: () -> Unit,
     onSubmitNumber: (String) -> Unit,
     onConfirm: () -> Unit,
+    onDecline: () -> Unit,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -106,7 +108,7 @@ fun MemberScanScreen(
             UnavailableContent(phase.availability, onOpenSettings, onManualEntry, modifier)
         MemberScanPhase.ManualEntry -> ManualEntryContent(onSubmitNumber, modifier)
         MemberScanPhase.ReadyToScan -> ReadyToScanContent(onManualEntry, modifier)
-        is MemberScanPhase.Confirm -> ConfirmContent(phase.member, onConfirm, modifier)
+        is MemberScanPhase.Confirm -> ConfirmContent(phase.member, onConfirm, onDecline, modifier)
         is MemberScanPhase.Failed -> ErrorState(message = phase.message, onAction = onRetry, modifier = modifier)
     }
 }
@@ -216,6 +218,7 @@ private fun ReadyToScanContent(
 private fun ConfirmContent(
     member: MemberDetails,
     onConfirm: () -> Unit,
+    onDecline: () -> Unit,
     modifier: Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -241,6 +244,12 @@ private fun ConfirmContent(
             onClick = onConfirm,
             modifier = Modifier.fillMaxWidth().padding(top = spacing.lg).heightIn(min = spacing.minTouchTarget),
         ) { Text(stringResource(R.string.card_confirm_button)) }
+        // The way out when this is the wrong person: without it the only exits are confirming
+        // someone else's identity or logging out (system back leaves a single-entry stack).
+        OutlinedButton(
+            onClick = onDecline,
+            modifier = Modifier.fillMaxWidth().padding(top = spacing.sm).heightIn(min = spacing.minTouchTarget),
+        ) { Text(stringResource(R.string.action_rescan)) }
     }
 }
 

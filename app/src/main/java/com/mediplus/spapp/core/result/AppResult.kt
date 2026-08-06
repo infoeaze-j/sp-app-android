@@ -28,14 +28,6 @@ fun AppResult<*>.appErrorOrNull(): AppError? = when (this) {
     AppResult.Timeout -> AppError.Timeout
 }
 
-/** Maps the success payload, propagating any failure variant unchanged. */
-inline fun <T, R> AppResult<T>.map(transform: (T) -> R): AppResult<R> = when (this) {
-    is AppResult.Success -> AppResult.Success(transform(data))
-    is AppResult.BusinessRejection -> this
-    is AppResult.TransientFailure -> this
-    AppResult.Timeout -> AppResult.Timeout
-}
-
 /**
  * A structured, non-user-facing error. Mapped to a clear, non-revealing [UiMessage] by
  * [ErrorMapper]; no [AppError] ever carries identity or biometric data (FR-029).
@@ -50,9 +42,6 @@ sealed interface AppError {
 
     /** No definitive outcome (timeout / connectivity loss mid-request). */
     data object Timeout : AppError
-
-    /** The session is no longer valid; the app must force re-authentication (FR-004). */
-    data class SessionInvalid(val kind: SessionErrorKind) : AppError
 }
 
 /** Curated business outcomes. Each maps to a fixed, non-revealing user message. */
@@ -84,5 +73,3 @@ enum class BusinessCode {
  * bare connectivity complaint nor as [AppResult.Timeout]'s "outcome unknown".
  */
 enum class TransientKind { NO_CONNECTIVITY, SERVER_ERROR, DOWNLOAD_INTERRUPTED, UNKNOWN }
-
-enum class SessionErrorKind { EXPIRED, INVALIDATED, NONE }

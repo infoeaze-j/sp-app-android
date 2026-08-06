@@ -409,7 +409,39 @@ class UpdateViewModelTest {
 
         val phase = vm.phase.value as UpdatePhase.Failed
         assertEquals(businessMessage(BusinessCode.UPDATE_BACKUP_FAILED), phase.message)
-        assertEquals(RetryTarget.INSTALL, phase.retry)
+        assertEquals(RetryTarget.PERMISSION, phase.retry)
+    }
+
+    @Test
+    fun `retrying after a denied storage permission re-offers the update so it can be asked again`() = runTest {
+        // UpdateAvailable is the only phase whose action runs the permission check, so returning
+        // there is what makes the request re-askable. Anything else closes the loop for good: on a
+        // forced update the overlay's Retry would be the only control and could never succeed.
+        serverSays(AppResult.Success(info(latest = 7, minSupported = 7)))
+        every { backupStore.needsLegacyWritePermission() } returns true
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onLegacyWriteDenied()
+
+        vm.onRetry()
+        advanceUntilIdle()
+
+        assertEquals(UpdatePhase.UpdateAvailable(info(latest = 7, minSupported = 7), forced = true), vm.phase.value)
+        assertTrue(vm.needsLegacyWritePermission())
+    }
+
+    @Test
+    fun `retrying after a denied storage permission does not download an APK it cannot install`() = runTest {
+        serverSays(AppResult.Success(info()))
+        downloadSucceeds()
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onLegacyWriteDenied()
+
+        vm.onRetry()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.downloadAndVerify(any(), any()) }
     }
 
     private companion object {

@@ -7,11 +7,14 @@ import com.mediplus.spapp.core.result.AppError
 import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.core.result.DefaultErrorMapper
+import com.mediplus.spapp.core.session.InMemorySessionManager
 import com.mediplus.spapp.domain.model.MemberCapabilities
 import com.mediplus.spapp.domain.model.MemberDetails
 import com.mediplus.spapp.domain.model.MemberNumber
 import com.mediplus.spapp.domain.model.MemberVerification
 import com.mediplus.spapp.domain.model.NfcAvailability
+import com.mediplus.spapp.domain.model.VerifiedIdentity
+import com.mediplus.spapp.domain.usecase.EndPatientVisitUseCase
 import com.mediplus.spapp.domain.usecase.VerifyMemberUseCase
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -25,6 +28,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -44,13 +49,30 @@ class MemberScanViewModelTest {
         capabilities = MemberCapabilities(canVerifyFace = true, canEnroll = true),
     )
 
+    private val sessionManager = InMemorySessionManager()
+
     @Before
     fun setUp() = Dispatchers.setMain(dispatcher)
 
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = MemberScanViewModel(reader, verifyMember, DefaultErrorMapper())
+    private fun viewModel() = MemberScanViewModel(
+        reader,
+        verifyMember,
+        EndPatientVisitUseCase(sessionManager),
+        DefaultErrorMapper(),
+    )
+
+    /** Mirrors what the real [VerifyMemberUseCase] does before this screen ever renders Confirm. */
+    private fun verificationWritesTheComposite() {
+        coEvery { verifyMember(number) } coAnswers {
+            sessionManager.updateVerifiedIdentity {
+                VerifiedIdentity(memberNumber = number.value, memberVerified = true, patient = details)
+            }
+            AppResult.Success(verification)
+        }
+    }
 
     @Test
     fun `an available reader lands on ReadyToScan`() = runTest(dispatcher) {
@@ -102,6 +124,43 @@ class MemberScanViewModelTest {
         vm.onConfirm()
 
         assertEquals(MemberScanPhase.Verified, vm.uiState.value.phase)
+    }
+
+    @Test
+    fun `declining the resolved member drops the composite and returns to scanning`() = runTest(dispatcher) {
+        // The confirmation step exists so a human can catch a wrong resolution — a mistyped manual
+        // number, a cloned card UID. Without a way out, spotting it leaves only two options:
+        // confirm the wrong patient, or log out. VerifyMemberUseCase has already written the
+        // composite by now, so navigating away is not enough — it has to be dropped.
+        coEvery { reader.isAvailable() } returns NfcAvailability.AVAILABLE
+        coEvery { reader.awaitAndRead(any(), any()) } returns AppResult.Success(number)
+        verificationWritesTheComposite()
+
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.startScan(host)
+        advanceUntilIdle()
+        assertEquals(MemberScanPhase.Confirm(details), vm.uiState.value.phase)
+        assertNotNull(sessionManager.verifiedIdentity.value)
+
+        vm.onDecline()
+        advanceUntilIdle()
+
+        assertEquals(MemberScanPhase.ReadyToScan, vm.uiState.value.phase)
+        assertNull(sessionManager.verifiedIdentity.value)
+    }
+
+    @Test
+    fun `declining outside the confirmation step does nothing`() = runTest(dispatcher) {
+        coEvery { reader.isAvailable() } returns NfcAvailability.AVAILABLE
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.showManualEntry()
+
+        vm.onDecline()
+        advanceUntilIdle()
+
+        assertEquals(MemberScanPhase.ManualEntry, vm.uiState.value.phase)
     }
 
     @Test

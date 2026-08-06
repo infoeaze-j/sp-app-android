@@ -49,6 +49,12 @@ class FaceCheckViewModel @Inject constructor(
     private var consentGranted = false
     private var lockout: FaceLockoutState? = null
 
+    // The locked-out verdict, tracked in one place. It cannot be re-derived from [lockout] alone:
+    // VerifyFaceUseCase reaches Rejected(FACE_LOCKED_OUT, null) on the BusinessRejection path, where
+    // the code carries the fact and the state is absent. Deriving it twice let retry()'s guard and
+    // the UI's canRetry disagree about the same thing.
+    private var lockedOut = false
+
     /** Patient consent decision (FR-028). Withheld halts cleanly with no capture. */
     fun onConsent(granted: Boolean) {
         val status = if (granted) ConsentStatus.GRANTED else ConsentStatus.WITHHELD
@@ -108,7 +114,7 @@ class FaceCheckViewModel @Inject constructor(
 
     /** Return to capturing after a recoverable failure (unless a server lockout is active) (FR-015). */
     fun retry() {
-        if (lockout?.lockedOut == true) return
+        if (lockedOut) return
         _uiState.value = FaceCheckUiState(FacePhase.Capturing(FramingGuidance.NO_FACE, canCapture = false))
     }
 
@@ -121,7 +127,7 @@ class FaceCheckViewModel @Inject constructor(
     private fun reduceRejection(rejected: FaceCheckResult.Rejected): FacePhase {
         rejected.lockout?.let { lockout = it }
         if (rejected.code == BusinessCode.SUBJECT_MISMATCH) return FacePhase.DiscrepancyHalt
-        val lockedOut = lockout?.lockedOut == true || rejected.code == BusinessCode.FACE_LOCKED_OUT
+        lockedOut = lockedOut || lockout?.lockedOut == true || rejected.code == BusinessCode.FACE_LOCKED_OUT
         return FacePhase.Failed(
             message = errorMapper.toUserMessage(AppError.Business(rejected.code)),
             lockout = lockout,

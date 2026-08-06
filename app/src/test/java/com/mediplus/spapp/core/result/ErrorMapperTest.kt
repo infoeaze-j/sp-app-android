@@ -21,7 +21,6 @@ class ErrorMapperTest {
         BusinessCode.entries.forEach { add(AppError.Business(it)) }
         TransientKind.entries.forEach { add(AppError.Transient(it)) }
         add(AppError.Timeout)
-        SessionErrorKind.entries.forEach { add(AppError.SessionInvalid(it)) }
     }
 
     @Test

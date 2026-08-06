@@ -2,6 +2,7 @@ package com.mediplus.spapp.core.camera
 
 import android.content.Context
 import android.view.View
+import androidx.annotation.VisibleForTesting
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -15,6 +16,7 @@ import androidx.lifecycle.LifecycleOwner
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import javax.inject.Inject
@@ -35,6 +37,12 @@ class CameraXFaceCamera @Inject constructor(
     private var imageAnalysis: ImageAnalysis? = null
     private var imageCapture: ImageCapture? = null
     private var analysisExecutor: ExecutorService? = null
+
+    // Held so release() can close it: clearAnalyzer() only detaches the analyzer from the use case,
+    // it does not release the native ML Kit detector inside. Internal rather than private so the
+    // disposal contract can be asserted in a JVM test.
+    @VisibleForTesting
+    internal var framingAnalyzer: FaceFramingAnalyzer? = null
 
     // Guards the async provider-resolution listener in bind() against a release() that runs before
     // the listener fires (e.g. the screen is torn down mid-resolve). Set true by release(), cleared
@@ -81,14 +89,28 @@ class CameraXFaceCamera @Inject constructor(
             // that nothing will ever tear down.
             if (released) return@addListener
 
-            val provider = providerFuture.get()
+            // This runs on the main executor, so an unhandled throw here is a main-thread crash.
+            // isAvailable() resolved the provider first and would normally have caught a broken
+            // one, but it can still fail later; nothing is bound yet, so releasing and giving up
+            // leaves the screen on its existing camera-unavailable handling instead.
+            val provider = try {
+                providerFuture.get()
+            } catch (_: ExecutionException) {
+                release()
+                return@addListener
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                release()
+                return@addListener
+            }
             val previewUseCase = Preview.Builder().build().apply {
                 setSurfaceProvider(surface.surfaceProvider)
             }
+            val analyzer = FaceFramingAnalyzer(onGuidance)
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-                .apply { setAnalyzer(executor, FaceFramingAnalyzer(onGuidance)) }
+                .apply { setAnalyzer(executor, analyzer) }
             val capture = ImageCapture.Builder().build()
 
             provider.unbindAll()
@@ -104,6 +126,7 @@ class CameraXFaceCamera @Inject constructor(
             preview = previewUseCase
             imageAnalysis = analysis
             imageCapture = capture
+            framingAnalyzer = analyzer
         }, ContextCompat.getMainExecutor(context))
     }
 
@@ -139,12 +162,16 @@ class CameraXFaceCamera @Inject constructor(
             analysis?.clearAnalyzer()
             provider.unbind(preview, analysis, imageCapture)
         }
+        // Detaching is not releasing: the analyzer owns a native ML Kit detector that only close()
+        // frees. Unconditional, because bind() can leave an analyzer behind without a provider.
+        framingAnalyzer?.close()
         analysisExecutor?.shutdown()
         analysisExecutor = null
         cameraProvider = null
         preview = null
         imageAnalysis = null
         imageCapture = null
+        framingAnalyzer = null
     }
 
     private suspend fun cameraProvider(): ProcessCameraProvider =

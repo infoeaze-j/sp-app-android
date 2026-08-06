@@ -8,22 +8,15 @@ import com.mediplus.spapp.core.result.AppResult
 import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.data.remote.LatestReleaseResponse
 import com.mediplus.spapp.data.remote.UpdateApi
-import com.mediplus.spapp.core.result.BusinessCode
 import com.mediplus.spapp.domain.model.CurrentAppVersion
 import com.mediplus.spapp.domain.model.DownloadedApk
 import com.mediplus.spapp.domain.model.UpdateInfo
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
-import okhttp3.ResponseBody
-import retrofit2.Response
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
-import java.security.MessageDigest
 import javax.inject.Inject
 
 /**
