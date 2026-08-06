@@ -58,7 +58,15 @@ class ScrubRulesTest {
     }
 
     @Test
-    fun `a segment that merely contains digits is not templated`() {
+    fun `a digit run embedded in a compound segment is redacted`() {
+        assertEquals(
+            "https://host/api/v1/members/{redacted}v2/services",
+            ScrubRules.templateUrl("https://host/api/v1/members/634743753v2/services"),
+        )
+    }
+
+    @Test
+    fun `a short digit run inside a segment is left alone`() {
         assertEquals("https://host/v1/abc1234def", ScrubRules.templateUrl("https://host/v1/abc1234def"))
     }
 
@@ -101,7 +109,30 @@ class ScrubRulesTest {
     }
 
     @Test
+    fun `a digit run embedded in a longer token is redacted from text`() {
+        assertEquals("member{redacted}done", ScrubRules.redactDigitRuns("member634743753done"))
+    }
+
+    @Test
     fun `only url method and status are permitted http breadcrumb data`() {
         assertEquals(setOf("url", "method", "status_code"), ScrubRules.allowedHttpDataKeys)
+    }
+
+    @Test
+    fun `a bare host with no path is preserved`() {
+        assertEquals("https://bio.infoeaze.com", ScrubRules.templateUrl("https://bio.infoeaze.com"))
+    }
+
+    @Test
+    fun `a trailing slash is preserved`() {
+        assertEquals("$baseUrl/", ScrubRules.templateUrl("$baseUrl/"))
+    }
+
+    @Test
+    fun `repeated slashes are preserved`() {
+        assertEquals(
+            "https://host/api//members",
+            ScrubRules.templateUrl("https://host/api//members"),
+        )
     }
 }

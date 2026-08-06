@@ -48,14 +48,17 @@ object ScrubRules {
     fun isAllowedCategory(category: String?): Boolean = category in ALLOWED_CATEGORIES
 
     /**
-     * Replaces every wholly-numeric path segment with [ID_PLACEHOLDER] and drops the query string,
-     * so `members/634743753/services` becomes `members/{id}/services`. Scheme, host and endpoint
-     * shape survive — enough to know which call failed.
+     * Replaces every wholly-numeric path segment with [ID_PLACEHOLDER], redacts embedded digit runs
+     * of 7+ digits, and drops the query string, so `members/634743753/services` becomes
+     * `members/{id}/services` and `members/634743753v2/services` becomes
+     * `members/{redacted}v2/services`. Scheme, host and endpoint shape survive — enough to know
+     * which call failed.
      */
     fun templateUrl(url: String): String {
         val path = url.substringBefore('?').substringBefore('#')
-        return path.split('/')
+        val templated = path.split('/')
             .joinToString("/") { segment -> if (NUMERIC_SEGMENT.matches(segment)) ID_PLACEHOLDER else segment }
+        return redactDigitRuns(templated) ?: templated
     }
 
     /** Replaces long digit runs anywhere in free text, guarding against interpolated identifiers. */
