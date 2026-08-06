@@ -1,3 +1,4 @@
+import io.sentry.android.gradle.extensions.InstrumentationFeature
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -7,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.sentry)
 }
 
 // Release signing is driven by a git-ignored keystore.properties in the project root
@@ -61,6 +63,7 @@ android {
         debug {
             // Local Docker back office on the LAN (plain HTTP; see network_security_config.xml).
             buildConfigField("String", "BASE_URL", "\"http://10.21.2.82:8080/api/v1/\"")
+            buildConfigField("String", "SENTRY_ENVIRONMENT", "\"development\"")
             enableUnitTestCoverage = true
         }
         release {
@@ -73,6 +76,7 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
             buildConfigField("String","BASE_URL","\"https://bio.infoeaze.com/api/v1/\"")
+            buildConfigField("String", "SENTRY_ENVIRONMENT", "\"production\"")
         }
     }
 
@@ -198,4 +202,26 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.hilt.android.testing)
     kspAndroidTest(libs.hilt.compiler)
+}
+
+
+sentry {
+    org.set("infoeaze")
+    projectName.set("android")
+
+    // No source upload: release is unminified (`optimization { enable = false }`), so stack traces
+    // already carry real file names and line numbers. Uploading would put health-app source on a
+    // third-party SaaS and make sentry.properties a second single-machine secret gating every
+    // shippable APK, alongside the keystore.
+    includeSourceContext.set(false)
+
+    // OkHttp only. This stops Logcat, file-IO, database and Compose instrumentation weaving in at
+    // all, rather than relying on the scrubber to discard what they produce — Logcat instrumentation
+    // in particular would forward every third-party Log.* call, which LoggingRedactionTest cannot
+    // govern. OkHttp is kept deliberately even though tracesSampleRate is 0.0: its event listener
+    // emits HTTP breadcrumbs independently of trace sampling, so we keep "which call failed" while
+    // emitting no spans. SentryScrubber templates the URLs.
+    tracingInstrumentation {
+        features.set(setOf(InstrumentationFeature.OKHTTP))
+    }
 }

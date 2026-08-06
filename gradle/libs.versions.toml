@@ -51,6 +51,9 @@ androidxTestRules = "1.7.0"
 appcompat = "1.7.1"
 material = "1.13.0"
 
+# Crash reporting
+sentry = "6.17.0"
+
 [libraries]
 # AndroidX core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -137,3 +140,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+sentry = { id = "io.sentry.android.gradle", version.ref = "sentry" }

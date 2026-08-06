@@ -71,6 +71,13 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!--
+          The DSN is not a secret — it ships inside every APK. Everything else is configured in code
+          in SentryCrashReporting, because beforeSend/beforeBreadcrumb are only settable there and
+          screenshots must be never-captured rather than discarded after the fact.
+        -->
+        <meta-data android:name="io.sentry.dsn" android:value="https://8e93f62ceab7e1e874f1673235179d62@o4511863682629632.ingest.de.sentry.io/4511863688790096" />
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
     </application>
 
 </manifest>
