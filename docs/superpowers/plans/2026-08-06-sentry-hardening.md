@@ -561,15 +561,19 @@ class SentryScrubberTest {
     }
 
     @Test
-    fun `a malformed url drops the breadcrumb rather than passing it through`() {
+    fun `a url that is not a string is removed rather than passed through`() {
+        // Sentry's data map is Map<String, Any>, so nothing guarantees the url is a String. An
+        // unrecognised value must not survive: it would be serialised verbatim into the envelope.
         val crumb = Breadcrumb().apply {
             category = "http"
             setData("url", Any())
+            setData("method", "GET")
         }
 
-        // Whatever goes wrong, the answer is "send nothing" — never "send it unscrubbed".
-        val result = scrubber.execute(crumb, Hint())
-        assertTrue(result == null || !result.data.getValue("url").toString().contains(memberNumber))
+        val result = scrubber.execute(crumb, Hint())!!
+
+        assertFalse(result.data.containsKey("url"))
+        assertEquals("GET", result.data["method"])
     }
 
     @Test
@@ -714,11 +718,21 @@ class SentryScrubber :
         return event
     }
 
-    /** Keep only the allowlisted keys, and template the identifier out of the URL. */
+    /**
+     * Keep only the allowlisted keys, and template the identifier out of the URL.
+     *
+     * A url that is not a String is *removed*, not left in place: the data map is `Map<String, Any>`,
+     * so nothing guarantees the type, and an unrecognised value would be serialised into the envelope
+     * exactly as it arrived. Fail towards sending less.
+     */
     private fun scrubHttpData(breadcrumb: Breadcrumb) {
         val url = breadcrumb.data[URL_KEY] as? String
         breadcrumb.data.keys.retainAll(ScrubRules.allowedHttpDataKeys)
-        if (url != null) breadcrumb.setData(URL_KEY, ScrubRules.templateUrl(url))
+        if (url == null) {
+            breadcrumb.data.remove(URL_KEY)
+        } else {
+            breadcrumb.setData(URL_KEY, ScrubRules.templateUrl(url))
+        }
     }
 
     private companion object {
