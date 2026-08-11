@@ -16,3 +16,6 @@ keystore.properties
 *.jks
 *.keystore
 /app/release/*
+
+# Sentry Config File
+sentry.properties
