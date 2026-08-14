@@ -7,11 +7,14 @@ import com.mediplus.spapp.domain.model.UpdateInfo
 internal const val RESTARTING_SETTLE_MILLIS = 1_500L
 
 /**
- * Which stage a failed update attempt re-enters. INSTALL keeps the verified download; PERMISSION
- * goes all the way back to the offer, because that is the only phase whose action asks for the
- * legacy storage permission again — and nothing has been downloaded yet.
+ * Which stage a failed update attempt re-enters. INSTALL keeps the verified download.
+ *
+ * There is deliberately no PERMISSION target. `main` briefly had one, for a denied legacy
+ * `WRITE_EXTERNAL_STORAGE` that made the rollback backup — and therefore the install — impossible.
+ * Design 2026-08-03 §6 removed that block: the backup is best-effort and never gates an install, so
+ * a denial now skips the backup and carries on, and there is no failure to re-enter.
  */
-enum class RetryTarget { DOWNLOAD, INSTALL, PERMISSION }
+enum class RetryTarget { DOWNLOAD, INSTALL }
 
 /**
  * Who asked for the attempt a phase belongs to.
