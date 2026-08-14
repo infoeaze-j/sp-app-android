@@ -49,10 +49,12 @@ Toolchain gotchas (AGP 9.2.1 / Gradle 9.4.1 / Kotlin 2.3.10): AGP 9 has **built-
 add `org.jetbrains.kotlin.android`, and put `jvmTarget` inside `android { kotlin { compilerOptions } }`.
 KSP uses the unified version scheme. Hilt must stay ≥ 2.60. `compileSdk 37` (minor 37.1) while
 `targetSdk` stays 36. Also fixed in `app/build.gradle.kts`: `minSdk 24` (hence core-library
-desugaring for `java.time`), `jvmTarget = JVM_11`, and the release coordinates the self-update flow
-depends on — currently `versionCode = 5` / `versionName = "1.5"`. Keep `versionName` a bare version:
-it is rendered in the sign-in footer and sent to the back office as `appVersionName` on every
-`POST /devices/register`, so a release note there lands in the fleet's audit record. Instrumented tests run through
+desugaring for `java.time`), and `jvmTarget = JVM_11`. The self-update flow depends on the release
+coordinates in the same file: every release must bump `versionCode`, and `versionName` must stay a
+bare version — it is rendered in the sign-in footer and sent to the back office as `appVersionName`
+on every `POST /devices/register`, so a release note there lands in the fleet's audit record. Read
+the current values from `app/build.gradle.kts`; they are not repeated here, because a number that
+changes every release is a number this file will be wrong about. Instrumented tests run through
 `HiltTestRunner`. CI builds on **JDK 17**, not the JBR.
 
 ## Architecture
