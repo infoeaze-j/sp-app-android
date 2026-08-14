@@ -16,3 +16,11 @@ keystore.properties
 *.jks
 *.keystore
 /app/release/*
+
+# Sentry CLI credentials — sentry.properties carries an auth token.
+sentry.properties
+
+# The detekt CLI, downloaded rather than wired into Gradle (see CLAUDE.md).
+# CI fetches its own copy on every run; a local one is ~125 MB of build tool.
+detekt-cli-*.zip
+detekt-cli-*/
