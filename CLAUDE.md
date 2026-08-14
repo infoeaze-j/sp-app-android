@@ -284,19 +284,25 @@ it, and the current behaviour is the conservative option.
   drive the *same* code and publish to the same `StateFlow<UpdatePhase>`; the ViewModel is now a thin
   adapter. `runUpdate` takes the attempt lock with `tryLock` — an overlapping trigger is *skipped*,
   not queued — while the operator gestures (`accept`/`retry`/`returnedFromSettings`) take it with
-  `withLock` and queue behind whatever is in flight. WorkManager runs every 6 h on
-  `NetworkType.CONNECTED`, enqueued with `KEEP` from `SpApp.onCreate()` and from
-  `BootCompletedReceiver`, and needs WorkManager's `androidx.startup` initializer removed — **by a
+  `withLock` and queue behind whatever is in flight. WorkManager runs every **15 min** on
+  `NetworkType.CONNECTED` — WorkManager's own `MIN_PERIODIC_INTERVAL_MILLIS` floor, below which a
+  requested interval is silently clamped rather than honoured — enqueued with `UPDATE` from
+  `SpApp.onCreate()` and from `BootCompletedReceiver`. The policy is `UPDATE` rather than `KEEP`
+  because WorkManager's database survives an app update: under `KEEP` a device already holding a
+  `WorkSpec` would keep its old interval forever and no release could move it. `UPDATE` preserves
+  `lastEnqueueTime`, so re-enqueueing on every launch rewrites the spec without restarting the
+  cycle. The work and needs WorkManager's `androidx.startup` initializer removed — **by a
   targeted `tools:node="remove"` on the `WorkManagerInitializer` meta-data only**, because dropping
   the whole `InitializationProvider` would also take out `ProcessLifecycleInitializer` and with it
   `DiagnosticsPoller`, `SessionRevalidator` and `ForegroundTracker`.
-  **Neither `KEEP` nor the re-enqueue is what survives a reboot**, though it is easy to assume so.
+  **Neither the unique-work policy nor the re-enqueue is what survives a reboot**, though it is easy
+  to assume so.
   work-runtime builds every `JobInfo` with `setPersisted(false)` on purpose, so a reboot destroys
   every job and only the `WorkSpec` row survives; `ForceStopRunnable`'s third branch (`cleanUp()` →
   `Schedulers.schedule`) rebuilds them, and it is dispatched from the `WorkManagerImpl` constructor.
   Removing the initializer made that constructor lazy, and `UpdateScheduler.schedule()` holds the
   app's *only* `WorkManager.getInstance(...)` call — so **asking is what triggers the recovery**,
-  while the `KEEP` enqueue itself finds an existing row and no-ops. Adding a second `getInstance`
+  while the enqueue itself only rewrites an existing row. Adding a second `getInstance`
   call anywhere earlier in the process would silently move that trigger. `BootCompletedReceiver` is a
   *second* boot path beside work-runtime's own `RescheduleReceiver` (declared `enabled="false"` and
   switched on by a runtime `setComponentEnabledSetting` write that `UnfinishedWorkListener` makes

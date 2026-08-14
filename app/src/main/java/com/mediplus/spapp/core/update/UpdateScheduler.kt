@@ -17,14 +17,18 @@ import javax.inject.Singleton
  * Owns the update work schedule, and the `androidx.work` types with it — nothing above this class
  * sees a WorkManager type.
  *
- * `KEEP` rather than `UPDATE`, and re-enqueued on every process start. `KEEP` is what makes the
- * repetition harmless: when a `WorkSpec` for this unique name already exists as enqueued or running,
- * the enqueue returns without touching it.
+ * `UPDATE` rather than `KEEP`, and re-enqueued on every process start. The repetition is harmless
+ * either way — after the first call the stored `WorkSpec` already matches the one built here, so
+ * every later enqueue is a no-op in substance. `UPDATE` is what makes a *changed* schedule land:
+ * WorkManager's database survives an app update, so under `KEEP` a device that already holds a row
+ * would keep its old interval permanently and no release could ever move it. `UPDATE` preserves the
+ * existing period's `lastEnqueueTime`, so re-enqueueing on every launch cannot push the next run
+ * out; it rewrites the spec in place rather than restarting the cycle.
  *
- * The *enqueue* is load-bearing only where there is no row to keep — a first-ever launch, or a
- * database wiped by clear-data. It is deliberately NOT what recovers a schedule that a reboot or an
- * aggressive OEM task killer dropped, though it is easy to assume so: killing the OS-level job
- * leaves WorkManager's own rows intact, so this call finds an enqueued row and no-ops.
+ * The *enqueue* is load-bearing where there is no row at all — a first-ever launch, or a database
+ * wiped by clear-data — and now also where the row is stale. It is deliberately NOT what recovers a
+ * schedule that a reboot or an aggressive OEM task killer dropped, though it is easy to assume so:
+ * killing the OS-level job leaves WorkManager's own rows intact.
  *
  * The *asking* is what carries that recovery, and it is a side effect of the line below rather than
  * of the policy. Because the `androidx.startup` initializer is removed from the merged manifest,
@@ -41,7 +45,7 @@ class UpdateScheduler @Inject constructor(
 ) {
 
     fun schedule() {
-        val request = PeriodicWorkRequestBuilder<UpdateWorker>(INTERVAL_HOURS, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<UpdateWorker>(INTERVAL_MINUTES, TimeUnit.MINUTES)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -55,13 +59,22 @@ class UpdateScheduler @Inject constructor(
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
     }
 
     companion object {
         const val UNIQUE_WORK_NAME = "sp-app-self-update"
-        private const val INTERVAL_HOURS = 6L
+
+        /**
+         * WorkManager's own floor: `PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS` is 15 minutes,
+         * and anything shorter is silently clamped up to it rather than honoured. So this is the
+         * fastest a periodic poll can legitimately be asked to run, and asking for less would only
+         * make the code claim a cadence the platform never delivers. Treat it as a lower bound in
+         * both directions: JobScheduler batches, doze and OEM standby buckets can all stretch a run
+         * later, never earlier.
+         */
+        private const val INTERVAL_MINUTES = 15L
     }
 }
