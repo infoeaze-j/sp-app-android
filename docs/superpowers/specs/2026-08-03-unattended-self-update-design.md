@@ -341,27 +341,30 @@ that specific unit before it leaves.
   settled on a real V3. The design fails safe either way — a refusal simply routes the V3 down the
   same notification path the V2s already uses — but it decides whether half the fleet or none of it
   updates unattended, so it is the single most valuable thing the bench test establishes.
-  **It fails safe only if that notification path works, and on the V3 it currently does not** — see
-  the next item.
-- **`POST_NOTIFICATIONS` is never requested, so neither notification is delivered on API 33+**
-  (verified 2026-08-05). The permission is declared in the manifest, but the app's only two runtime
-  `RequestPermission()` launchers are CAMERA (`FaceCheckScreen`) and WRITE_EXTERNAL_STORAGE
-  (`UpdateHost`). With `targetSdk 36` the platform denies `POST_NOTIFICATIONS` by default from
-  API 33, so `UpdateNotifications.post()` returns early and the **Sunmi V3** receives neither §8's
-  lost-permission notice nor §7's pending-confirmation notification.
+  It fails safe only if that notification path works, which now depends on the grant covered by the
+  next item.
+- **§7's grant and §8's exemption are both asked for in code (2026-08-14), and neither ask is proven
+  on a Sunmi build.** `core/update/UpdateReadiness` + `ui/update/UpdateReadinessEffects` raise the
+  `POST_NOTIFICATIONS` dialog on API 33+ and then send the operator once to this app's
+  unused-app-restrictions setting, both from `UpdateHost` on the first launch — before sign-in,
+  which is the office pass's single manual launch.
 
-  §7 assumed this away — "grant it at the office" — but nothing in the app ever prompts, so there is
-  nothing to grant at the office except a manual Settings toggle. The consequence is the part that
-  matters: the V3 is the half that is supposed to install silently, so the confirmation notification
-  is its *fallback*. If the item above resolves against us, the V3 has **no working path at all**
-  until this is closed, and degrades to "installs the next time somebody opens the app" — which is
-  what this design exists to remove. Requesting the grant is separate follow-up work; the bench
-  checklist's office pass grants it by hand meanwhile.
-- **§8's auto-revoke half was never implemented.** Only the notification half shipped; nothing in the
-  app reads `isAutoRevokeWhitelisted` or requests the exemption. Turning off "Remove permissions if
-  app isn't used" by hand during the office pass is therefore the only defence an idle device has
-  against losing `REQUEST_INSTALL_PACKAGES`, and skipping it on one unit is how that unit silently
-  stops updating.
+  This closes the two gaps recorded here on 2026-08-05, when §7's "grant it at the office" turned
+  out to assume a prompt the app never raised and §8's auto-revoke half turned out never to have
+  been implemented at all. Both were pure omissions rather than design errors, so the design text
+  above stands unchanged.
+
+  What is *not* settled is behaviour on the devices:
+
+  - A refused or never-shown notification dialog still leaves the **Sunmi V3** with neither §8's
+    lost-permission notice nor §7's pending-confirmation notification. That is the fallback the item
+    above leans on, so if `USER_ACTION_NOT_REQUIRED` is refused *and* the grant is missing, the V3
+    has no working path at all.
+  - The exemption ask is a `startActivity` into a Settings screen the app cannot flip itself, and
+    OEM builds move that screen. It is asked once per install by design — repeating it would throw
+    the operator into Settings every morning — so an operator who backs out of it leaves that unit
+    exposed to losing `REQUEST_INSTALL_PACKAGES`, and the bench checklist's manual toggle stays as
+    the cover for exactly that.
 - **Both rollout blockers named under *Problem* are resolved** (re-verified 2026-08-05). The release
   build is signed with the permanent key — `apksigner verify --print-certs` prints SHA-256
   `69:DA:BA:2F:…:70:FC:ED:B4`, V2 signer only — and the release `BASE_URL` is

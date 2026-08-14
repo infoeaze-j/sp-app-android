@@ -38,13 +38,12 @@ interface UpdateNotifier {
      * fleet (all API 30+). Nobody is present to see the in-app prompt, so on a device that can
      * deliver it this is the only signal that would otherwise exist.
      *
-     * **It cannot be delivered on API 33+ today.** The app declares `POST_NOTIFICATIONS` but never
-     * requests it at runtime, and with `targetSdk 36` the platform denies it by default from API 33,
-     * so [UpdateNotifications]'s post returns without notifying. That silently costs the Sunmi V3s
-     * (Android 13) this notice, and costs them the Task 7 confirmation notification too. Requesting
-     * the grant is tracked as separate follow-up work; it is deliberately not done here, because a
-     * permission prompt belongs to a UI surface and to a decision about when the operator sees it.
-     * The Sunmi V2s (API 30) need no runtime grant and are unaffected.
+     * On API 33+ it is delivered only if the grant was given. `targetSdk 36` means the platform
+     * denies `POST_NOTIFICATIONS` by default from API 33, so [UpdateReadiness] asks for it at launch
+     * — from a UI surface, because that is where a permission dialog belongs. A denial still costs
+     * the Sunmi V3s (Android 13) this notice and the pending-confirmation notification with it, so
+     * the ask is repeated on every launch that finds the permission missing. The Sunmi V2s (API 30)
+     * need no runtime grant and are unaffected.
      */
     fun installPermissionRequired()
 
@@ -102,11 +101,10 @@ private enum class UpdateChannel(
  * sources screen, on its own channel so one mute cannot silence both.
  *
  * Below API 33 no runtime grant is needed, which is exactly the half of the fleet that depends on
- * it. On API 33+ the grant is never requested anywhere in this app and `targetSdk 36` means the
- * platform denies it by default, so posting returns quietly and **nothing is delivered at all** —
- * see [UpdateNotifier.installPermissionRequired] for what that costs and why the fix is separate
- * work. Returning quietly rather than throwing is still right: the degraded behaviour is "installs
- * the next time somebody opens the app", which is no worse than before this design.
+ * it. On API 33+ `targetSdk 36` means the platform denies it by default, so [UpdateReadiness] asks
+ * for the grant at launch; a device that refuses anyway posts nothing at all, and [post] returns
+ * false rather than throwing. That degradation is still right: it means "installs the next time
+ * somebody opens the app", which is no worse than before this design.
  */
 @Singleton
 class UpdateNotifications @Inject constructor(

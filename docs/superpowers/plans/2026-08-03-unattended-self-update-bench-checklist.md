@@ -40,17 +40,18 @@ source. This checklist is the only evidence that counts.
    receives no broadcasts at all, `BOOT_COMPLETED` included, until a human launches it. There is no
    permission, flag or API that avoids this.
 3. Grant "install unknown apps" when prompted.
-4. **Enable notifications by hand on API 33+.** The app declares `POST_NOTIFICATIONS` but never
-   requests it at runtime, and `targetSdk 36` means the platform denies it by default from API 33 —
-   so nothing will prompt. Settings → Apps → SP App → Notifications → Allow, or
-   `adb shell pm grant com.mediplus.spapp android.permission.POST_NOTIFICATIONS`. The V2s (API 30)
-   needs no grant and is unaffected. This manual step is a workaround for a known gap, not the
-   intended design; see **Known gaps** below.
-5. Settings → Apps → SP App → **turn OFF "Remove permissions if app isn't used"**. Android revokes
-   permissions for unused apps from API 30, and the entire fleet is API 30+, so this applies to
-   every unit. Design §8 proposed the app also check `isAutoRevokeWhitelisted` and request the
-   exemption itself; **that half was never implemented**, so this toggle is the only defence a
-   device has. Skipping it on one unit is how that unit silently stops updating.
+4. **Allow notifications when the app asks, on API 33+.** `UpdateReadiness` raises the
+   `POST_NOTIFICATIONS` dialog on the first launch (step 2), before sign-in. Say yes: a denial costs
+   the V3 both update notifications. The V2s (API 30) needs no grant and is never prompted. If the
+   dialog was dismissed twice at some point, Android stops showing it and the grant must be given by
+   hand — Settings → Apps → SP App → Notifications → Allow, or
+   `adb shell pm grant com.mediplus.spapp android.permission.POST_NOTIFICATIONS`.
+5. **Accept the trip into Settings that follows, and turn OFF "Remove permissions if app isn't
+   used".** Android revokes permissions for unused apps from API 30, and the entire fleet is
+   API 30+, so this applies to every unit. `UpdateReadiness` sends the operator to that exact screen
+   once per install, immediately after the notification dialog resolves, but it cannot flip the
+   toggle — only a human can. Backing out of it is how a unit silently stops updating, and the app
+   will not ask twice.
 6. **Perform one real self-update on the bench** (the checks below). This both proves the chain and
    promotes the app to its own installer of record, which is what makes later updates silent —
    `UPDATE_PACKAGES_WITHOUT_USER_ACTION` keys off being the installer of record, and a sideloaded
@@ -173,23 +174,25 @@ One determines whether the other is urgent, so their order is not arbitrary.
 
 ## Known gaps to confirm rather than debug
 
-- **`POST_NOTIFICATIONS` is declared but never requested.** The only two runtime-permission
-  launchers in the app are CAMERA (`FaceCheckScreen.kt`) and WRITE_EXTERNAL_STORAGE
-  (`UpdateHost.kt`). With `targetSdk 36` the platform denies `POST_NOTIFICATIONS` by default from
-  API 33, so `UpdateNotifications.post()` returns early and **nothing is delivered on the Sunmi V3**
-  — neither the lost-install-permission notice nor the pending-confirmation notification.
+- **Both permission gaps are closed in code; what remains is confirming the asks actually fire.**
+  `UpdateReadiness` requests `POST_NOTIFICATIONS` on API 33+ and sends the operator to the
+  unused-app-restrictions setting once per install, both from the first launch. Neither is proven on
+  a Sunmi build. Watch for two things on the bench:
 
-  The consequence is the part that matters. The V3 is the half that is supposed to install
-  silently, so the confirmation notification is its *fallback*. If check 1 shows Sunmi's Android 13
-  does not honour `USER_ACTION_NOT_REQUIRED`, the V3 has **no working path at all** until the
-  follow-up lands — it would degrade to "installs the next time somebody opens the app", which is
-  exactly what this feature exists to remove. Requesting the grant is tracked as separate work; the
-  office-pass step above is the interim cover, and a fleet procedure that depends on a manual
-  per-device toggle is fragile by construction.
+  - **The notification dialog appears on the V3 at step 2.** If it does not, `UpdateNotifications`
+    posts nothing, and the V3 loses both the lost-install-permission notice and the
+    pending-confirmation notification. That matters most if check 1 shows Sunmi's Android 13 does
+    not honour `USER_ACTION_NOT_REQUIRED` — the confirmation notification is then the V3's only
+    path, not its fallback.
+  - **The Settings trip lands on a screen with the "Remove permissions if app isn't used" toggle.**
+    OEM builds relocate this. If it lands somewhere useless, fall back to the manual route and note
+    it here; the app has already recorded the ask and will not repeat it.
 
-- **`isAutoRevokeWhitelisted` was never implemented.** Design §8 proposed the app request the
-  auto-revoke exemption once. Only the notification half of §8 shipped. The office-pass toggle is
-  the compensating control.
+  Verify the grant and the exemption stuck:
+
+  ```
+  adb shell dumpsys package com.mediplus.spapp | grep -i "POST_NOTIFICATIONS\|autoRevoke"
+  ```
 
 - **A benign build warning that reads like a failure.** `processDebugUnitTestManifest` emits
   `WorkManagerInitializer was tagged to remove other declarations but no other declaration

@@ -44,6 +44,11 @@ fun UpdateHost(viewModel: UpdateViewModel = hiltViewModel()) {
     val phase by viewModel.phase.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // The two device settings the headless path depends on, asked for once at launch. Hosted here
+    // because this composable is the one that sits above the whole app; it has nothing to do with
+    // the phase below it.
+    UpdateReadinessEffects()
+
     // Completes the unknown-sources round-trip: returning from Settings resumes the flow.
     LifecycleResumeEffect(Unit) {
         viewModel.onReturnedFromSettings()

@@ -2,8 +2,10 @@ package com.mediplus.spapp.data.local
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,7 +35,21 @@ class PrefsDataStore @Inject constructor(
         return updated[INSTALL_ID_KEY].orEmpty()
     }
 
+    /**
+     * Whether this install has already sent the operator to its unused-app-restrictions setting
+     * (design 2026-08-03 §8). Absent on a fresh install, which is the whole point: the ask happens
+     * on the office pass's single manual launch and never again.
+     */
+    suspend fun autoRevokeExemptionAsked(): Boolean =
+        dataStore.data.first()[AUTO_REVOKE_ASKED_KEY] == true
+
+    /** Records the ask. Only ever suppresses a later one — see `UpdateReadiness`. */
+    suspend fun markAutoRevokeExemptionAsked() {
+        dataStore.edit { prefs -> prefs[AUTO_REVOKE_ASKED_KEY] = true }
+    }
+
     private companion object {
         val INSTALL_ID_KEY = stringPreferencesKey("install_id")
+        val AUTO_REVOKE_ASKED_KEY = booleanPreferencesKey("auto_revoke_exemption_asked")
     }
 }

@@ -325,18 +325,22 @@ it, and the current behaviour is the conservative option.
   phase clears — except `CheckFailed`, which is left **untouched** rather than cleared, because it is
   reached before `canRequestInstalls()` is ever evaluated and a transport failure retries with
   backoff, so clearing on it would repeatedly destroy the only standing signal.
-  **Known gap: neither notification is delivered on API 33+ today.** `POST_NOTIFICATIONS` is declared
-  in the manifest but requested nowhere — the app's only two `RequestPermission()` launchers are
-  CAMERA (`FaceCheckScreen`) and WRITE_EXTERNAL_STORAGE (`UpdateHost`) — and with `targetSdk 36` the
-  platform denies it by default, so `UpdateNotifications.post()` returns early. That costs the
-  **Sunmi V3** both the permission notice and the confirmation notification, and it matters most in
-  the one case the design cannot test in advance: the V3 is the half that is supposed to install
-  silently, so the confirmation notification is its *fallback*. If Sunmi's Android 13 turns out not
-  to honour `USER_ACTION_NOT_REQUIRED`, the V3 has **no working path at all** until this is fixed.
-  Requesting the grant is separate follow-up work; meanwhile the bench checklist's office pass grants
-  it by hand. Design §8's other half — checking `isAutoRevokeWhitelisted` and requesting the
-  exemption — was never implemented either, so the manual "Remove permissions if app isn't used"
-  toggle is a device's only defence against losing the install permission while idle.
+  **Two device settings the headless path depends on are asked for at launch** (2026-08-14, closing
+  the last two known gaps in the design): `core/update/UpdateReadiness` + `ui/update/
+  UpdateReadinessEffects`, hosted by `UpdateHost` so they run once per Activity creation, before
+  sign-in — the office pass's single manual launch. First `POST_NOTIFICATIONS` on API 33+ (declared
+  in the manifest, but `targetSdk 36` means the platform denies it by default, so without the ask
+  `UpdateNotifications.post()` returns early and the **Sunmi V3** gets neither notification), then a
+  trip to this app's unused-app-restrictions setting. They are strictly sequenced — the exemption
+  ask is a `startActivity` into Settings and `launch()` returns before the permission dialog is
+  answered, so firing both at once would bury the dialog — which is why the exemption hangs off the
+  permission result and runs directly only below API 33. The notification ask repeats on every
+  launch that finds the permission missing (the platform rate-limits it after two dismissals); the
+  exemption ask is **one-shot per install**, persisted in `PrefsDataStore`, because nothing
+  rate-limits a `startActivity` and an operator thrown into Settings every morning learns to back
+  out faster. `isAutoRevokeWhitelisted` is read live on every call, so the flag can only suppress an
+  ask, never cause one. The bench checklist's manual toggle stays as the cover for an operator who
+  backs out.
   Two behaviour changes worth knowing: the rollback backup is **best effort and no longer gates an
   install** (a stranded field device is unrecoverable; a missing backup is an inconvenience), so
   `BusinessCode.UPDATE_BACKUP_FAILED` is now diagnostic-only and reaches no operator; and a
