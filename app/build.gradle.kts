@@ -33,10 +33,10 @@ android {
         applicationId = "com.mediplus.spapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 9
+        versionCode = 10
         // A version, not a release note: it is rendered in the sign-in footer the operator reads and
         // sent to the back office as `appVersionName` on every POST /devices/register.
-        versionName = "1.9"
+        versionName = "1.10"
 
         testInstrumentationRunner = "com.mediplus.spapp.HiltTestRunner"
 
