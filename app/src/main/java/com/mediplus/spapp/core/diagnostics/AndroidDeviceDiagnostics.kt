@@ -4,13 +4,11 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.view.WindowManager
 import com.mediplus.spapp.core.di.IoDispatcher
 import com.mediplus.spapp.domain.model.CurrentAppVersion
@@ -72,8 +70,7 @@ class AndroidDeviceDiagnostics @Inject constructor(
     }
 
     private fun buildNetwork(): NetworkState {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        val caps = context.activeNetworkCapabilities()
         return NetworkState(
             transport = transportOf(caps),
             isMetered = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false,
@@ -117,9 +114,7 @@ class AndroidDeviceDiagnostics @Inject constructor(
     private fun buildEnvironment(): EnvironmentState = EnvironmentState(
         locale = Locale.getDefault().toLanguageTag(),
         timeZoneId = TimeZone.getDefault().id,
-        airplaneMode = Settings.Global.getInt(
-            context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0,
-        ) != 0,
+        airplaneMode = context.isAirplaneModeOn(),
     )
 
     // getThermalHeadroom is API 30 (R); currentThermalStatus is API 29 (Q). Guard each to its own
@@ -139,13 +134,4 @@ class AndroidDeviceDiagnostics @Inject constructor(
         const val ROTATION_STEP_DEGREES = 90
         const val THERMAL_FORECAST_SECONDS = 10
     }
-}
-
-private fun transportOf(caps: NetworkCapabilities?): NetworkTransport = when {
-    caps == null -> NetworkTransport.NONE
-    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
-    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
-    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkTransport.CELLULAR
-    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
-    else -> NetworkTransport.NONE
 }

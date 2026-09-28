@@ -1,11 +1,6 @@
 package com.mediplus.spapp.ui.facecheck
 
 import android.Manifest
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +33,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,6 +41,8 @@ import com.mediplus.spapp.core.camera.CameraAvailability
 import com.mediplus.spapp.core.camera.FaceCamera
 import com.mediplus.spapp.core.camera.FaceCameraEntryPoint
 import com.mediplus.spapp.core.camera.FramingGuidance
+import com.mediplus.spapp.core.ui.hasPermission
+import com.mediplus.spapp.core.ui.openAppSettings
 import com.mediplus.spapp.core.ui.components.ErrorState
 import com.mediplus.spapp.core.ui.components.LoadingState
 import com.mediplus.spapp.core.ui.components.PermissionDeniedState
@@ -158,7 +154,7 @@ private fun CaptureContent(
     modifier: Modifier,
 ) {
     val context = LocalContext.current
-    var hasPermission by remember { mutableStateOf(context.hasCameraPermission()) }
+    var hasPermission by remember { mutableStateOf(context.hasPermission(Manifest.permission.CAMERA)) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         hasPermission = it
     }
@@ -284,13 +280,4 @@ private fun FramingGuidance.messageRes(): Int = when (this) {
     FramingGuidance.MULTIPLE_FACES -> R.string.face_framing_multiple
     FramingGuidance.FACE_TOO_SMALL -> R.string.face_framing_too_small
     FramingGuidance.POOR_POSE -> R.string.face_framing_pose
-}
-
-private fun Context.hasCameraPermission(): Boolean =
-    ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-
-private fun Context.openAppSettings() {
-    startActivity(
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)),
-    )
 }

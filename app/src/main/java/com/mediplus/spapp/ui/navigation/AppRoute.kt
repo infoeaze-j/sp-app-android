@@ -1,7 +1,9 @@
 package com.mediplus.spapp.ui.navigation
 
 /**
- * The four destinations of the sequential journey (FR-032).
+ * The four destinations of the sequential journey (FR-032), plus [SelfCheck], the operator's
+ * troubleshooting screen. [SelfCheck] sits outside the journey: it is reached only from [SignIn],
+ * pushed on top of it rather than replacing it, so back returns to sign-in.
  *
  * A route carries nothing but its path: there is no per-destination reachability check. Order is
  * enforced by how the graph is driven rather than by a guard on arrival — every forward navigation
@@ -15,4 +17,5 @@ enum class AppRoute(val path: String) {
     MemberScan("memberscan"),
     FaceCheck("face"),
     AddService("addservice"),
+    SelfCheck("selfcheck"),
 }

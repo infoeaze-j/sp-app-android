@@ -79,7 +79,8 @@ fun SpAppTheme(
     content: @Composable () -> Unit,
 ) {
     val colors = if (darkTheme) DarkColors else LightColors
-    CompositionLocalProvider(LocalSpacing provides Spacing()) {
+    val statusColors = if (darkTheme) DarkStatusColors else LightStatusColors
+    CompositionLocalProvider(LocalSpacing provides Spacing(), LocalStatusColors provides statusColors) {
         MaterialTheme(
             colorScheme = colors,
             typography = AppTypography,

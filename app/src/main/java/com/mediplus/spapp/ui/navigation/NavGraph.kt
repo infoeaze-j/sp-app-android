@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -35,8 +36,12 @@ import com.mediplus.spapp.domain.model.SessionState
 import com.mediplus.spapp.ui.addservice.AddServiceRoute
 import com.mediplus.spapp.ui.facecheck.FaceCheckRoute
 import com.mediplus.spapp.ui.memberscan.MemberScanRoute
+import com.mediplus.spapp.ui.selfcheck.SelfCheckRoute
 import com.mediplus.spapp.ui.signin.SignInRoute
 import com.mediplus.spapp.ui.update.UpdateHost
+
+/** Destinations reached before any session exists, which therefore get no app bar. */
+private val PRE_SIGN_IN_ROUTES = setOf(AppRoute.SignIn.path, AppRoute.SelfCheck.path)
 
 /**
  * The single-Activity navigation graph for the sequential journey (FR-032). A global guard forces a
@@ -44,8 +49,9 @@ import com.mediplus.spapp.ui.update.UpdateHost
  * the state-side wipe done by [com.mediplus.spapp.core.session.SessionManager] (FR-004, FR-004a).
  *
  * It also owns the app's only chrome: a top bar carrying the log out action, present on every
- * destination except sign-in. The bar's inner padding is what gives each screen its window insets,
- * so screens below do not handle insets themselves.
+ * destination except the two reached before sign-in — sign-in itself and the self check. The
+ * Scaffold's inner padding is what gives each screen its window insets, bar or no bar, so screens
+ * below do not handle insets themselves.
  * */
 @Composable
 fun NavGraph(
@@ -65,8 +71,9 @@ fun NavGraph(
     }
 
     val currentRoute by navController.currentBackStackEntryAsState()
-    // Sign-in is the one place with nothing to log out of.
-    val showAppBar = currentRoute?.destination?.route != AppRoute.SignIn.path
+    // Before sign-in there is nothing to log out of — and the self check's touch test needs the
+    // bar's top-end corner free, since that is exactly where it tests for the log out button.
+    val showAppBar = currentRoute?.destination?.route !in PRE_SIGN_IN_ROUTES
     var confirmingLogOut by remember { mutableStateOf(false) }
 
     if (confirmingLogOut) {
@@ -149,6 +156,25 @@ private fun LogOutConfirmDrawer(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     }
 }
 
+/** Sign-in, and the self check an operator who cannot sign in can detour to from it. */
+private fun NavGraphBuilder.preSignInDestinations(navController: NavHostController) {
+    composable(AppRoute.SignIn.path) {
+        SignInRoute(
+            onSignedIn = {
+                navController.navigate(AppRoute.MemberScan.path) {
+                    popUpTo(AppRoute.SignIn.path) { inclusive = true }
+                    launchSingleTop = true
+                }
+            },
+            // Pushed, not a replacement: the self check is a detour, and back comes home.
+            onTroubleshoot = { navController.navigate(AppRoute.SelfCheck.path) { launchSingleTop = true } },
+        )
+    }
+    composable(AppRoute.SelfCheck.path) {
+        SelfCheckRoute(onBack = { navController.popBackStack() })
+    }
+}
+
 @Composable
 private fun NavGraphHost(navController: NavHostController, modifier: Modifier) {
     NavHost(
@@ -156,16 +182,7 @@ private fun NavGraphHost(navController: NavHostController, modifier: Modifier) {
         startDestination = AppRoute.SignIn.path,
         modifier = modifier,
     ) {
-        composable(AppRoute.SignIn.path) {
-            SignInRoute(
-                onSignedIn = {
-                    navController.navigate(AppRoute.MemberScan.path) {
-                        popUpTo(AppRoute.SignIn.path) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
+        preSignInDestinations(navController)
         composable(AppRoute.MemberScan.path) {
             MemberScanRoute(
                 onVerified = {

@@ -1,0 +1,743 @@
+openapi: 3.1.0
+info:
+  title: SP App — consumed back-office API
+  version: "1.10"
+  description: |
+    Every endpoint the SP App (com.mediplus.spapp, versionCode 10) calls, derived from the
+    Retrofit interfaces and wire DTOs in app/src/main/java/com/mediplus/spapp/data/remote/.
+    Shapes are what the client sends and reads, including the fields it defaults when absent.
+    The authoritative contract remains docs/openapi.json.
+
+    Headers added by interceptors:
+      - Authorization: Bearer <token>, on every call except those marked `security: []`.
+        A 401 on a request that carried a token ends the session client-side.
+      - X-Device-Id: <id from POST /devices/register>, on every call once registered.
+
+    Failure envelope: the client reads `error.code` when present and otherwise falls back to
+    the HTTP status. Server messages are diagnostic only and never shown to the operator.
+servers:
+  - url: https://bio.infoeaze.com/api/v1
+    description: release
+  - url: http://10.21.2.82:8080/api/v1
+    description: debug (local Docker back office)
+  - url: http://localhost:8080/api/v1
+    description: defaultConfig fallback
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Device
+  - name: Member
+  - name: Face
+  - name: Enrollment
+  - name: Diagnostics
+  - name: AppRelease
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: auth.login
+      summary: Sign in an operator
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "201":
+          description: Signed in (any 2xx with a body is accepted).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResource" }
+        "401": { description: Invalid credentials (treated the same as 422). }
+        "422": { description: Invalid credentials. }
+        "423": { description: Account locked. }
+        "429": { description: Throttled; treated as locked. }
+        "5XX": { description: Server error; retryable. }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: auth.logout
+      summary: End the session server-side
+      description: Best effort. Local session state is cleared whatever the outcome.
+      responses:
+        "204": { description: Logged out. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/session:
+    get:
+      tags: [Auth]
+      operationId: auth.session
+      summary: Revalidate the current session
+      description: |
+        Called on every foregrounding while signed in. 2xx means Valid, 401 means Ended, and
+        anything else is Unknown, which leaves the session untouched (fail-open). The body is
+        not read.
+      responses:
+        "200":
+          description: Session still valid.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /devices/register:
+    post:
+      tags: [Device]
+      operationId: devices.register
+      summary: Register this install
+      description: |
+        Best effort, sent after sign-in. Idempotent on `installId`. The returned id is attached as
+        `X-Device-Id` on later calls.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterDeviceRequest" }
+      responses:
+        "200":
+          description: |
+            Device id. The client accepts a bare JSON string or an object carrying
+            `deviceId`, `id` or `device_id`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceRegistrationResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /members/verify:
+    post:
+      tags: [Member]
+      operationId: members.verify
+      summary: Verify a member card
+      description: |
+        The member number is the decimal of the NFC card UID. It is sent in the body so it
+        stays out of URLs and access logs. INVALID is a successful call, not an error.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyMemberRequest" }
+      responses:
+        "200":
+          description: Verdict.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemberVerificationResource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Patient not found. }
+        "422": { description: Treated as member invalid. }
+        "5XX": { description: Server error; retryable. }
+
+  /face/verifications:
+    post:
+      tags: [Face]
+      operationId: face.verifications.store
+      summary: Submit a live face frame for verification
+      description: A FAIL decision is a successful call reporting a rejected attempt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyFaceRequest" }
+      responses:
+        "201":
+          description: Decision (any 2xx with a body is accepted).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerificationResource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "5XX": { description: Server error; retryable. }
+
+  /members/{memberNumber}/services:
+    get:
+      tags: [Enrollment]
+      operationId: members.services.index
+      summary: Service catalogue and accepted currencies for a member
+      parameters:
+        - $ref: "#/components/parameters/MemberNumber"
+      responses:
+        "200":
+          description: Catalogue.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServicesResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Patient not found. }
+        "5XX": { description: Server error; retryable. }
+
+  /members/{memberNumber}/enrollments:
+    post:
+      tags: [Enrollment]
+      operationId: members.enrollments.store
+      summary: Enroll the member in a service
+      description: |
+        Idempotent on `idempotencyKey`: a retry with the same key replays the original response.
+        A 2xx whose body can't be read is treated as uncertain, and resolved with the GET below.
+      parameters:
+        - $ref: "#/components/parameters/MemberNumber"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoreEnrollmentRequest" }
+      responses:
+        "200":
+          description: |
+            The enrollment. The client accepts a bare JSON string (the new enrollment id) or an
+            EnrollmentResource object.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { description: Service already enrolled (duplicate). }
+        "422":
+          description: |
+            Service ineligible. `error.code: VERIFICATION_STALE` takes precedence over the
+            status and means the face verification is no longer current.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "5XX": { description: Server error; retryable. }
+    get:
+      tags: [Enrollment]
+      operationId: members.enrollments.show
+      summary: Look up an enrollment by idempotency key
+      description: Resolves a timed-out submission without risking a duplicate.
+      parameters:
+        - $ref: "#/components/parameters/MemberNumber"
+        - name: idempotencyKey
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The enrollment if it landed. `{}`, an empty or unreadable body, 204 or 404 all mean
+            "never created", so a retry is safe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentResponse" }
+        "204": { description: Never created. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Never created. }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "5XX": { description: Server error; retryable. }
+
+  /diagnostics/requests/pending:
+    get:
+      tags: [Diagnostics]
+      operationId: diagnostics.pending
+      summary: Poll for a pending diagnostics request
+      description: |
+        Polled on login and every 15 min while in the foreground. Requires `X-Device-Id`.
+        `{"request": null}`, 204 and 404 all mean nothing is pending. Every failure is ignored.
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Pending request, or null.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PendingDiagnosticsResponse" }
+        "204": { description: Nothing pending. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Device not registered yet (X-Device-Id missing). }
+        "404": { description: Endpoint not deployed; treated as nothing pending. }
+
+  /diagnostics/requests/{diagnosticsRequest}/report:
+    post:
+      tags: [Diagnostics]
+      operationId: diagnostics.report
+      summary: Report a device-state snapshot
+      description: Idempotent per request id. `reportedAt` is deliberately never sent.
+      parameters:
+        - name: diagnosticsRequest
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportDiagnosticsRequest" }
+      responses:
+        "202": { description: Accepted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /app/releases/latest:
+    get:
+      tags: [AppRelease]
+      operationId: app.releases.latest
+      summary: Check for a newer build
+      description: |
+        Runs at launch before sign-in, and every 15 min from a background worker. Always 200;
+        `{"latest": null}` or a 404 means nothing is published. Fails open.
+      security: []
+      parameters:
+        - name: versionCode
+          in: query
+          required: true
+          description: The running build's versionCode.
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Latest release and the server-computed verdicts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LatestReleaseResponse" }
+        "404": { description: Endpoint not deployed; treated as no release. }
+        "5XX": { description: Server error; retryable. }
+
+  /app/releases/{release}/binary:
+    get:
+      tags: [AppRelease]
+      operationId: app.releases.binary
+      summary: Download the APK
+      description: |
+        Not called by path: the client GETs `latest.url` verbatim, which must be same-origin with
+        the API base URL (scheme, host and port, with default ports normalised). The body is
+        streamed and checked against `latest.sha256`; a digest mismatch deletes the file.
+      security: []
+      parameters:
+        - name: release
+          in: path
+          required: true
+          schema: { type: string }
+        - name: Range
+          in: header
+          required: false
+          description: "`bytes=N-` to resume an interrupted download; omitted on a fresh attempt."
+          schema: { type: string, pattern: "^bytes=[0-9]+-$" }
+        - name: Accept-Encoding
+          in: header
+          required: true
+          description: Always `identity`, so transparent gzip can't shift resume offsets.
+          schema: { type: string, const: identity }
+      responses:
+        "200":
+          description: The whole APK. Sent in answer to a Range request, it means the range was ignored and the client restarts from zero.
+          content:
+            application/vnd.android.package-archive:
+              schema: { type: string, format: binary }
+        "206":
+          description: The requested suffix; appended to the partial file.
+          headers:
+            Content-Range: { schema: { type: string } }
+          content:
+            application/vnd.android.package-archive:
+              schema: { type: string, format: binary }
+        "416": { description: Range not satisfiable; the client retries from zero in the same call. }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Opaque token from POST /auth/login. Held in memory only.
+
+  parameters:
+    MemberNumber:
+      name: memberNumber
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[0-9]{7,32}$" }
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      description: Added by DeviceIdInterceptor once the device is registered.
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Token missing, expired or revoked. The client ends the session.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationError:
+      description: Validation failure.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      description: |
+        The client branches on `error.code` (known: SESSION_INVALID, VERIFICATION_STALE).
+        Laravel's `{message, errors}` shape is also tolerated.
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object }
+        message: { type: string }
+
+    # ---- Auth ----
+    LoginRequest:
+      type: object
+      required: [identifier, secret]
+      properties:
+        identifier: { type: string }
+        secret: { type: string, format: password }
+        deviceName:
+          type: [string, "null"]
+          description: Declared by the client but not currently sent.
+
+    SessionResource:
+      type: object
+      required: [token, operator]
+      properties:
+        token: { type: string }
+        expiresAt: { type: [string, "null"], format: date-time }
+        operator: { $ref: "#/components/schemas/Operator" }
+        provider: { $ref: "#/components/schemas/Provider" }
+        policy: { $ref: "#/components/schemas/SessionPolicy" }
+        serverTime: { type: [string, "null"], format: date-time }
+
+    Operator:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        identifier: { type: string, default: "" }
+        displayName: { type: [string, "null"] }
+        permissions:
+          type: array
+          items: { type: string }
+          default: []
+
+    Provider:
+      type: object
+      properties:
+        id: { type: string, default: "" }
+        code: { type: string, default: "" }
+        name: { type: string, default: "" }
+        timezone: { type: string, default: "" }
+
+    SessionPolicy:
+      type: object
+      properties:
+        verificationTtlSeconds:
+          type: [integer, "null"]
+          format: int64
+          description: The verification freshness window. Absent or null means immediately stale.
+        sessionTtlSeconds: { type: [integer, "null"], format: int64 }
+        face:
+          type: object
+          properties:
+            maxAttempts: { type: [integer, "null"] }
+            lockoutSeconds: { type: [integer, "null"], format: int64 }
+
+    # ---- Device ----
+    RegisterDeviceRequest:
+      type: object
+      required: [installId]
+      properties:
+        installId: { type: string, format: uuid, description: Generated once per install and persisted. }
+        label: { type: [string, "null"] }
+        manufacturer: { type: [string, "null"] }
+        model: { type: [string, "null"] }
+        osRelease: { type: [string, "null"] }
+        sdkInt: { type: [integer, "null"] }
+        appVersionName: { type: [string, "null"] }
+        appVersionCode: { type: [integer, "null"] }
+
+    DeviceRegistrationResponse:
+      oneOf:
+        - type: string
+          description: Bare device id (the declared type).
+        - type: object
+          description: Wrapper object; the first non-blank key found is used.
+          properties:
+            deviceId: { type: string }
+            id: { type: string }
+            device_id: { type: string }
+
+    # ---- Member ----
+    VerifyMemberRequest:
+      type: object
+      required: [memberNumber]
+      properties:
+        memberNumber: { type: string, pattern: "^[0-9]{7,32}$" }
+
+    MemberVerificationResource:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [VALID, INVALID], description: Compared case-insensitively. }
+        reason: { type: [string, "null"], description: Diagnostic only; never displayed. }
+        member: { oneOf: [{ $ref: "#/components/schemas/Member" }, { type: "null" }] }
+        referenceOnFile: { type: boolean, default: false }
+        capabilities:
+          type: object
+          description: Parsed, but not used to gate the journey.
+          properties:
+            canVerifyFace: { $ref: "#/components/schemas/LenientBoolean" }
+            canEnroll: { type: boolean, default: false }
+
+    Member:
+      type: object
+      required: [memberNumber]
+      properties:
+        memberNumber: { type: string }
+        fullName: { type: string, default: "" }
+        dateOfBirth: { type: [string, "null"], format: date }
+        plan: { type: [string, "null"] }
+
+    # ---- Face ----
+    VerifyFaceRequest:
+      type: object
+      required: [memberNumber, image, capture]
+      properties:
+        memberNumber: { type: string }
+        image:
+          type: string
+          contentEncoding: base64
+          description: A single still frame. The server enforces the size limit on decoded bytes.
+        capture:
+          type: object
+          properties:
+            hasLivenessChallengeResponse: { type: boolean, description: The client always sends true. }
+
+    VerificationResource:
+      type: object
+      required: [decision]
+      properties:
+        verificationId:
+          type: [string, "null"]
+          description: Present only on PASS. Spent by the enrollment POST.
+        decision: { type: string, examples: [PASS, FAIL], description: "Only \"PASS\" (case-insensitive) counts as a pass." }
+        liveness: { type: string, default: "", examples: [PASS, FAIL], description: "Anything but \"PASS\" counts as failed." }
+        sameSubject: { type: boolean, default: false }
+        expiresAt: { type: [string, "null"], format: date-time }
+        lockout:
+          type: object
+          properties:
+            lockedOut: { type: boolean, default: false }
+            remainingAttempts: { type: [integer, "null"] }
+            cooldownUntil: { type: [string, "null"], format: date-time }
+
+    # ---- Enrollment ----
+    ServicesResponse:
+      type: object
+      properties:
+        services:
+          type: array
+          default: []
+          items: { $ref: "#/components/schemas/Service" }
+        currencies:
+          type: array
+          default: []
+          items: { $ref: "#/components/schemas/Currency" }
+        visitDate: { type: [string, "null"], format: date }
+
+    Service:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        code: { type: string, default: "" }
+        description: { type: string, default: "" }
+        eligibleForPatient: { type: boolean, default: false }
+        alreadyEnrolled: { type: boolean, default: false }
+
+    Currency:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, examples: [ZAR] }
+        label: { type: string, default: "" }
+        minorUnitExponent: { type: integer, default: 2 }
+        isDefault: { type: boolean, default: false }
+
+    StoreEnrollmentRequest:
+      type: object
+      required: [serviceId, verificationId, idempotencyKey, currency, amountMinor]
+      properties:
+        serviceId: { type: string }
+        verificationId: { type: string, description: From a PASS face verification. }
+        idempotencyKey: { type: string, description: Reused verbatim on every retry. }
+        currency: { type: string, description: The currency code, never its label. }
+        amountMinor: { type: integer, format: int64, description: Amount in minor units. }
+
+    EnrollmentResponse:
+      oneOf:
+        - type: string
+          description: Bare enrollment id (the declared type of the store response).
+        - $ref: "#/components/schemas/EnrollmentResource"
+
+    EnrollmentResource:
+      type: object
+      description: An empty object `{}` means no enrollment.
+      properties:
+        enrollmentId: { type: [string, "null"], description: Required non-blank for the object to count. }
+        status: { type: [string, "null"] }
+        service:
+          type: [object, "null"]
+          properties:
+            id: { type: string, default: "" }
+            code: { type: string, default: "" }
+            description: { type: string, default: "" }
+        currency: { type: [string, "null"] }
+        amountMinor: { type: [integer, "null"], format: int64 }
+        visitDate: { type: [string, "null"], format: date }
+        recordedAt: { type: [string, "null"], format: date-time }
+
+    # ---- Diagnostics ----
+    PendingDiagnosticsResponse:
+      type: object
+      properties:
+        request:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                reason: { type: [string, "null"] }
+                requestedAt: { type: [string, "null"], format: date-time }
+                expiresAt: { type: [string, "null"], format: date-time }
+
+    ReportDiagnosticsRequest:
+      type: object
+      required: [snapshot]
+      properties:
+        snapshot: { $ref: "#/components/schemas/DeviceSnapshot" }
+
+    DeviceSnapshot:
+      type: object
+      description: Collected without permissions. Contains no hardware identifiers and no location.
+      required: [battery, network, storage, memory, display, device, app, environment, thermal, uptime]
+      properties:
+        battery:
+          type: object
+          required: [levelPercent, isCharging, plug, health, temperatureDeciC, voltageMv, powerSaveMode]
+          properties:
+            levelPercent: { type: integer }
+            isCharging: { type: boolean }
+            plug: { type: string, description: Enum name of the domain plug type. }
+            health: { type: string }
+            temperatureDeciC: { type: integer }
+            voltageMv: { type: integer }
+            powerSaveMode: { type: boolean }
+        network:
+          type: object
+          required: [transport, isMetered, isValidated]
+          properties:
+            transport: { type: string, description: Enum name of the domain transport type. }
+            isMetered: { type: boolean }
+            isValidated: { type: boolean }
+        storage:
+          type: object
+          required: [internalFreeBytes, internalTotalBytes]
+          properties:
+            internalFreeBytes: { type: integer, format: int64 }
+            internalTotalBytes: { type: integer, format: int64 }
+        memory:
+          type: object
+          required: [availBytes, totalBytes, lowMemory]
+          properties:
+            availBytes: { type: integer, format: int64 }
+            totalBytes: { type: integer, format: int64 }
+            lowMemory: { type: boolean }
+        display:
+          type: object
+          required: [widthPx, heightPx, densityDpi, refreshRateHz, rotationDegrees]
+          properties:
+            widthPx: { type: integer }
+            heightPx: { type: integer }
+            densityDpi: { type: integer }
+            refreshRateHz: { type: number, format: float }
+            rotationDegrees: { type: integer, enum: [0, 90, 180, 270] }
+        device:
+          type: object
+          required: [manufacturer, model, brand, device, sdkInt, release]
+          properties:
+            manufacturer: { type: string }
+            model: { type: string }
+            brand: { type: string }
+            device: { type: string }
+            sdkInt: { type: integer }
+            release: { type: string }
+        app:
+          type: object
+          required: [versionName, versionCode]
+          properties:
+            versionName: { type: string }
+            versionCode: { type: integer }
+        environment:
+          type: object
+          required: [locale, timeZoneId, airplaneMode]
+          properties:
+            locale: { type: string }
+            timeZoneId: { type: string }
+            airplaneMode: { type: boolean }
+        thermal:
+          type: object
+          required: [headroom, status]
+          properties:
+            headroom: { type: [number, "null"], format: float }
+            status: { type: [integer, "null"] }
+        uptime:
+          type: object
+          required: [uptimeMillis, elapsedRealtimeMillis]
+          properties:
+            uptimeMillis: { type: integer, format: int64 }
+            elapsedRealtimeMillis: { type: integer, format: int64 }
+
+    # ---- App release ----
+    LatestReleaseResponse:
+      type: object
+      properties:
+        latest:
+          oneOf:
+            - type: "null"
+              description: Nothing published.
+            - $ref: "#/components/schemas/Release"
+        updateRequired: { $ref: "#/components/schemas/LenientBoolean" }
+        updateAvailable: { $ref: "#/components/schemas/LenientBoolean" }
+
+    Release:
+      type: object
+      required: [versionCode]
+      properties:
+        versionCode: { type: integer }
+        versionName: { type: string, default: "" }
+        minSupportedVersionCode:
+          type: integer
+          default: 0
+          deprecated: true
+          description: Removed from the contract. Still read as a fallback, and inert at 0.
+        url:
+          type: string
+          format: uri
+          default: ""
+          description: The APK URL. Must be same-origin with the API base URL, or the update is refused.
+        sha256:
+          type: string
+          pattern: "^[0-9a-fA-F]{64}$"
+          description: Hex SHA-256 of the APK. If absent, the client reads "" and no downloaded APK can pass verification.
+        sizeBytes: { type: integer, format: int64, default: 0 }
+        releaseNotes: { type: [string, "null"] }
+        publishedAt: { type: [string, "null"], format: date-time }
+
+    LenientBoolean:
+      description: |
+        Mistyped as `string` in the server spec. The client accepts a JSON boolean, or a string or
+        number where "true", "1" and "yes" (case-insensitive) mean true. Anything else, including
+        absence, reads as false.
+      oneOf:
+        - type: boolean
+        - type: string
+        - type: number
+      default: false

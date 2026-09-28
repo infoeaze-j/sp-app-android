@@ -4,6 +4,9 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.isHeading
@@ -13,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mediplus.spapp.R
 import com.mediplus.spapp.core.ui.theme.SpAppTheme
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -39,15 +43,38 @@ class SignInScreenTest {
         composeRule.mainClock.autoAdvance = false
     }
 
-    private fun show(state: SignInUiState) = composeRule.setContent {
+    private fun show(state: SignInUiState, onTroubleshoot: () -> Unit = {}) = composeRule.setContent {
         SpAppTheme {
             SignInScreen(
                 state = state,
-                onIdentifierChange = {},
-                onSecretChange = {},
-                onSubmit = {},
+                actions = SignInActions(
+                    onIdentifierChange = {},
+                    onSecretChange = {},
+                    onSubmit = {},
+                    onTroubleshoot = onTroubleshoot,
+                ),
             )
         }
+    }
+
+    @Test
+    fun selfCheckButtonOpensTheSelfCheck() {
+        var opened = false
+        show(SignInUiState(), onTroubleshoot = { opened = true })
+
+        composeRule.onNodeWithText(context.getString(R.string.signin_troubleshoot))
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+
+        assertTrue(opened)
+    }
+
+    @Test
+    fun selfCheckButtonIsDisabledWhileSigningIn() {
+        show(SignInUiState(identifier = "op", secret = "pw", isLoading = true))
+
+        composeRule.onNodeWithText(context.getString(R.string.signin_troubleshoot)).assertIsNotEnabled()
     }
 
     @Test

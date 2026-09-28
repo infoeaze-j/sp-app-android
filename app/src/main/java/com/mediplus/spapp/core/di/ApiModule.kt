@@ -6,6 +6,7 @@ import com.mediplus.spapp.data.remote.DiagnosticsApi
 import com.mediplus.spapp.data.remote.EnrollmentApi
 import com.mediplus.spapp.data.remote.FaceApi
 import com.mediplus.spapp.data.remote.MemberApi
+import com.mediplus.spapp.data.remote.SelfCheckApi
 import com.mediplus.spapp.data.remote.UpdateApi
 import dagger.Module
 import dagger.Provides
@@ -47,4 +48,8 @@ object ApiModule {
     @Provides
     @Singleton
     fun provideDiagnosticsApi(retrofit: Retrofit): DiagnosticsApi = retrofit.create()
+
+    @Provides
+    @Singleton
+    fun provideSelfCheckApi(retrofit: Retrofit): SelfCheckApi = retrofit.create()
 }

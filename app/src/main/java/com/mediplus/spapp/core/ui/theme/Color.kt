@@ -80,3 +80,17 @@ internal val ScrimDark = Color(0xFF000000)
 internal val InverseSurfaceDark = Color(0xFFF9DDD4)
 internal val InverseOnSurfaceDark = Color(0xFF3D2D27)
 internal val InversePrimaryDark = Color(0xFFAA3700)
+
+// --- Status: success (outside Material's scheme, so not generated with the palette above) ---
+// Hand-picked greens: the brand primary is orange, too close to error red to mark a pass.
+// Guarded by SpAppThemeColorsTest (green-dominant, ≥ 3:1 against surface; onSuccess ≥ 4.5:1 on it).
+internal val Success = Color(0xFF2E7D32)
+internal val OnSuccess = Color(0xFFFFFFFF)
+internal val SuccessDark = Color(0xFF81C784)
+internal val OnSuccessDark = Color(0xFF00390A)
+
+// --- Status: warning (hand-picked like success) ---
+// Amber rather than orange, so it cannot be read as the brand primary or as error red.
+// Guarded by SpAppThemeColorsTest (amber, apart from success and error, ≥ 3:1 against surface).
+internal val Warning = Color(0xFF946200)
+internal val WarningDark = Color(0xFFFFCA28)

@@ -14,10 +14,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +77,7 @@ private val LiftedFromCenter = object : Arrangement.Vertical {
 @Composable
 fun SignInRoute(
     onSignedIn: () -> Unit,
+    onTroubleshoot: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SignInViewModel = hiltViewModel(),
 ) {
@@ -89,19 +92,30 @@ fun SignInRoute(
 
     SignInScreen(
         state = state,
-        onIdentifierChange = viewModel::onIdentifierChange,
-        onSecretChange = viewModel::onSecretChange,
-        onSubmit = viewModel::submit,
+        actions = SignInActions(
+            onIdentifierChange = viewModel::onIdentifierChange,
+            onSecretChange = viewModel::onSecretChange,
+            onSubmit = viewModel::submit,
+            onTroubleshoot = onTroubleshoot,
+        ),
         modifier = modifier,
     )
 }
 
+/** The screen's callbacks, bundled so the screen stays under detekt's parameter limit. */
+@Immutable
+data class SignInActions(
+    val onIdentifierChange: (String) -> Unit,
+    val onSecretChange: (String) -> Unit,
+    val onSubmit: () -> Unit,
+    /** Opens the self check, for an operator who cannot sign in and needs to know why. */
+    val onTroubleshoot: () -> Unit,
+)
+
 @Composable
 fun SignInScreen(
     state: SignInUiState,
-    onIdentifierChange: (String) -> Unit,
-    onSecretChange: (String) -> Unit,
-    onSubmit: () -> Unit,
+    actions: SignInActions,
     modifier: Modifier = Modifier,
 ) {
     val spacing = LocalSpacing.current
@@ -151,7 +165,7 @@ fun SignInScreen(
 
         OutlinedTextField(
             value = state.identifier,
-            onValueChange = onIdentifierChange,
+            onValueChange = actions.onIdentifierChange,
             label = { Text(stringResource(R.string.signin_identifier_label)) },
             singleLine = true,
             enabled = !state.isLoading,
@@ -161,7 +175,7 @@ fun SignInScreen(
 
         OutlinedTextField(
             value = state.secret,
-            onValueChange = onSecretChange,
+            onValueChange = actions.onSecretChange,
             label = { Text(stringResource(R.string.signin_secret_label)) },
             singleLine = true,
             enabled = !state.isLoading,
@@ -193,7 +207,7 @@ fun SignInScreen(
         }
 
         Button(
-            onClick = onSubmit,
+            onClick = actions.onSubmit,
             enabled = state.canSubmit,
             modifier = Modifier
                 .fillMaxWidth()
@@ -219,6 +233,8 @@ fun SignInScreen(
             }
         }
 
+        TroubleshootButton(enabled = !state.isLoading, onClick = actions.onTroubleshoot)
+
         Text(
             text = stringResource(R.string.signin_version, state.versionName, state.versionCode),
             style = MaterialTheme.typography.labelSmall,
@@ -226,5 +242,24 @@ fun SignInScreen(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = spacing.lg),
         )
+    }
+}
+
+/**
+ * Secondary to sign-in, so outlined rather than filled. Disabled while a sign-in is in flight: the
+ * self check probes the same back office, and leaving mid-attempt would strand the result.
+ */
+@Composable
+private fun TroubleshootButton(enabled: Boolean, onClick: () -> Unit) {
+    val spacing = LocalSpacing.current
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = spacing.sm)
+            .heightIn(min = spacing.minTouchTarget),
+    ) {
+        Text(stringResource(R.string.signin_troubleshoot))
     }
 }

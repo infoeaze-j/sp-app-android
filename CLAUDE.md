@@ -23,7 +23,7 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 ```bash
 ./gradlew assembleDebug                  # build
 ./gradlew lintDebug                      # Android Lint — the in-build static-analysis gate (abortOnError=true)
-./gradlew testDebugUnitTest              # JVM unit suite (467 tests across test/ + testDebug/)
+./gradlew testDebugUnitTest              # JVM unit suite (557 tests across test/ + testDebug/)
 ./gradlew testDebugUnitTest --tests "com.mediplus.spapp.ui.facecheck.FaceCheckViewModelTest"   # one test class
 ./gradlew testDebugUnitTest --tests "*.FaceCheckViewModelTest.withheld consent halts cleanly"       # one test
 ./gradlew createDebugUnitTestCoverageReport                # coverage → app/build/reports/coverage/
@@ -206,9 +206,9 @@ it, and the current behaviour is the conservative option.
 
   | Rule | × | Where |
   |---|---|---|
-  | `LongParameterList` | 4 | `FaceCheckScreen` ×3 (`FaceCheckScreen:87`, `CaptureContent:152`, `CameraCapture:184`); `MemberScanScreen:92` |
-  | `LongMethod` | 2 | `FaceCheckScreen.CameraCapture` (63), `SignInScreen` (110) |
-  | `MaxLineLength` | 2 | `FaceRepository:69`, `FaceCheckScreen:114` |
+  | `LongParameterList` | 4 | `FaceCheckScreen` ×3 (`FaceCheckScreen:83`, `CaptureContent:148`, `CameraCapture:180`); `MemberScanScreen:92` |
+  | `LongMethod` | 2 | `FaceCheckScreen.CameraCapture` (63), `SignInScreen` (111) |
+  | `MaxLineLength` | 2 | `FaceRepository:69`, `FaceCheckScreen:110` |
   | `TooGenericExceptionCaught` | 2 | `CameraXFaceCamera:68`, `ApiCall:33` |
   | `SwallowedException` | 1 | `CameraXFaceCamera:68` — the same `catch` as above |
   | `MatchingDeclarationName` | 1 | `NfcModels.kt` declares `NfcAvailability` |
@@ -222,7 +222,8 @@ it, and the current behaviour is the conservative option.
   2026-08-06 it read 15 while the composition underneath had shifted — deleting `JourneyGate` took
   `LongParameterList` 5 → 4 at the same moment `MemberScanViewModel.onDecline` pushed that class onto
   the `TooManyFunctions` threshold, so a newly-introduced issue hid inside an unchanged total (it was
-  refactored back out). **A matching total is not a clean run**: read the rows, not the sum. The
+  refactored back out). Re-measured 2026-09-28 after the self check: same 13 rows; the `FaceCheckScreen`
+  line numbers moved up 4 when its permission helpers moved to `core/ui/SettingsIntents.kt`. **A matching total is not a clean run**: read the rows, not the sum. The
   point of recording it is to stop someone blaming their own change, so re-measure rather than trust
   it, and correct the table here when you do.
 - **Self-update ships in-app** (design: `docs/superpowers/specs/2026-07-24-self-update-design.md`):
@@ -365,6 +366,26 @@ it, and the current behaviour is the conservative option.
   other declaration present", attributed to `app/src/debug/AndroidManifest.xml`. It reads exactly
   like the targeted removal having failed — which is that change's one failure mode with no other
   signal — but it is cosmetic: the unit-test manifest has no WorkManager node to remove.
+- **Self check** (2026-09-28): a "Run a self check" button on sign-in opens `AppRoute.SelfCheck`
+  (`ui/selfcheck`), pushed on top of sign-in so back returns there, with no app bar. It runs:
+  - network → internet (Android's `NET_CAPABILITY_VALIDATED`, so no third-party host is contacted)
+    → API (`GET app/releases/latest`) → endpoints;
+  - then permissions (camera, notifications, install updates, NFC), each with a fix button;
+  - and an operator-driven touch test whose 17 zones sit where the app asks for taps.
+
+  Rules worth knowing:
+  - No internet does **not** skip the API: the debug back office is on the LAN. Only an API that
+    doesn't answer at all skips the endpoint rows.
+  - `SelfCheckApi` marks **every** probe `NO_AUTH_HEADER_LINE`, including the authenticated
+    `auth/session` and `members/verify`, so a probe can never carry a token and never trip
+    `AuthInterceptor`'s 401 → session-loss rule. Without a token those two are *expected* to answer
+    401, which counts as a pass; a 200 fails the row.
+  - The sign-in row is a placeholder (`NotYetAvailable`), never probed. Lockout semantics are unknown,
+    so probing waits for the back-office troubleshooting mode. `members/verify` sends the placeholder
+    number `0000000`.
+  - It deliberately bypasses the debug fake stack (`SelfCheckModule` in `main`, no `FakeSeam`): it
+    reads the platform directly rather than through the `Switching*` wrappers, so a debug build
+    reports the real emulator/device.
 - **Device registration** (`POST /devices/register`): a client-generated `installId` UUID is minted
   and persisted once by `PrefsDataStore`, `SignInViewModel` registers best-effort right after a
   successful sign-in, and `DeviceIdInterceptor` attaches the returned id as `X-Device-Id` on every

@@ -1,8 +1,5 @@
 package com.mediplus.spapp.data.remote
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.emptyPreferences
 import com.mediplus.spapp.core.device.DeviceBuildInfo
 import com.mediplus.spapp.core.device.DeviceIdStore
 import com.mediplus.spapp.core.result.AppResult
@@ -10,9 +7,8 @@ import com.mediplus.spapp.core.result.TransientKind
 import com.mediplus.spapp.data.local.PrefsDataStore
 import com.mediplus.spapp.data.repository.DeviceRepositoryImpl
 import com.mediplus.spapp.domain.model.CurrentAppVersion
+import com.mediplus.spapp.util.InMemoryPreferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -145,16 +141,4 @@ class DeviceApiContractTest {
 
     private fun installIdOf(body: String): String =
         Json.parseToJsonElement(body).jsonObject.getValue("installId").jsonPrimitive.content
-
-    /** A DataStore that lives in memory, so the install-id round trip needs no files. */
-    private class InMemoryPreferences : DataStore<Preferences> {
-        private val state = MutableStateFlow(emptyPreferences())
-        override val data: Flow<Preferences> = state
-
-        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
-            val updated = transform(state.value)
-            state.value = updated
-            return updated
-        }
-    }
 }

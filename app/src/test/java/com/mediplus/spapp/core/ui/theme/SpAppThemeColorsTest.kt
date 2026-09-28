@@ -43,13 +43,43 @@ class SpAppThemeColorsTest {
             LightColors.onPrimary to LightColors.primary,
             LightColors.onPrimaryContainer to LightColors.primaryContainer,
             LightColors.onSurface to LightColors.surface,
+            LightStatusColors.onSuccess to LightStatusColors.success,
             DarkColors.onPrimary to DarkColors.primary,
+            DarkStatusColors.onSuccess to DarkStatusColors.success,
             DarkColors.onPrimaryContainer to DarkColors.primaryContainer,
             DarkColors.onSurface to DarkColors.surface,
         )
         pairs.forEach { (fg, bg) ->
             val ratio = contrastRatio(fg, bg)
             assertTrue("contrast $ratio below 4.5:1 for $fg on $bg", ratio >= 4.5)
+        }
+    }
+
+    @Test
+    fun `success reads as green and clears non-text contrast in both schemes`() {
+        listOf(
+            LightStatusColors.success to LightColors.surface,
+            DarkStatusColors.success to DarkColors.surface,
+        ).forEach { (success, surface) ->
+            assertTrue("$success is not green-dominant", success.green > success.red && success.green > success.blue)
+            val ratio = contrastRatio(success, surface)
+            assertTrue("contrast $ratio below 3:1 for $success on $surface", ratio >= 3.0)
+        }
+    }
+
+    @Test
+    fun `warning reads as amber, apart from success and error, and clears non-text contrast`() {
+        listOf(
+            Triple(LightStatusColors, LightColors.surface, LightColors.error),
+            Triple(DarkStatusColors, DarkColors.surface, DarkColors.error),
+        ).forEach { (status, surface, error) ->
+            val warning = status.warning
+            assertTrue("$warning is not amber", warning.red > warning.blue && warning.green > warning.blue)
+            assertTrue("$warning is too red to tell from error", warning.green > warning.red * 0.6f)
+            assertNotEquals(status.success, warning)
+            assertNotEquals(error, warning)
+            val ratio = contrastRatio(warning, surface)
+            assertTrue("contrast $ratio below 3:1 for $warning on $surface", ratio >= 3.0)
         }
     }
 

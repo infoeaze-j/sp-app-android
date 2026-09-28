@@ -4,8 +4,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.mediplus.spapp.domain.model.TouchTestRecord
 import kotlinx.coroutines.flow.first
+import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,8 +51,25 @@ class PrefsDataStore @Inject constructor(
         dataStore.edit { prefs -> prefs[AUTO_REVOKE_ASKED_KEY] = true }
     }
 
+    /** The latest finished touch-screen test on this device, or null if none has ever finished. */
+    suspend fun lastTouchTest(): TouchTestRecord? {
+        val prefs = dataStore.data.first()
+        val at = prefs[TOUCH_TEST_AT_KEY] ?: return null
+        return TouchTestRecord(passed = prefs[TOUCH_TEST_PASSED_KEY] == true, at = Instant.ofEpochMilli(at))
+    }
+
+    /** Replaces the latest touch test. Both fields go in one edit, so a reader never sees half of it. */
+    suspend fun recordTouchTest(record: TouchTestRecord) {
+        dataStore.edit { prefs ->
+            prefs[TOUCH_TEST_PASSED_KEY] = record.passed
+            prefs[TOUCH_TEST_AT_KEY] = record.at.toEpochMilli()
+        }
+    }
+
     private companion object {
         val INSTALL_ID_KEY = stringPreferencesKey("install_id")
         val AUTO_REVOKE_ASKED_KEY = booleanPreferencesKey("auto_revoke_exemption_asked")
+        val TOUCH_TEST_PASSED_KEY = booleanPreferencesKey("touch_test_passed")
+        val TOUCH_TEST_AT_KEY = longPreferencesKey("touch_test_at_epoch_ms")
     }
 }
